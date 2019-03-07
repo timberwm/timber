@@ -22,8 +22,15 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_event.h>
 
+typedef struct tmbr_client {
+    struct tmbr_client *next;
+    xcb_window_t window;
+} tmbr_client_t;
+
 typedef struct tmbr_screen {
     struct tmbr_screen *next;
+    tmbr_client_t *clients;
+    xcb_screen_t *screen;
     uint16_t width;
     uint16_t height;
     uint8_t num;
@@ -41,6 +48,52 @@ static void die(const char *fmt, ...)
     va_end(ap);
 
     exit(-1);
+}
+
+static int tmbr_clients_enumerate(tmbr_screen_t *screen)
+{
+    xcb_query_tree_cookie_t cookie;
+    xcb_query_tree_reply_t *tree;
+    xcb_window_t *children;
+    unsigned i, n;
+
+    cookie = xcb_query_tree(conn, screen->screen->root);
+    tree = xcb_query_tree_reply(conn, cookie, NULL);
+    children = xcb_query_tree_children(tree);
+    n = xcb_query_tree_children_length(tree);
+
+    for (i = 0; i < n; i++) {
+        xcb_get_window_attributes_cookie_t attrs_cookie;
+        xcb_get_window_attributes_reply_t *attrs;
+        tmbr_client_t *client;
+
+        attrs_cookie = xcb_get_window_attributes(conn, children[i]);
+        attrs = xcb_get_window_attributes_reply(conn, attrs_cookie, NULL);
+
+        if (!attrs || attrs->map_state != XCB_MAP_STATE_VIEWABLE)
+            goto next;
+
+        client = calloc(1, sizeof(*client));
+        client->window = children[i];
+        client->next = screen->clients;
+        screen->clients = client;
+next:
+        free(attrs);
+    }
+
+    free(tree);
+
+    return 0;
+}
+
+static void tmbr_clients_free(tmbr_client_t *c)
+{
+    tmbr_client_t *n;
+
+    for (; c; c = n) {
+        n = c->next;
+        free(c);
+    }
 }
 
 static int tmbr_screens_enumerate(xcb_connection_t *conn)
@@ -65,6 +118,7 @@ static int tmbr_screens_enumerate(xcb_connection_t *conn)
         if ((s = calloc(1, sizeof(*s))) == NULL)
             die("Cannot allocate screen");
 
+        s->screen = iter.data;
         s->width = iter.data->width_in_pixels;
         s->height = iter.data->height_in_pixels;
         s->num = i++;
@@ -76,6 +130,8 @@ static int tmbr_screens_enumerate(xcb_connection_t *conn)
 
         if ((error = xcb_request_check(conn, cookie)) != NULL)
             die("Another window manager is running already.");
+
+        tmbr_clients_enumerate(s);
 
         xcb_screen_next(&iter);
     }
@@ -89,6 +145,7 @@ static void tmbr_screens_free(void)
 
     for (s = screens; s; s = n) {
         n = s->next;
+        tmbr_clients_free(s->clients);
         free(s);
     }
 
