@@ -7,5 +7,6 @@ project(
 executable(
   'timber',
   sources: [ 'timber.c' ],
+  dependencies: dependency('xcb'),
   install: true,
 )

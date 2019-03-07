@@ -19,6 +19,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <xcb/xcb.h>
+
 static void die(const char *fmt, ...)
 {
     va_list ap;
@@ -32,8 +34,15 @@ static void die(const char *fmt, ...)
 
 int main(int argc, const char *argv[])
 {
+    xcb_connection_t *conn;
+
     if (argc > 1)
         die("USAGE: %s\n", argv[0]);
+
+    if ((conn = xcb_connect(NULL, NULL)) == NULL)
+        die("Unable to connect to X server");
+
+    xcb_disconnect(conn);
 
     return 0;
 }
