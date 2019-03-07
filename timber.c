@@ -15,11 +15,25 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#define UNUSED(c) (void)(c)
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+static void die(const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+
+    exit(-1);
+}
 
 int main(int argc, const char *argv[])
 {
-    UNUSED(argc);
-    UNUSED(argv);
+    if (argc > 1)
+        die("USAGE: %s\n", argv[0]);
+
     return 0;
 }
