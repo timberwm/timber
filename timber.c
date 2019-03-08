@@ -22,8 +22,11 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_event.h>
 
+struct tmbr_screen;
+
 typedef struct tmbr_client {
     struct tmbr_client *next;
+    struct tmbr_screen *screen;
     xcb_window_t window;
 } tmbr_client_t;
 
@@ -75,12 +78,29 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
         die("Unable to allocate client");
 
     client->window = window;
+    client->screen = screen;
     client->next = screen->clients;
     screen->clients = client;
 
 out:
     free(attrs);
     return error;
+}
+
+static int tmbr_client_unmanage(tmbr_client_t *client)
+{
+    tmbr_client_t **c = &client->screen->clients;
+
+    while (*c && *c != client)
+        c = &(*c)->next;
+
+    if (!*c)
+        return -1;
+
+    *c = client->next;
+
+    free(client);
+    return 0;
 }
 
 static int tmbr_client_focus(tmbr_client_t *client)
@@ -255,7 +275,13 @@ static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
 
 static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
-    puts("destroy notify");
+    tmbr_client_t *client;
+
+    if ((tmbr_clients_find_by_window(&client, ev->window)) < 0)
+        return;
+
+    puts("unmanage client");
+    tmbr_client_unmanage(client);
 }
 
 int main(int argc, const char *argv[])
