@@ -33,7 +33,6 @@ typedef struct tmbr_screen {
     xcb_screen_t *screen;
     uint16_t width;
     uint16_t height;
-    uint8_t num;
 } tmbr_screen_t;
 
 static tmbr_screen_t *screens;
@@ -107,43 +106,47 @@ static void tmbr_clients_free(tmbr_client_t *c)
     }
 }
 
-static int tmbr_screens_enumerate(xcb_connection_t *conn)
+static int tmbr_screen_manage(xcb_screen_t *screen)
 {
     const uint32_t values[] = {
         XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
         XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
     };
+    xcb_generic_error_t *error;
+    xcb_void_cookie_t cookie;
+    tmbr_screen_t *s;
+
+    if ((s = calloc(1, sizeof(*s))) == NULL)
+        die("Cannot allocate screen");
+
+    s->screen = screen;
+    s->width = screen->width_in_pixels;
+    s->height = screen->height_in_pixels;
+    s->next = screens;
+    screens = s;
+
+    cookie = xcb_change_window_attributes_checked(conn, screen->root,
+                                                  XCB_CW_EVENT_MASK, values);
+
+    if ((error = xcb_request_check(conn, cookie)) != NULL)
+        die("Another window manager is running already.");
+
+    tmbr_clients_enumerate(s);
+
+    return 0;
+}
+
+static int tmbr_screens_enumerate(xcb_connection_t *conn)
+{
     xcb_screen_iterator_t iter;
     const xcb_setup_t *setup;
-    int i = 0;;
 
     if ((setup = xcb_get_setup(conn)) == NULL)
         die("Unable to get X setup");
 
     iter = xcb_setup_roots_iterator(setup);
     while (iter.rem) {
-        xcb_generic_error_t *error;
-        xcb_void_cookie_t cookie;
-        tmbr_screen_t *s;
-
-        if ((s = calloc(1, sizeof(*s))) == NULL)
-            die("Cannot allocate screen");
-
-        s->screen = iter.data;
-        s->width = iter.data->width_in_pixels;
-        s->height = iter.data->height_in_pixels;
-        s->num = i++;
-        s->next = screens;
-        screens = s;
-
-        cookie = xcb_change_window_attributes_checked(conn, iter.data->root,
-                                                      XCB_CW_EVENT_MASK, values);
-
-        if ((error = xcb_request_check(conn, cookie)) != NULL)
-            die("Another window manager is running already.");
-
-        tmbr_clients_enumerate(s);
-
+        tmbr_screen_manage(iter.data);
         xcb_screen_next(&iter);
     }
 
