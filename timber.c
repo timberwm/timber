@@ -64,7 +64,7 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
         goto out;
     }
 
-    if (attrs->map_state != XCB_MAP_STATE_VIEWABLE)
+    if (attrs->map_state == XCB_MAP_STATE_UNVIEWABLE)
         goto out;
 
     cookie = xcb_change_window_attributes_checked(conn, window, XCB_CW_EVENT_MASK, values);
@@ -189,6 +189,20 @@ static int tmbr_screens_enumerate(xcb_connection_t *conn)
     return 0;
 }
 
+static int tmbr_screens_find_by_root(tmbr_screen_t **out, xcb_window_t root)
+{
+    tmbr_screen_t *s;
+
+    for (s = screens; s; s = s->next) {
+        if (s->screen->root == root) {
+            *out = s;
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
 static void tmbr_screens_free(void)
 {
     tmbr_screen_t *s, *n;
@@ -218,7 +232,13 @@ static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 
 static void tmbr_handle_create_notify(xcb_create_notify_event_t *ev)
 {
-    puts("create notify");
+    tmbr_screen_t *screen;
+
+    if (tmbr_screens_find_by_root(&screen, ev->parent) < 0)
+        return;
+
+    puts("adopting new client");
+    tmbr_client_manage(screen, ev->window);
 }
 
 static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
