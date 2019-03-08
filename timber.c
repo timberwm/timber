@@ -50,36 +50,47 @@ static void die(const char *fmt, ...)
     exit(-1);
 }
 
+static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
+{
+    xcb_get_window_attributes_reply_t *attrs;
+    tmbr_client_t *client;
+    int error = 0;
+
+    if ((attrs = xcb_get_window_attributes_reply(conn,
+                                                 xcb_get_window_attributes(conn, window),
+                                                 NULL)) == NULL) {
+        error = -1;
+        goto out;
+    }
+
+    if (attrs->map_state != XCB_MAP_STATE_VIEWABLE)
+        goto out;
+
+    if ((client = calloc(1, sizeof(*client))) == NULL)
+        die("Unable to allocate client");
+
+    client->window = window;
+    client->next = screen->clients;
+    screen->clients = client;
+
+out:
+    free(attrs);
+    return error;
+}
+
 static int tmbr_clients_enumerate(tmbr_screen_t *screen)
 {
-    xcb_query_tree_cookie_t cookie;
     xcb_query_tree_reply_t *tree;
     xcb_window_t *children;
-    unsigned i, n;
+    unsigned i;
 
-    cookie = xcb_query_tree(conn, screen->screen->root);
-    tree = xcb_query_tree_reply(conn, cookie, NULL);
+    if ((tree = xcb_query_tree_reply(conn, xcb_query_tree(conn, screen->screen->root), NULL)) == NULL)
+        die("Unable to query tree");
+
     children = xcb_query_tree_children(tree);
-    n = xcb_query_tree_children_length(tree);
 
-    for (i = 0; i < n; i++) {
-        xcb_get_window_attributes_cookie_t attrs_cookie;
-        xcb_get_window_attributes_reply_t *attrs;
-        tmbr_client_t *client;
-
-        attrs_cookie = xcb_get_window_attributes(conn, children[i]);
-        attrs = xcb_get_window_attributes_reply(conn, attrs_cookie, NULL);
-
-        if (!attrs || attrs->map_state != XCB_MAP_STATE_VIEWABLE)
-            goto next;
-
-        client = calloc(1, sizeof(*client));
-        client->window = children[i];
-        client->next = screen->clients;
-        screen->clients = client;
-next:
-        free(attrs);
-    }
+    for (i = 0; i < xcb_query_tree_children_length(tree); i++)
+        tmbr_client_manage(screen, children[i]);
 
     free(tree);
 
