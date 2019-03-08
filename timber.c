@@ -51,7 +51,9 @@ static void die(const char *fmt, ...)
 
 static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 {
+    const uint32_t values[] = { XCB_EVENT_MASK_ENTER_WINDOW };
     xcb_get_window_attributes_reply_t *attrs;
+    xcb_void_cookie_t cookie;
     tmbr_client_t *client;
     int error = 0;
 
@@ -65,6 +67,10 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
     if (attrs->map_state != XCB_MAP_STATE_VIEWABLE)
         goto out;
 
+    cookie = xcb_change_window_attributes_checked(conn, window, XCB_CW_EVENT_MASK, values);
+    if ((xcb_request_check(conn, cookie)) != NULL)
+        die("Could not subscribe to window events");
+
     if ((client = calloc(1, sizeof(*client))) == NULL)
         die("Unable to allocate client");
 
@@ -75,6 +81,18 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 out:
     free(attrs);
     return error;
+}
+
+static int tmbr_client_focus(tmbr_client_t *client)
+{
+    xcb_void_cookie_t cookie;
+
+    cookie = xcb_set_input_focus(conn, XCB_INPUT_FOCUS_NONE, client->window, XCB_CURRENT_TIME);
+    if ((xcb_request_check(conn, cookie)) != NULL)
+        die("Could not focus client");
+
+    xcb_flush(conn);
+    return 0;
 }
 
 static int tmbr_clients_enumerate(tmbr_screen_t *screen)
@@ -94,6 +112,24 @@ static int tmbr_clients_enumerate(tmbr_screen_t *screen)
     free(tree);
 
     return 0;
+}
+
+static int tmbr_clients_find_by_window(tmbr_client_t **out, xcb_window_t w)
+{
+    tmbr_screen_t *s;
+
+    for (s = screens; s; s = s->next) {
+        tmbr_client_t *c;
+
+        for (c = s->clients; c; c = c->next) {
+            if (c->window == w) {
+                *out = c;
+                return 0;
+            }
+        }
+    }
+
+    return -1;
 }
 
 static void tmbr_clients_free(tmbr_client_t *c)
@@ -166,6 +202,20 @@ static void tmbr_screens_free(void)
     screens = NULL;
 }
 
+static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
+{
+    tmbr_client_t *client;
+
+    if (ev->mode != XCB_NOTIFY_MODE_NORMAL)
+        return;
+
+    if ((tmbr_clients_find_by_window(&client, ev->event)) < 0)
+        return;
+
+    puts("adjusting focus");
+    tmbr_client_focus(client);
+}
+
 static void tmbr_handle_create_notify(xcb_create_notify_event_t *ev)
 {
     puts("create notify");
@@ -205,6 +255,9 @@ int main(int argc, const char *argv[])
 
     while ((ev = xcb_wait_for_event(conn)) != NULL) {
         switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
+            case XCB_ENTER_NOTIFY:
+                tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
+                break;
             case XCB_CREATE_NOTIFY:
                 tmbr_handle_create_notify((xcb_create_notify_event_t *) ev);
                 break;
