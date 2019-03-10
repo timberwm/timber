@@ -30,6 +30,7 @@
 #include <xcb/xcb_event.h>
 
 #define FIFO_PATH "/tmp/timber.s"
+#define TMBR_UNUSED(x) (void)(x)
 
 typedef struct tmbr_client tmbr_client_t;
 typedef struct tmbr_command_args tmbr_command_args_t;
@@ -40,12 +41,12 @@ typedef struct tmbr_tree tmbr_tree_t;
 typedef enum {
     TMBR_DIR_LEFT,
     TMBR_DIR_RIGHT,
-    TMBR_DIR_MAX,
+    TMBR_DIR_MAX
 } tmbr_dir_t;
 
 typedef enum {
     TMBR_ORIENTATION_VERTICAL,
-    TMBR_ORIENTATION_HORIZONTAL,
+    TMBR_ORIENTATION_HORIZONTAL
 } tmbr_orientation_t;
 
 struct tmbr_command_args {
@@ -282,9 +283,15 @@ static int tmbr_client_unfocus(tmbr_client_t *client)
 
 static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
-    const uint32_t values[] = { x, y, w, h };
+    uint32_t values[4];
     uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
         XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+
+    values[0] = x;
+    values[1] = y;
+    values[2] = w;
+    values[3] = h;
+
     xcb_configure_window(conn, client->window, mask, values);
     xcb_flush(conn);
     return 0;
@@ -294,7 +301,7 @@ static int tmbr_clients_enumerate(tmbr_screen_t *screen)
 {
     xcb_query_tree_reply_t *tree;
     xcb_window_t *children;
-    unsigned i;
+    int i;
 
     if ((tree = xcb_query_tree_reply(conn, xcb_query_tree(conn, screen->screen->root), NULL)) == NULL)
         die("Unable to query tree");
@@ -559,6 +566,8 @@ static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args)
 {
     tmbr_screen_t *screen;
 
+    TMBR_UNUSED(args);
+
     for (screen = screens; screen; screen = screen->next) {
         tmbr_tree_t *focussed;
 
@@ -587,7 +596,7 @@ static void tmbr_handle_command(int fd)
     };
     char cmd[BUFSIZ];
     ssize_t n;
-    int i;
+    size_t i;
 
     if ((n = read(fd, cmd, sizeof(cmd) - 1)) <= 0)
         return;
@@ -605,6 +614,8 @@ static void tmbr_handle_command(int fd)
 
 static void tmbr_cleanup(int signal)
 {
+    TMBR_UNUSED(signal);
+
     if (fifofd >= 0)
         close(fifofd);
     unlink(FIFO_PATH);
