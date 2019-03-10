@@ -280,7 +280,6 @@ static int tmbr_client_focus(tmbr_client_t *client)
 
     tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
     client->focussed = 1;
-    xcb_flush(conn);
     return 0;
 }
 
@@ -307,7 +306,6 @@ static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uin
     values[4] = TMBR_BORDER_WIDTH;
 
     xcb_configure_window(conn, client->window, mask, values);
-    xcb_flush(conn);
     return 0;
 }
 
@@ -496,7 +494,6 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
         return -1;
 
     xcb_map_window(conn, ev->window);
-    xcb_flush(conn);
 
     return 0;
 }
@@ -652,8 +649,6 @@ static int tmbr_setup(void)
     if (tmbr_screens_enumerate(conn) < 0)
         die("Unable to enumerate screens");
 
-    xcb_flush(conn);
-
     signal(SIGINT, tmbr_cleanup);
     signal(SIGHUP, tmbr_cleanup);
     signal(SIGTERM, tmbr_cleanup);
@@ -677,8 +672,13 @@ int main(int argc, const char *argv[])
     fds[1].fd = fifofd;
     fds[1].events = POLLIN;
 
-    while (poll(fds, 2, -1) > 0) {
+    while (1) {
         xcb_generic_event_t *ev;
+
+        xcb_flush(conn);
+
+        if (poll(fds, 2, -1) < 0)
+            die("timber: unable to poll for events");
 
         if (fds[0].revents & POLLIN) {
             while ((ev = xcb_poll_for_event(conn)) != NULL) {
