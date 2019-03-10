@@ -159,6 +159,31 @@ static int tmbr_tree_find_by_focus(tmbr_tree_t **node, tmbr_tree_t *tree)
     return -1;
 }
 
+static int tmbr_tree_find_next(tmbr_tree_t **node, tmbr_tree_t *tree)
+{
+    while (tree) {
+        if (!tree->parent) {
+            /* We want to wrap to the leftmost node */
+            break;
+        } else if (tree != tree->parent->right) {
+            /* Go to the leftmost node of the right parent node */
+            tree = tree->parent->right;
+            break;
+        }
+        tree = tree->parent;
+    }
+
+    if (!tree)
+        return -1;
+
+    while (tree->left)
+        tree = tree->left;
+
+    *node = tree;
+
+    return 0;
+}
+
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
     tmbr_tree_t *parent = node->parent;
@@ -475,6 +500,25 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
     }
 }
 
+static void tmbr_cmd_focus_next(void)
+{
+    tmbr_screen_t *screen;
+
+    for (screen = screens; screen; screen = screen->next) {
+        tmbr_tree_t *focussed, *next;
+
+        if (tmbr_tree_find_by_focus(&focussed, screen->tree) < 0)
+            continue;
+
+        if (tmbr_tree_find_next(&next, focussed) < 0)
+            return;
+
+        puts("focus next");
+        tmbr_client_unfocus(focussed->client);
+        tmbr_client_focus(next->client);
+    }
+}
+
 static void tmbr_cmd_toggle_orientation(void)
 {
     tmbr_screen_t *screen;
@@ -499,6 +543,7 @@ static void tmbr_cmd_toggle_orientation(void)
 static void tmbr_handle_command(int fd)
 {
     const tmbr_command_t cmds[] = {
+        { "client_focus_next", tmbr_cmd_focus_next },
         { "tree_toggle_orientation", tmbr_cmd_toggle_orientation },
     };
     char cmd[BUFSIZ];
