@@ -17,6 +17,7 @@
 
 #include <errno.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -422,13 +423,14 @@ static void tmbr_handle_event(xcb_generic_event_t *ev)
     }
 }
 
-int main(int argc, const char *argv[])
+static void tmbr_cleanup(int signal)
 {
-    struct pollfd fds[1];
+    tmbr_screens_free();
+    xcb_disconnect(conn);
+}
 
-    if (argc > 1)
-        die("USAGE: %s\n", argv[0]);
-
+static int tmbr_setup(void)
+{
     if ((conn = xcb_connect(NULL, NULL)) == NULL)
         die("Unable to connect to X server");
 
@@ -436,6 +438,24 @@ int main(int argc, const char *argv[])
         die("Unable to enumerate screens");
 
     xcb_flush(conn);
+
+    signal(SIGINT, tmbr_cleanup);
+    signal(SIGHUP, tmbr_cleanup);
+    signal(SIGTERM, tmbr_cleanup);
+    signal(SIGCHLD, tmbr_cleanup);
+
+    return 0;
+}
+
+int main(int argc, const char *argv[])
+{
+    struct pollfd fds[1];
+
+    if (argc > 1)
+        die("USAGE: %s\n", argv[0]);
+
+    if (tmbr_setup() < 0)
+        die("Unable to setup timber");
 
     fds[0].fd = xcb_get_file_descriptor(conn);
     fds[0].events = POLLIN;
@@ -450,9 +470,6 @@ int main(int argc, const char *argv[])
             }
         }
     }
-
-    tmbr_screens_free();
-    xcb_disconnect(conn);
 
     return 0;
 }
