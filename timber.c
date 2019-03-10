@@ -32,6 +32,7 @@
 #define FIFO_PATH "/tmp/timber.s"
 
 typedef struct tmbr_client tmbr_client_t;
+typedef struct tmbr_command_args tmbr_command_args_t;
 typedef struct tmbr_command tmbr_command_t;
 typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
@@ -47,6 +48,10 @@ typedef enum {
     TMBR_ORIENTATION_HORIZONTAL,
 } tmbr_orientation_t;
 
+struct tmbr_command_args {
+    int i;
+};
+
 struct tmbr_client {
     tmbr_screen_t *screen;
     tmbr_tree_t *tree;
@@ -56,7 +61,8 @@ struct tmbr_client {
 
 struct tmbr_command {
     const char *cmd;
-    void (*fn)(void);
+    void (*fn)(const tmbr_command_args_t *);
+    tmbr_command_args_t args;
 };
 
 struct tmbr_screen {
@@ -164,15 +170,17 @@ static int tmbr_tree_find_by_focus(tmbr_tree_t **node, tmbr_tree_t *tree)
     return -1;
 }
 
-static int tmbr_tree_find_next(tmbr_tree_t **node, tmbr_tree_t *tree)
+static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_dir_t dir)
 {
+    unsigned char upwards_dir = dir, downwards_dir = !dir;
+
     while (tree) {
         if (!tree->parent) {
             /* We want to wrap to the leftmost node */
             break;
-        } else if (tree != (tree->parent->children[TMBR_DIR_RIGHT])) {
+        } else if (tree != (tree->parent->children[upwards_dir])) {
             /* Go to the leftmost node of the right parent node */
-            tree = tree->parent->children[TMBR_DIR_RIGHT];
+            tree = tree->parent->children[upwards_dir];
             break;
         }
         tree = tree->parent;
@@ -181,8 +189,8 @@ static int tmbr_tree_find_next(tmbr_tree_t **node, tmbr_tree_t *tree)
     if (!tree)
         return -1;
 
-    while (tree->children[TMBR_DIR_LEFT])
-        tree = tree->children[TMBR_DIR_LEFT];
+    while (tree->children[downwards_dir])
+        tree = tree->children[downwards_dir];
 
     *node = tree;
 
@@ -505,7 +513,7 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
     }
 }
 
-static void tmbr_cmd_focus_next(void)
+static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
 {
     tmbr_screen_t *screen;
 
@@ -515,7 +523,7 @@ static void tmbr_cmd_focus_next(void)
         if (tmbr_tree_find_by_focus(&focussed, screen->tree) < 0)
             continue;
 
-        if (tmbr_tree_find_next(&next, focussed) < 0)
+        if (tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
             return;
 
         puts("focus next");
@@ -524,7 +532,7 @@ static void tmbr_cmd_focus_next(void)
     }
 }
 
-static void tmbr_cmd_toggle_orientation(void)
+static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args)
 {
     tmbr_screen_t *screen;
 
@@ -548,8 +556,9 @@ static void tmbr_cmd_toggle_orientation(void)
 static void tmbr_handle_command(int fd)
 {
     const tmbr_command_t cmds[] = {
-        { "client_focus_next", tmbr_cmd_focus_next },
-        { "tree_toggle_orientation", tmbr_cmd_toggle_orientation },
+        { "client_focus_prev",       tmbr_cmd_focus_sibling,      { TMBR_DIR_LEFT }  },
+        { "client_focus_next",       tmbr_cmd_focus_sibling,      { TMBR_DIR_RIGHT } },
+        { "tree_toggle_orientation", tmbr_cmd_toggle_orientation, { 0 }              },
     };
     char cmd[BUFSIZ];
     ssize_t n;
@@ -565,7 +574,7 @@ static void tmbr_handle_command(int fd)
     for (i = 0; i < sizeof(cmds) / sizeof(*cmds); i++) {
         if (strcmp(cmds[i].cmd, cmd))
             continue;
-        cmds[i].fn();
+        cmds[i].fn(&cmds[i].args);
     }
 }
 
