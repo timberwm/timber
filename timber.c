@@ -15,9 +15,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <errno.h>
+#include <poll.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_event.h>
@@ -400,9 +404,27 @@ static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
         tmbr_layout(s);
 }
 
+static void tmbr_handle_event(xcb_generic_event_t *ev)
+{
+    switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
+        case XCB_ENTER_NOTIFY:
+            tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
+            break;
+        case XCB_MAP_REQUEST:
+            tmbr_handle_map_request((xcb_map_request_event_t *) ev);
+            break;
+        case XCB_UNMAP_NOTIFY:
+            tmbr_handle_unmap_notify((xcb_unmap_notify_event_t *) ev);
+            break;
+        case XCB_DESTROY_NOTIFY:
+            tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
+            break;
+    }
+}
+
 int main(int argc, const char *argv[])
 {
-    xcb_generic_event_t *ev;
+    struct pollfd fds[1];
 
     if (argc > 1)
         die("USAGE: %s\n", argv[0]);
@@ -415,23 +437,18 @@ int main(int argc, const char *argv[])
 
     xcb_flush(conn);
 
-    while ((ev = xcb_wait_for_event(conn)) != NULL) {
-        switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
-            case XCB_ENTER_NOTIFY:
-                tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
-                break;
-            case XCB_MAP_REQUEST:
-                tmbr_handle_map_request((xcb_map_request_event_t *) ev);
-                break;
-            case XCB_UNMAP_NOTIFY:
-                tmbr_handle_unmap_notify((xcb_unmap_notify_event_t *) ev);
-                break;
-            case XCB_DESTROY_NOTIFY:
-                tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
-                break;
-        }
+    fds[0].fd = xcb_get_file_descriptor(conn);
+    fds[0].events = POLLIN;
 
-        free(ev);
+    while (poll(fds, 2, -1) > 0) {
+        xcb_generic_event_t *ev;
+
+        if (fds[0].revents & POLLIN) {
+            while ((ev = xcb_poll_for_event(conn)) != NULL) {
+                tmbr_handle_event(ev);
+                free(ev);
+            }
+        }
     }
 
     tmbr_screens_free();
