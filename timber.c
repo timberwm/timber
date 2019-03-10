@@ -75,6 +75,7 @@ struct tmbr_screen {
     xcb_screen_t *screen;
     uint16_t width;
     uint16_t height;
+    char focussed;
 };
 
 struct tmbr_tree {
@@ -276,12 +277,14 @@ static int tmbr_client_focus(tmbr_client_t *client)
 
     tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
     client->focussed = 1;
+    client->screen->focussed = 1;
     return 0;
 }
 
 static int tmbr_client_unfocus(tmbr_client_t *client)
 {
     client->focussed = 0;
+    client->screen->focussed = 0;
     tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
     return 0;
 }
@@ -436,6 +439,21 @@ static int tmbr_screens_find_by_root(tmbr_screen_t **out, xcb_window_t root)
     return -1;
 }
 
+static int tmbr_screens_find_by_focus(tmbr_screen_t **out)
+{
+    tmbr_screen_t *s;
+
+    for (s = screens; s; s = s->next) {
+        if (!s->focussed)
+            continue;
+
+        *out = s;
+        return 0;
+    }
+
+    return -1;
+}
+
 static void tmbr_screens_free(tmbr_screen_t *s)
 {
     tmbr_screen_t *n;
@@ -528,65 +546,51 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
 
 static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
 {
+    tmbr_tree_t *focussed, *next;
     tmbr_screen_t *screen;
 
-    for (screen = screens; screen; screen = screen->next) {
-        tmbr_tree_t *focussed, *next;
+    if (tmbr_screens_find_by_focus(&screen) < 0 ||
+            tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
+            tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
+        return;
 
-        if (tmbr_tree_find_by_focus(&focussed, screen->tree) < 0)
-            continue;
-
-        if (tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
-            return;
-
-        tmbr_client_unfocus(focussed->client);
-        tmbr_client_focus(next->client);
-    }
+    tmbr_client_unfocus(focussed->client);
+    tmbr_client_focus(next->client);
 }
 
 static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args)
 {
+    tmbr_tree_t *focussed, *next;
     tmbr_screen_t *screen;
+    tmbr_client_t *c;
 
-    for (screen = screens; screen; screen = screen->next) {
-        tmbr_tree_t *focussed, *next;
-        tmbr_client_t *c;
+    if (tmbr_screens_find_by_focus(&screen) < 0 ||
+            tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
+            tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
+        return;
 
-        if (tmbr_tree_find_by_focus(&focussed, screen->tree) < 0)
-            continue;
+    c = focussed->client;
+    focussed->client = next->client;
+    next->client = c;
 
-        if (tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
-            return;
-
-        c = focussed->client;
-        focussed->client = next->client;
-        next->client = c;
-
-        tmbr_layout(screen);
-        break;
-    }
+    tmbr_layout(screen);
 }
 
 static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args)
 {
     tmbr_screen_t *screen;
+    tmbr_tree_t *focussed;
 
     TMBR_UNUSED(args);
 
-    for (screen = screens; screen; screen = screen->next) {
-        tmbr_tree_t *focussed;
+    if (tmbr_screens_find_by_focus(&screen) < 0 ||
+            tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
+            !focussed->parent)
+        return;
 
-        if ((tmbr_tree_find_by_focus(&focussed, screen->tree)) < 0)
-            continue;
+    focussed->parent->orientation = !focussed->parent->orientation;
 
-        if (!focussed->parent)
-            return;
-
-        focussed->parent->orientation = !focussed->parent->orientation;
-
-        tmbr_layout(screen);
-        break;
-    }
+    tmbr_layout(screen);
 }
 
 static void tmbr_handle_command(int fd)
