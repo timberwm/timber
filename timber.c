@@ -22,21 +22,22 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_event.h>
 
-struct tmbr_screen;
+typedef struct tmbr_client tmbr_client_t;
+typedef struct tmbr_screen tmbr_screen_t;
 
-typedef struct tmbr_client {
-    struct tmbr_client *next;
-    struct tmbr_screen *screen;
+struct tmbr_client {
+    tmbr_client_t *next;
+    tmbr_screen_t *screen;
     xcb_window_t window;
-} tmbr_client_t;
+};
 
-typedef struct tmbr_screen {
-    struct tmbr_screen *next;
+struct tmbr_screen {
+    tmbr_screen_t *next;
     tmbr_client_t *clients;
     xcb_screen_t *screen;
     uint16_t width;
     uint16_t height;
-} tmbr_screen_t;
+};
 
 static tmbr_screen_t *screens;
 static xcb_connection_t *conn;
