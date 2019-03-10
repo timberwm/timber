@@ -170,6 +170,16 @@ static int tmbr_client_focus(tmbr_client_t *client)
     return 0;
 }
 
+static int tmbr_client_layout(tmbr_client_t *client, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    const uint32_t values[] = { x, y, w, h };
+    uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
+        XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+    xcb_configure_window(conn, client->window, mask, values);
+    xcb_flush(conn);
+    return 0;
+}
+
 static int tmbr_clients_enumerate(tmbr_screen_t *screen)
 {
     xcb_query_tree_reply_t *tree;
@@ -220,6 +230,37 @@ static int tmbr_clients_find_by_window(tmbr_client_t **out, xcb_window_t w)
     return -1;
 }
 
+static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
+        int x, int y, int w, int h)
+{
+    if (tree->client)
+        return tmbr_client_layout(tree->client, x, y, w, h);
+
+    if (tree->left) {
+        int lw = tree->right ? w / 2 : w;
+        if (tmbr_layout_tree(screen, tree->left, x, y, lw, h) < 0)
+            die("Unable to layout left tree");
+    }
+
+    if (tree->right) {
+        int rx = tree->left ? x + w / 2 : x, rw = tree->left ? w / 2 : w;
+        if (tmbr_layout_tree(screen, tree->right, rx, y, rw, h) < 0)
+            die("Unable to layout right tree");
+    }
+
+    return 0;
+}
+
+static int tmbr_layout(tmbr_screen_t *screen)
+{
+    if (!screen || !screen->tree)
+        return 0;
+
+    return tmbr_layout_tree(screen, screen->tree, 0, 0,
+            screen->screen->width_in_pixels,
+            screen->screen->height_in_pixels);
+}
+
 static void tmbr_clients_free(tmbr_client_t *c)
 {
     tmbr_client_t *n;
@@ -255,7 +296,11 @@ static int tmbr_screen_manage(xcb_screen_t *screen)
     if ((error = xcb_request_check(conn, cookie)) != NULL)
         die("Another window manager is running already.");
 
-    tmbr_clients_enumerate(s);
+    if (tmbr_clients_enumerate(s) < 0)
+        die("Unable to enumerate clients");
+
+    if (tmbr_layout(s) < 0)
+        die("Unable to layout screen");
 
     return 0;
 }
@@ -328,6 +373,9 @@ static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 
     tmbr_client_manage(s, ev->window);
 
+    for (s = screens; s; s = s->next)
+        tmbr_layout(s);
+
     xcb_map_window(conn, ev->window);
     xcb_flush(conn);
 }
@@ -340,12 +388,16 @@ static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
 static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
     tmbr_client_t *client;
+    tmbr_screen_t *s;
 
     if ((tmbr_clients_find_by_window(&client, ev->window)) < 0)
         return;
 
-    puts("unmanage client");
-    tmbr_client_unmanage(client);
+    if (tmbr_client_unmanage(client) < 0)
+        die("Unable to unmanage client");
+
+    for (s = screens; s; s = s->next)
+        tmbr_layout(s);
 }
 
 int main(int argc, const char *argv[])
