@@ -110,22 +110,28 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
     }
 }
 
-static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_client_t *client)
+static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
-    if (!*tree)
-        return -1;
+    tmbr_tree_t *parent;
 
-    if ((*tree)->client == client) {
-        free(*tree);
+    if (node == *tree) {
+        free(node);
         *tree = NULL;
-        return 0;
-    } else if (tmbr_tree_remove(&(*tree)->left, client) == 0) {
-        return 0;
-    } else if (tmbr_tree_remove(&(*tree)->right, client) == 0) {
         return 0;
     }
 
-    return -1;
+    while ((parent = node->parent) != NULL) {
+        if (parent->left == node)
+            parent->left = NULL;
+        else if (parent->right == node)
+            parent->right = NULL;
+        free(node);
+        if (parent->left || parent->right)
+            break;
+        node = parent;
+    }
+
+    return 0;
 }
 
 static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
@@ -167,8 +173,8 @@ static int tmbr_client_unmanage(tmbr_client_t *client)
 
     *c = client->next;
 
-    if (tmbr_tree_remove(&client->screen->tree, client) < 0)
-        die("Unable to insert client into tree");
+    if (tmbr_tree_remove(&client->screen->tree, client->tree) < 0)
+        die("Unable to remove client from tree");
 
     free(client);
     return 0;
