@@ -24,6 +24,7 @@
 
 typedef struct tmbr_client tmbr_client_t;
 typedef struct tmbr_screen tmbr_screen_t;
+typedef struct tmbr_tree tmbr_tree_t;
 
 struct tmbr_client {
     tmbr_client_t *next;
@@ -34,9 +35,16 @@ struct tmbr_client {
 struct tmbr_screen {
     tmbr_screen_t *next;
     tmbr_client_t *clients;
+    tmbr_tree_t *tree;
     xcb_screen_t *screen;
     uint16_t width;
     uint16_t height;
+};
+
+struct tmbr_tree {
+    tmbr_tree_t *left;
+    tmbr_tree_t *right;
+    tmbr_client_t *client;
 };
 
 static tmbr_screen_t *screens;
@@ -51,6 +59,57 @@ static void die(const char *fmt, ...)
     va_end(ap);
 
     exit(-1);
+}
+
+static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
+{
+    if (!*tree) {
+        tmbr_tree_t *t;
+
+        if ((t = calloc(1, sizeof(*t))) == NULL)
+            die("Unable to allocate tree");
+        t->client = client;
+
+        *tree = t;
+
+        return 0;
+    } else if ((*tree)->client) {
+        tmbr_tree_t *l, *r;
+
+        if ((l = calloc(1, sizeof(*l))) == NULL ||
+                (r = calloc(1, sizeof(*r))) == NULL)
+            die("Unable to allocate trees");
+
+        l->client = (*tree)->client;
+        r->client = client;
+        (*tree)->client = NULL;
+        (*tree)->left = l;
+        (*tree)->right = r;
+
+        return 0;
+    } else if (!(*tree)->left) {
+        return tmbr_tree_insert(&(*tree)->left, client);
+    } else {
+        return tmbr_tree_insert(&(*tree)->right, client);
+    }
+}
+
+static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_client_t *client)
+{
+    if (!*tree)
+        return -1;
+
+    if ((*tree)->client == client) {
+        free(*tree);
+        *tree = NULL;
+        return 0;
+    } else if (tmbr_tree_remove(&(*tree)->left, client) == 0) {
+        return 0;
+    } else if (tmbr_tree_remove(&(*tree)->right, client) == 0) {
+        return 0;
+    }
+
+    return -1;
 }
 
 static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
@@ -83,6 +142,9 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
     client->next = screen->clients;
     screen->clients = client;
 
+    if (tmbr_tree_insert(&screen->tree, client) < 0)
+        die("Unable to remove client from tree");
+
 out:
     free(attrs);
     return error;
@@ -99,6 +161,9 @@ static int tmbr_client_unmanage(tmbr_client_t *client)
         return -1;
 
     *c = client->next;
+
+    if (tmbr_tree_remove(&client->screen->tree, client) < 0)
+        die("Unable to insert client into tree");
 
     free(client);
     return 0;
