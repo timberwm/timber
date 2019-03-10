@@ -36,7 +36,6 @@ typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
 
 struct tmbr_client {
-    tmbr_client_t *next;
     tmbr_screen_t *screen;
     tmbr_tree_t *tree;
     xcb_window_t window;
@@ -44,7 +43,6 @@ struct tmbr_client {
 
 struct tmbr_screen {
     tmbr_screen_t *next;
-    tmbr_client_t *clients;
     tmbr_tree_t *tree;
     xcb_screen_t *screen;
     uint16_t width;
@@ -113,6 +111,24 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
     }
 }
 
+static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
+        xcb_window_t window)
+{
+    if (!tree)
+        return -1;
+
+    if (tree->client && tree->client->window == window) {
+        *node = tree;
+        return 0;
+    } else if (tmbr_tree_find_by_window(node, tree->left, window) == 0) {
+        return 0;
+    } else if (tmbr_tree_find_by_window(node, tree->right, window) == 0) {
+        return 0;
+    }
+
+    return -1;
+}
+
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
     tmbr_tree_t *parent;
@@ -169,8 +185,6 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 
     client->window = window;
     client->screen = screen;
-    client->next = screen->clients;
-    screen->clients = client;
 
     if (tmbr_tree_insert(&screen->tree, client) < 0)
         die("Unable to remove client from tree");
@@ -180,16 +194,6 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 
 static int tmbr_client_unmanage(tmbr_client_t *client)
 {
-    tmbr_client_t **c = &client->screen->clients;
-
-    while (*c && *c != client)
-        c = &(*c)->next;
-
-    if (!*c)
-        return -1;
-
-    *c = client->next;
-
     if (tmbr_tree_remove(&client->screen->tree, client->tree) < 0)
         die("Unable to remove client from tree");
 
@@ -251,24 +255,6 @@ next:
     return 0;
 }
 
-static int tmbr_clients_find_by_window(tmbr_client_t **out, xcb_window_t w)
-{
-    tmbr_screen_t *s;
-
-    for (s = screens; s; s = s->next) {
-        tmbr_client_t *c;
-
-        for (c = s->clients; c; c = c->next) {
-            if (c->window == w) {
-                *out = c;
-                return 0;
-            }
-        }
-    }
-
-    return -1;
-}
-
 static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
         int x, int y, int w, int h)
 {
@@ -298,16 +284,6 @@ static int tmbr_layout(tmbr_screen_t *screen)
     return tmbr_layout_tree(screen, screen->tree, 0, 0,
             screen->screen->width_in_pixels,
             screen->screen->height_in_pixels);
-}
-
-static void tmbr_clients_free(tmbr_client_t *c)
-{
-    tmbr_client_t *n;
-
-    for (; c; c = n) {
-        n = c->next;
-        free(c);
-    }
 }
 
 static int tmbr_screen_manage(xcb_screen_t *screen)
@@ -381,7 +357,6 @@ static void tmbr_screens_free(tmbr_screen_t *s)
 
     for (; s; s = n) {
         n = s->next;
-        tmbr_clients_free(s->clients);
         free(s);
     }
 
@@ -390,16 +365,22 @@ static void tmbr_screens_free(tmbr_screen_t *s)
 
 static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 {
-    tmbr_client_t *client;
+    tmbr_screen_t *screen;
 
     if (ev->mode != XCB_NOTIFY_MODE_NORMAL)
         return;
 
-    if ((tmbr_clients_find_by_window(&client, ev->event)) < 0)
-        return;
+    for (screen = screens; screen; screen = screen->next) {
+        tmbr_tree_t *tree;
 
-    puts("adjusting focus");
-    tmbr_client_focus(client);
+        if ((tmbr_tree_find_by_window(&tree, screen->tree, ev->event)) < 0)
+            return;
+
+        puts("adjusting focus");
+        tmbr_client_focus(tree->client);
+
+        break;
+    }
 }
 
 static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
@@ -426,17 +407,20 @@ static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
 
 static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
-    tmbr_client_t *client;
-    tmbr_screen_t *s;
+    tmbr_screen_t *screen;
 
-    if ((tmbr_clients_find_by_window(&client, ev->window)) < 0)
-        return;
+    for (screen = screens; screen; screen = screen->next) {
+        tmbr_tree_t *node;
 
-    if (tmbr_client_unmanage(client) < 0)
-        die("Unable to unmanage client");
+        if ((tmbr_tree_find_by_window(&node, screen->tree, ev->window)) < 0)
+            continue;
 
-    for (s = screens; s; s = s->next)
-        tmbr_layout(s);
+        if (tmbr_client_unmanage(node->client) < 0)
+            die("Unable to unmanage client");
+
+        tmbr_layout(screen);
+        break;
+    }
 }
 
 static void tmbr_handle_event(xcb_generic_event_t *ev)
