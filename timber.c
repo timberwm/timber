@@ -174,6 +174,7 @@ static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 {
     const uint32_t values[] = { XCB_EVENT_MASK_ENTER_WINDOW };
+    tmbr_tree_t *focussed = NULL;
     xcb_void_cookie_t cookie;
     tmbr_client_t *client;
     int error = 0;
@@ -190,7 +191,9 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
     client->window = window;
     client->screen = screen;
 
-    if (tmbr_tree_insert(&screen->tree, client) < 0)
+    tmbr_tree_find_by_focus(&focussed, screen->tree);
+
+    if (tmbr_tree_insert(focussed ? &focussed : &screen->tree, client) < 0)
         die("Unable to remove client from tree");
 
     return error;
