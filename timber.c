@@ -233,8 +233,6 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
     tmbr_client_t *client;
     int error = 0;
 
-    puts("managing window");
-
     cookie = xcb_change_window_attributes_checked(conn, window, XCB_CW_EVENT_MASK, values);
     if ((xcb_request_check(conn, cookie)) != NULL)
         die("Could not subscribe to window events");
@@ -272,8 +270,6 @@ static int tmbr_client_focus(tmbr_client_t *client)
 {
     xcb_void_cookie_t cookie;
 
-    puts("focussing client");
-
     cookie = xcb_set_input_focus(conn, XCB_INPUT_FOCUS_NONE, client->window, XCB_CURRENT_TIME);
     if ((xcb_request_check(conn, cookie)) != NULL)
         die("Could not focus client");
@@ -285,7 +281,6 @@ static int tmbr_client_focus(tmbr_client_t *client)
 
 static int tmbr_client_unfocus(tmbr_client_t *client)
 {
-    puts("unfocussing client");
     client->focussed = 0;
     tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
     return 0;
@@ -544,7 +539,6 @@ static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
         if (tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
             return;
 
-        puts("focus next");
         tmbr_client_unfocus(focussed->client);
         tmbr_client_focus(next->client);
     }
@@ -588,7 +582,6 @@ static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args)
         if (!focussed->parent)
             return;
 
-        puts("toggle orientation");
         focussed->parent->orientation = !focussed->parent->orientation;
 
         tmbr_layout(screen);
