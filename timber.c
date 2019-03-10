@@ -16,6 +16,7 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -23,9 +24,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_event.h>
+
+#define FIFO_PATH "/tmp/timber.s"
 
 typedef struct tmbr_client tmbr_client_t;
 typedef struct tmbr_screen tmbr_screen_t;
@@ -54,6 +58,7 @@ struct tmbr_tree {
 
 static tmbr_screen_t *screens;
 static xcb_connection_t *conn;
+static int fifofd = -1;
 
 static void die(const char *fmt, ...)
 {
@@ -423,14 +428,36 @@ static void tmbr_handle_event(xcb_generic_event_t *ev)
     }
 }
 
+static void tmbr_handle_command(int fd)
+{
+    char buf[BUFSIZ];
+    ssize_t n;
+
+    if ((n = read(fd, buf, sizeof(buf) - 1)) <= 0)
+        return;
+    buf[n] = '\0';
+
+    printf("command: %s\n", buf);
+}
+
 static void tmbr_cleanup(int signal)
 {
+    if (fifofd >= 0)
+        close(fifofd);
+    unlink(FIFO_PATH);
+
     tmbr_screens_free(screens);
     xcb_disconnect(conn);
 }
 
 static int tmbr_setup(void)
 {
+    if (mkfifo(FIFO_PATH, 0644) < 0)
+        die("Unable to create fifo");
+
+    if ((fifofd = open(FIFO_PATH, O_RDONLY|O_NONBLOCK)) < 0)
+        die("Unable to open fifo");
+
     if ((conn = xcb_connect(NULL, NULL)) == NULL)
         die("Unable to connect to X server");
 
@@ -449,7 +476,7 @@ static int tmbr_setup(void)
 
 int main(int argc, const char *argv[])
 {
-    struct pollfd fds[1];
+    struct pollfd fds[2];
 
     if (argc > 1)
         die("USAGE: %s\n", argv[0]);
@@ -459,6 +486,8 @@ int main(int argc, const char *argv[])
 
     fds[0].fd = xcb_get_file_descriptor(conn);
     fds[0].events = POLLIN;
+    fds[1].fd = fifofd;
+    fds[1].events = POLLIN;
 
     while (poll(fds, 2, -1) > 0) {
         xcb_generic_event_t *ev;
@@ -469,6 +498,9 @@ int main(int argc, const char *argv[])
                 free(ev);
             }
         }
+
+        if (fds[1].revents & POLLIN)
+            tmbr_handle_command(fds[1].fd);
     }
 
     return 0;
