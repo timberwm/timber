@@ -39,6 +39,7 @@ struct tmbr_client {
     tmbr_screen_t *screen;
     tmbr_tree_t *tree;
     xcb_window_t window;
+    char focussed;
 };
 
 struct tmbr_screen {
@@ -129,6 +130,23 @@ static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
     return -1;
 }
 
+static int tmbr_tree_find_by_focus(tmbr_tree_t **node, tmbr_tree_t *tree)
+{
+    if (!tree)
+        return -1;
+
+    if (tree->client && tree->client->focussed) {
+        *node = tree;
+        return 0;
+    } else if (tmbr_tree_find_by_focus(node, tree->left) == 0) {
+        return 0;
+    } else if (tmbr_tree_find_by_focus(node, tree->right) == 0) {
+        return 0;
+    }
+
+    return -1;
+}
+
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
     tmbr_tree_t *parent = node->parent;
@@ -191,13 +209,21 @@ static int tmbr_client_focus(tmbr_client_t *client)
 {
     xcb_void_cookie_t cookie;
 
-    puts("adjusting focus");
+    puts("focussing client");
 
     cookie = xcb_set_input_focus(conn, XCB_INPUT_FOCUS_NONE, client->window, XCB_CURRENT_TIME);
     if ((xcb_request_check(conn, cookie)) != NULL)
         die("Could not focus client");
 
+    client->focussed = 1;
     xcb_flush(conn);
+    return 0;
+}
+
+static int tmbr_client_unfocus(tmbr_client_t *client)
+{
+    puts("unfocussing client");
+    client->focussed = 0;
     return 0;
 }
 
@@ -359,12 +385,20 @@ static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
         return 0;
 
     for (screen = screens; screen; screen = screen->next) {
-        tmbr_tree_t *tree;
+        tmbr_tree_t *focussed = NULL, *entered;
 
-        if ((tmbr_tree_find_by_window(&tree, screen->tree, ev->event)) < 0)
+        tmbr_tree_find_by_focus(&focussed, screen->tree);
+
+        if ((tmbr_tree_find_by_window(&entered, screen->tree, ev->event)) < 0)
             continue;
 
-        return tmbr_client_focus(tree->client);
+        if (tmbr_client_focus(entered->client) < 0)
+            return -1;
+
+        if (focussed && tmbr_client_unfocus(focussed->client) < 0)
+            return -1;
+
+        return 0;
     }
 
     return -1;
