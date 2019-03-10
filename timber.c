@@ -593,7 +593,7 @@ static int tmbr_setup(void)
     if (mkfifo(FIFO_PATH, 0644) < 0)
         die("Unable to create fifo");
 
-    if ((fifofd = open(FIFO_PATH, O_RDONLY|O_NONBLOCK)) < 0)
+    if ((fifofd = open(FIFO_PATH, O_RDWR|O_NONBLOCK)) < 0)
         die("Unable to open fifo");
 
     if ((conn = xcb_connect(NULL, NULL)) == NULL)
