@@ -32,14 +32,25 @@
 #define FIFO_PATH "/tmp/timber.s"
 
 typedef struct tmbr_client tmbr_client_t;
+typedef struct tmbr_command tmbr_command_t;
 typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
+
+typedef enum {
+    TMBR_ORIENTATION_VERTICAL,
+    TMBR_ORIENTATION_HORIZONTAL,
+} tmbr_orientation_t;
 
 struct tmbr_client {
     tmbr_screen_t *screen;
     tmbr_tree_t *tree;
     xcb_window_t window;
     char focussed;
+};
+
+struct tmbr_command {
+    const char *cmd;
+    void (*fn)(void);
 };
 
 struct tmbr_screen {
@@ -55,6 +66,7 @@ struct tmbr_tree {
     tmbr_tree_t *left;
     tmbr_tree_t *right;
     tmbr_client_t *client;
+    tmbr_orientation_t orientation;
 };
 
 static tmbr_screen_t *screens;
@@ -275,13 +287,23 @@ next:
 static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
         uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
+    uint16_t xoff = 0, yoff = 0;
+
     if (tree->client)
         return tmbr_client_layout(tree->client, x, y, w, h);
 
-    if (tmbr_layout_tree(screen, tree->left, x, y, w / 2, h) < 0)
+    if (tree->orientation == TMBR_ORIENTATION_VERTICAL) {
+        w /= 2;
+        xoff = w;
+    } else {
+        h /= 2;
+        yoff = h;
+    }
+
+    if (tmbr_layout_tree(screen, tree->left, x, y, w, h) < 0)
         die("Unable to layout left tree");
 
-    if (tmbr_layout_tree(screen, tree->right, x + w / 2, y, w / 2, h) < 0)
+    if (tmbr_layout_tree(screen, tree->right, x + xoff, y + yoff, w, h) < 0)
         die("Unable to layout right tree");
 
     return 0;
@@ -453,16 +475,48 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
     }
 }
 
+static void tmbr_cmd_toggle_orientation(void)
+{
+    tmbr_screen_t *screen;
+
+    for (screen = screens; screen; screen = screen->next) {
+        tmbr_tree_t *focussed;
+
+        if ((tmbr_tree_find_by_focus(&focussed, screen->tree)) < 0)
+            continue;
+
+        if (!focussed->parent)
+            return;
+
+        puts("toggle orientation");
+        focussed->parent->orientation = !focussed->parent->orientation;
+
+        tmbr_layout(screen);
+        break;
+    }
+}
+
 static void tmbr_handle_command(int fd)
 {
-    char buf[BUFSIZ];
+    const tmbr_command_t cmds[] = {
+        { "tree_toggle_orientation", tmbr_cmd_toggle_orientation },
+    };
+    char cmd[BUFSIZ];
     ssize_t n;
+    int i;
 
-    if ((n = read(fd, buf, sizeof(buf) - 1)) <= 0)
+    if ((n = read(fd, cmd, sizeof(cmd) - 1)) <= 0)
         return;
-    buf[n] = '\0';
+    if (cmd[n - 1] == '\n')
+        cmd[--n] = '\0';
+    else
+        cmd[n] = '\0';
 
-    printf("command: %s\n", buf);
+    for (i = 0; i < sizeof(cmds) / sizeof(*cmds); i++) {
+        if (strcmp(cmds[i].cmd, cmd))
+            continue;
+        cmds[i].fn();
+    }
 }
 
 static void tmbr_cleanup(int signal)
