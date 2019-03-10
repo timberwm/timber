@@ -230,7 +230,7 @@ static int tmbr_client_unfocus(tmbr_client_t *client)
     return 0;
 }
 
-static int tmbr_client_layout(tmbr_client_t *client, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
     const uint32_t values[] = { x, y, w, h };
     uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
@@ -273,22 +273,16 @@ next:
 }
 
 static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
-        int x, int y, int w, int h)
+        uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
     if (tree->client)
         return tmbr_client_layout(tree->client, x, y, w, h);
 
-    if (tree->left) {
-        int lw = tree->right ? w / 2 : w;
-        if (tmbr_layout_tree(screen, tree->left, x, y, lw, h) < 0)
-            die("Unable to layout left tree");
-    }
+    if (tmbr_layout_tree(screen, tree->left, x, y, w / 2, h) < 0)
+        die("Unable to layout left tree");
 
-    if (tree->right) {
-        int rx = tree->left ? x + w / 2 : x, rw = tree->left ? w / 2 : w;
-        if (tmbr_layout_tree(screen, tree->right, rx, y, rw, h) < 0)
-            die("Unable to layout right tree");
-    }
+    if (tmbr_layout_tree(screen, tree->right, x + w / 2, y, w / 2, h) < 0)
+        die("Unable to layout right tree");
 
     return 0;
 }
