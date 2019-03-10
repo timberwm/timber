@@ -115,20 +115,11 @@ static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_client_t *client)
 static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 {
     const uint32_t values[] = { XCB_EVENT_MASK_ENTER_WINDOW };
-    xcb_get_window_attributes_reply_t *attrs;
     xcb_void_cookie_t cookie;
     tmbr_client_t *client;
     int error = 0;
 
-    if ((attrs = xcb_get_window_attributes_reply(conn,
-                                                 xcb_get_window_attributes(conn, window),
-                                                 NULL)) == NULL) {
-        error = -1;
-        goto out;
-    }
-
-    if (attrs->map_state == XCB_MAP_STATE_UNVIEWABLE)
-        goto out;
+    puts("managing window");
 
     cookie = xcb_change_window_attributes_checked(conn, window, XCB_CW_EVENT_MASK, values);
     if ((xcb_request_check(conn, cookie)) != NULL)
@@ -145,8 +136,6 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
     if (tmbr_tree_insert(&screen->tree, client) < 0)
         die("Unable to remove client from tree");
 
-out:
-    free(attrs);
     return error;
 }
 
@@ -192,8 +181,21 @@ static int tmbr_clients_enumerate(tmbr_screen_t *screen)
 
     children = xcb_query_tree_children(tree);
 
-    for (i = 0; i < xcb_query_tree_children_length(tree); i++)
+    for (i = 0; i < xcb_query_tree_children_length(tree); i++) {
+        xcb_get_window_attributes_reply_t *attrs = NULL;
+
+        if ((attrs = xcb_get_window_attributes_reply(conn,
+                                                     xcb_get_window_attributes(conn, children[i]),
+                                                     NULL)) == NULL)
+            goto next;
+
+        if (attrs->map_state != XCB_MAP_STATE_VIEWABLE)
+            goto next;
+
         tmbr_client_manage(screen, children[i]);
+next:
+        free(attrs);
+    }
 
     free(tree);
 
@@ -316,22 +318,18 @@ static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
     tmbr_client_focus(client);
 }
 
-static void tmbr_handle_create_notify(xcb_create_notify_event_t *ev)
-{
-    tmbr_screen_t *screen;
-
-    if (tmbr_screens_find_by_root(&screen, ev->parent) < 0)
-        return;
-
-    puts("adopting new client");
-    tmbr_client_manage(screen, ev->window);
-}
-
 static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 {
+    tmbr_screen_t *s;
+
+    /* Only handle windows for managed screens */
+    if (tmbr_screens_find_by_root(&s, ev->parent) < 0)
+        return;
+
+    tmbr_client_manage(s, ev->window);
+
     xcb_map_window(conn, ev->window);
     xcb_flush(conn);
-    puts("map request");
 }
 
 static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
@@ -369,9 +367,6 @@ int main(int argc, const char *argv[])
         switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
             case XCB_ENTER_NOTIFY:
                 tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
-                break;
-            case XCB_CREATE_NOTIFY:
-                tmbr_handle_create_notify((xcb_create_notify_event_t *) ev);
                 break;
             case XCB_MAP_REQUEST:
                 tmbr_handle_map_request((xcb_map_request_event_t *) ev);
