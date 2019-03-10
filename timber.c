@@ -38,6 +38,7 @@ typedef struct tmbr_tree tmbr_tree_t;
 struct tmbr_client {
     tmbr_client_t *next;
     tmbr_screen_t *screen;
+    tmbr_tree_t *tree;
     xcb_window_t window;
 };
 
@@ -51,6 +52,7 @@ struct tmbr_screen {
 };
 
 struct tmbr_tree {
+    tmbr_tree_t *parent;
     tmbr_tree_t *left;
     tmbr_tree_t *right;
     tmbr_client_t *client;
@@ -91,10 +93,14 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
             die("Unable to allocate trees");
 
         l->client = (*tree)->client;
+        l->parent = (*tree);
         r->client = client;
+        r->parent = (*tree);
         (*tree)->client = NULL;
         (*tree)->left = l;
         (*tree)->right = r;
+
+        client->tree = r;
 
         return 0;
     } else if (!(*tree)->left) {
