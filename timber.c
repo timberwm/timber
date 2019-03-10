@@ -205,6 +205,8 @@ static int tmbr_client_focus(tmbr_client_t *client)
 {
     xcb_void_cookie_t cookie;
 
+    puts("adjusting focus");
+
     cookie = xcb_set_input_focus(conn, XCB_INPUT_FOCUS_NONE, client->window, XCB_CURRENT_TIME);
     if ((xcb_request_check(conn, cookie)) != NULL)
         die("Could not focus client");
@@ -363,49 +365,45 @@ static void tmbr_screens_free(tmbr_screen_t *s)
     screens = NULL;
 }
 
-static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
+static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 {
     tmbr_screen_t *screen;
 
     if (ev->mode != XCB_NOTIFY_MODE_NORMAL)
-        return;
+        return 0;
 
     for (screen = screens; screen; screen = screen->next) {
         tmbr_tree_t *tree;
 
         if ((tmbr_tree_find_by_window(&tree, screen->tree, ev->event)) < 0)
-            return;
+            continue;
 
-        puts("adjusting focus");
-        tmbr_client_focus(tree->client);
-
-        break;
+        return tmbr_client_focus(tree->client);
     }
+
+    return -1;
 }
 
-static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
+static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 {
-    tmbr_screen_t *s;
+    tmbr_screen_t *screen;
 
-    /* Only handle windows for managed screens */
-    if (tmbr_screens_find_by_root(&s, ev->parent) < 0)
-        return;
+    if (tmbr_screens_find_by_root(&screen, ev->parent) < 0)
+        return -1;
 
-    tmbr_client_manage(s, ev->window);
+    if (tmbr_client_manage(screen, ev->window) < 0)
+        return -1;
 
-    for (s = screens; s; s = s->next)
-        tmbr_layout(s);
+    if (tmbr_layout(screen) < 0)
+        return -1;
 
     xcb_map_window(conn, ev->window);
     xcb_flush(conn);
+
+    return 0;
 }
 
-static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
-{
-    puts("unmap notify");
-}
-
-static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
+static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
     tmbr_screen_t *screen;
 
@@ -418,26 +416,23 @@ static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
         if (tmbr_client_unmanage(node->client) < 0)
             die("Unable to unmanage client");
 
-        tmbr_layout(screen);
-        break;
+        return tmbr_layout(screen);
     }
+
+    return -1;
 }
 
-static void tmbr_handle_event(xcb_generic_event_t *ev)
+static int tmbr_handle_event(xcb_generic_event_t *ev)
 {
     switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
         case XCB_ENTER_NOTIFY:
-            tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
-            break;
+            return tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
         case XCB_MAP_REQUEST:
-            tmbr_handle_map_request((xcb_map_request_event_t *) ev);
-            break;
-        case XCB_UNMAP_NOTIFY:
-            tmbr_handle_unmap_notify((xcb_unmap_notify_event_t *) ev);
-            break;
+            return tmbr_handle_map_request((xcb_map_request_event_t *) ev);
         case XCB_DESTROY_NOTIFY:
-            tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
-            break;
+            return tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
+        default:
+            return -1;
     }
 }
 
