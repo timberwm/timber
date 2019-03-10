@@ -37,6 +37,12 @@ typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
 
 typedef enum {
+    TMBR_DIR_LEFT,
+    TMBR_DIR_RIGHT,
+    TMBR_DIR_MAX,
+} tmbr_dir_t;
+
+typedef enum {
     TMBR_ORIENTATION_VERTICAL,
     TMBR_ORIENTATION_HORIZONTAL,
 } tmbr_orientation_t;
@@ -62,9 +68,8 @@ struct tmbr_screen {
 };
 
 struct tmbr_tree {
+    tmbr_tree_t *children[TMBR_DIR_MAX];
     tmbr_tree_t *parent;
-    tmbr_tree_t *left;
-    tmbr_tree_t *right;
     tmbr_client_t *client;
     tmbr_orientation_t orientation;
 };
@@ -113,14 +118,14 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
         r->parent = (*tree);
 
         (*tree)->client = NULL;
-        (*tree)->left = l;
-        (*tree)->right = r;
+        (*tree)->children[TMBR_DIR_LEFT] = l;
+        (*tree)->children[TMBR_DIR_RIGHT] = r;
 
         return 0;
-    } else if (!(*tree)->left) {
-        return tmbr_tree_insert(&(*tree)->left, client);
+    } else if (!(*tree)->children[TMBR_DIR_LEFT]) {
+        return tmbr_tree_insert(&(*tree)->children[TMBR_DIR_LEFT], client);
     } else {
-        return tmbr_tree_insert(&(*tree)->right, client);
+        return tmbr_tree_insert(&(*tree)->children[TMBR_DIR_RIGHT], client);
     }
 }
 
@@ -133,9 +138,9 @@ static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
     if (tree->client && tree->client->window == window) {
         *node = tree;
         return 0;
-    } else if (tmbr_tree_find_by_window(node, tree->left, window) == 0) {
+    } else if (tmbr_tree_find_by_window(node, tree->children[TMBR_DIR_LEFT], window) == 0) {
         return 0;
-    } else if (tmbr_tree_find_by_window(node, tree->right, window) == 0) {
+    } else if (tmbr_tree_find_by_window(node, tree->children[TMBR_DIR_RIGHT], window) == 0) {
         return 0;
     }
 
@@ -150,9 +155,9 @@ static int tmbr_tree_find_by_focus(tmbr_tree_t **node, tmbr_tree_t *tree)
     if (tree->client && tree->client->focussed) {
         *node = tree;
         return 0;
-    } else if (tmbr_tree_find_by_focus(node, tree->left) == 0) {
+    } else if (tmbr_tree_find_by_focus(node, tree->children[TMBR_DIR_LEFT]) == 0) {
         return 0;
-    } else if (tmbr_tree_find_by_focus(node, tree->right) == 0) {
+    } else if (tmbr_tree_find_by_focus(node, tree->children[TMBR_DIR_RIGHT]) == 0) {
         return 0;
     }
 
@@ -165,9 +170,9 @@ static int tmbr_tree_find_next(tmbr_tree_t **node, tmbr_tree_t *tree)
         if (!tree->parent) {
             /* We want to wrap to the leftmost node */
             break;
-        } else if (tree != tree->parent->right) {
+        } else if (tree != (tree->parent->children[TMBR_DIR_RIGHT])) {
             /* Go to the leftmost node of the right parent node */
-            tree = tree->parent->right;
+            tree = tree->parent->children[TMBR_DIR_RIGHT];
             break;
         }
         tree = tree->parent;
@@ -176,8 +181,8 @@ static int tmbr_tree_find_next(tmbr_tree_t **node, tmbr_tree_t *tree)
     if (!tree)
         return -1;
 
-    while (tree->left)
-        tree = tree->left;
+    while (tree->children[TMBR_DIR_LEFT])
+        tree = tree->children[TMBR_DIR_LEFT];
 
     *node = tree;
 
@@ -194,16 +199,16 @@ static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
         return 0;
     }
 
-    if (parent->left == node)
-        parent->client = parent->right->client;
-    else if (parent->right == node)
-        parent->client = parent->left->client;
+    if (parent->children[TMBR_DIR_LEFT] == node)
+        parent->client = parent->children[TMBR_DIR_RIGHT]->client;
+    else if (parent->children[TMBR_DIR_RIGHT] == node)
+        parent->client = parent->children[TMBR_DIR_LEFT]->client;
 
     parent->client->tree = parent;
-    free(parent->left);
-    parent->left = NULL;
-    free(parent->right);
-    parent->right = NULL;
+    free(parent->children[TMBR_DIR_LEFT]);
+    parent->children[TMBR_DIR_LEFT] = NULL;
+    free(parent->children[TMBR_DIR_RIGHT]);
+    parent->children[TMBR_DIR_RIGHT] = NULL;
 
     return 0;
 }
@@ -325,10 +330,10 @@ static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
         yoff = h;
     }
 
-    if (tmbr_layout_tree(screen, tree->left, x, y, w, h) < 0)
+    if (tmbr_layout_tree(screen, tree->children[TMBR_DIR_LEFT], x, y, w, h) < 0)
         die("Unable to layout left tree");
 
-    if (tmbr_layout_tree(screen, tree->right, x + xoff, y + yoff, w, h) < 0)
+    if (tmbr_layout_tree(screen, tree->children[TMBR_DIR_RIGHT], x + xoff, y + yoff, w, h) < 0)
         die("Unable to layout right tree");
 
     return 0;
