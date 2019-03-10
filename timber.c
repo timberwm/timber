@@ -31,6 +31,9 @@
 
 #define FIFO_PATH "/tmp/timber.s"
 #define TMBR_UNUSED(x) (void)(x)
+#define TMBR_BORDER_WIDTH 3
+#define TMBR_COLOR_ACTIVE 0xFF005577
+#define TMBR_COLOR_INACTIVE 0xFF222222
 
 typedef struct tmbr_client tmbr_client_t;
 typedef struct tmbr_command_args tmbr_command_args_t;
@@ -259,6 +262,12 @@ static int tmbr_client_unmanage(tmbr_client_t *client)
     return 0;
 }
 
+static int tmbr_client_draw_border(tmbr_client_t *client, uint32_t color)
+{
+    xcb_change_window_attributes(conn, client->window, XCB_CW_BORDER_PIXEL, &color);
+    return 0;
+}
+
 static int tmbr_client_focus(tmbr_client_t *client)
 {
     xcb_void_cookie_t cookie;
@@ -269,6 +278,7 @@ static int tmbr_client_focus(tmbr_client_t *client)
     if ((xcb_request_check(conn, cookie)) != NULL)
         die("Could not focus client");
 
+    tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
     client->focussed = 1;
     xcb_flush(conn);
     return 0;
@@ -278,19 +288,23 @@ static int tmbr_client_unfocus(tmbr_client_t *client)
 {
     puts("unfocussing client");
     client->focussed = 0;
+    tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
     return 0;
 }
 
 static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
-    uint32_t values[4];
-    uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-        XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+    uint32_t values[5];
+    uint16_t mask =
+        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
+        XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
+        XCB_CONFIG_WINDOW_BORDER_WIDTH;
 
     values[0] = x;
     values[1] = y;
-    values[2] = w;
-    values[3] = h;
+    values[2] = w - 2 * TMBR_BORDER_WIDTH;
+    values[3] = h - 2 * TMBR_BORDER_WIDTH;
+    values[4] = TMBR_BORDER_WIDTH;
 
     xcb_configure_window(conn, client->window, mask, values);
     xcb_flush(conn);
