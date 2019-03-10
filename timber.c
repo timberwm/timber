@@ -341,11 +341,11 @@ static int tmbr_screens_find_by_root(tmbr_screen_t **out, xcb_window_t root)
     return -1;
 }
 
-static void tmbr_screens_free(void)
+static void tmbr_screens_free(tmbr_screen_t *s)
 {
-    tmbr_screen_t *s, *n;
+    tmbr_screen_t *n;
 
-    for (s = screens; s; s = n) {
+    for (; s; s = n) {
         n = s->next;
         tmbr_clients_free(s->clients);
         free(s);
@@ -425,7 +425,7 @@ static void tmbr_handle_event(xcb_generic_event_t *ev)
 
 static void tmbr_cleanup(int signal)
 {
-    tmbr_screens_free();
+    tmbr_screens_free(screens);
     xcb_disconnect(conn);
 }
 
