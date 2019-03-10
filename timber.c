@@ -532,6 +532,29 @@ static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
     }
 }
 
+static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args)
+{
+    tmbr_screen_t *screen;
+
+    for (screen = screens; screen; screen = screen->next) {
+        tmbr_tree_t *focussed, *next;
+        tmbr_client_t *c;
+
+        if (tmbr_tree_find_by_focus(&focussed, screen->tree) < 0)
+            continue;
+
+        if (tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
+            return;
+
+        c = focussed->client;
+        focussed->client = next->client;
+        next->client = c;
+
+        tmbr_layout(screen);
+        break;
+    }
+}
+
 static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args)
 {
     tmbr_screen_t *screen;
@@ -558,6 +581,8 @@ static void tmbr_handle_command(int fd)
     const tmbr_command_t cmds[] = {
         { "client_focus_prev",       tmbr_cmd_focus_sibling,      { TMBR_DIR_LEFT }  },
         { "client_focus_next",       tmbr_cmd_focus_sibling,      { TMBR_DIR_RIGHT } },
+        { "client_swap_prev",        tmbr_cmd_swap_sibling,       { TMBR_DIR_LEFT }  },
+        { "client_swap_next",        tmbr_cmd_swap_sibling,       { TMBR_DIR_RIGHT } },
         { "tree_toggle_orientation", tmbr_cmd_toggle_orientation, { 0 }              },
     };
     char cmd[BUFSIZ];
