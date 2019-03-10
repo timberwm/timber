@@ -81,6 +81,7 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
         if ((t = calloc(1, sizeof(*t))) == NULL)
             die("Unable to allocate tree");
         t->client = client;
+        client->tree = t;
 
         *tree = t;
 
@@ -93,14 +94,16 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
             die("Unable to allocate trees");
 
         l->client = (*tree)->client;
+        l->client->tree = l;
         l->parent = (*tree);
+
         r->client = client;
+        r->client->tree = r;
         r->parent = (*tree);
+
         (*tree)->client = NULL;
         (*tree)->left = l;
         (*tree)->right = r;
-
-        client->tree = r;
 
         return 0;
     } else if (!(*tree)->left) {
@@ -126,8 +129,22 @@ static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
         else if (parent->right == node)
             parent->right = NULL;
         free(node);
-        if (parent->left || parent->right)
+
+        /* Pull up node into parent */
+        if (parent->left) {
+            parent->client = parent->left->client;
+            parent->client->tree = parent;
+            free(parent->left);
+            parent->left = NULL;
             break;
+        } else if (parent->right) {
+            parent->client = parent->right->client;
+            parent->client->tree = parent;
+            free(parent->right);
+            parent->right = NULL;
+            break;
+        }
+
         node = parent;
     }
 
