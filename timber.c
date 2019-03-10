@@ -270,22 +270,22 @@ static int tmbr_client_draw_border(tmbr_client_t *client, uint32_t color)
 static int tmbr_client_focus(tmbr_client_t *client)
 {
     xcb_void_cookie_t cookie;
+    tmbr_tree_t *focussed;
 
     cookie = xcb_set_input_focus(conn, XCB_INPUT_FOCUS_NONE, client->window, XCB_CURRENT_TIME);
     if ((xcb_request_check(conn, cookie)) != NULL)
         die("Could not focus client");
 
+    if (tmbr_tree_find_by_focus(&focussed, client->screen->tree) == 0) {
+        focussed->client->focussed = 0;
+        focussed->client->screen->focussed = 0;
+        tmbr_client_draw_border(focussed->client, TMBR_COLOR_INACTIVE);
+    }
+
     tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
     client->focussed = 1;
     client->screen->focussed = 1;
-    return 0;
-}
 
-static int tmbr_client_unfocus(tmbr_client_t *client)
-{
-    client->focussed = 0;
-    client->screen->focussed = 0;
-    tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
     return 0;
 }
 
@@ -474,17 +474,12 @@ static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
         return 0;
 
     for (screen = screens; screen; screen = screen->next) {
-        tmbr_tree_t *focussed = NULL, *entered;
-
-        tmbr_tree_find_by_focus(&focussed, screen->tree);
+        tmbr_tree_t *entered;
 
         if ((tmbr_tree_find_by_window(&entered, screen->tree, ev->event)) < 0)
             continue;
 
         if (tmbr_client_focus(entered->client) < 0)
-            return -1;
-
-        if (focussed && tmbr_client_unfocus(focussed->client) < 0)
             return -1;
 
         return 0;
@@ -554,7 +549,6 @@ static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
             tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
         return;
 
-    tmbr_client_unfocus(focussed->client);
     tmbr_client_focus(next->client);
 }
 
