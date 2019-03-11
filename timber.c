@@ -102,37 +102,37 @@ static void die(const char *fmt, ...)
 	exit(-1);
 }
 
+static int tmbr_tree_new(tmbr_tree_t **out, tmbr_client_t *client)
+{
+	tmbr_tree_t *t;
+
+	if ((t = calloc(1, sizeof(*t))) == NULL)
+		return -1;
+	t->split = TMBR_SPLIT_VERTICAL;
+	t->client = client;
+	client->tree = t;
+
+	*out = t;
+	return 0;
+}
+
 static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 {
 	if (!*tree) {
-		tmbr_tree_t *t;
-
-		if ((t = calloc(1, sizeof(*t))) == NULL)
+		if (tmbr_tree_new(tree, client) < 0)
 			die("Unable to allocate tree");
-		t->client = client;
-		client->tree = t;
-
-		*tree = t;
-
 		return 0;
 	} else if ((*tree)->client) {
 		tmbr_tree_t *l, *r;
 
-		if ((l = calloc(1, sizeof(*l))) == NULL ||
-		    (r = calloc(1, sizeof(*r))) == NULL)
+		if (tmbr_tree_new(&l, (*tree)->client) < 0 || tmbr_tree_new(&r, client) < 0)
 			die("Unable to allocate trees");
 
-		l->client = (*tree)->client;
-		l->client->tree = l;
-		l->parent = (*tree);
-
-		r->client = client;
-		r->client->tree = r;
-		r->parent = (*tree);
-
-		(*tree)->client = NULL;
 		(*tree)->children[TMBR_DIR_LEFT] = l;
+		l->parent = (*tree);
 		(*tree)->children[TMBR_DIR_RIGHT] = r;
+		r->parent = (*tree);
+		(*tree)->client = NULL;
 
 		return 0;
 	} else if (!(*tree)->children[TMBR_DIR_LEFT]) {
