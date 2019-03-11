@@ -39,8 +39,7 @@ typedef struct tmbr_tree tmbr_tree_t;
 
 typedef enum {
 	TMBR_DIR_LEFT,
-	TMBR_DIR_RIGHT,
-	TMBR_DIR_MAX
+	TMBR_DIR_RIGHT
 } tmbr_dir_t;
 
 typedef enum {
@@ -75,8 +74,9 @@ struct tmbr_screen {
 };
 
 struct tmbr_tree {
-	tmbr_tree_t *children[TMBR_DIR_MAX];
 	tmbr_tree_t *parent;
+	tmbr_tree_t *left;
+	tmbr_tree_t *right;
 	tmbr_client_t *client;
 	tmbr_split_t split;
 	uint8_t ratio;
@@ -130,16 +130,21 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 	if (tmbr_tree_new(&l, t->client) < 0 || tmbr_tree_new(&r, client) < 0)
 		die("Unable to allocate right tree");
 
-	l->children[TMBR_DIR_LEFT] = t->children[TMBR_DIR_LEFT];
-	l->children[TMBR_DIR_RIGHT] = t->children[TMBR_DIR_RIGHT];
+	l->left = t->left;
+	l->right = t->right;
 	l->parent = t;
 	r->parent = t;
 
 	t->client = NULL;
-	t->children[TMBR_DIR_LEFT] = l;
-	t->children[TMBR_DIR_RIGHT] = r;
+	t->left = l;
+	t->right = r;
 
 	return 0;
+}
+
+static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, tmbr_dir_t dir)
+{
+	return (dir == TMBR_DIR_LEFT) ? tree->left : tree->right;
 }
 
 static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_dir_t dir)
@@ -150,9 +155,9 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_di
 		if (!tree->parent) {
 			/* We want to wrap to the leftmost node */
 			break;
-		} else if (tree != (tree->parent->children[upwards_dir])) {
+		} else if (tree != (tmbr_tree_get_child(tree->parent, upwards_dir))) {
 			/* Go to the leftmost node of the right parent node */
-			tree = tree->parent->children[upwards_dir];
+			tree = tmbr_tree_get_child(tree->parent, upwards_dir);
 			break;
 		}
 		tree = tree->parent;
@@ -161,8 +166,8 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_di
 	if (!tree)
 		return -1;
 
-	while (tree->children[downwards_dir])
-		tree = tree->children[downwards_dir];
+	while (tmbr_tree_get_child(tree, downwards_dir))
+		tree = tmbr_tree_get_child(tree, downwards_dir);
 
 	*node = tree;
 
@@ -212,16 +217,16 @@ static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 		return 0;
 	}
 
-	if (parent->children[TMBR_DIR_LEFT] == node)
-		parent->client = parent->children[TMBR_DIR_RIGHT]->client;
-	else if (parent->children[TMBR_DIR_RIGHT] == node)
-		parent->client = parent->children[TMBR_DIR_LEFT]->client;
+	if (parent->left == node)
+		parent->client = parent->right->client;
+	else if (parent->right == node)
+		parent->client = parent->left->client;
 
 	parent->client->tree = parent;
-	free(parent->children[TMBR_DIR_LEFT]);
-	parent->children[TMBR_DIR_LEFT] = NULL;
-	free(parent->children[TMBR_DIR_RIGHT]);
-	parent->children[TMBR_DIR_RIGHT] = NULL;
+	free(parent->left);
+	parent->left = NULL;
+	free(parent->right);
+	parent->right = NULL;
 
 	return 0;
 }
@@ -360,8 +365,8 @@ static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
 		xoff = 0;
 	}
 
-	if (tmbr_layout_tree(screen, tree->children[TMBR_DIR_LEFT], x, y, lw, lh) < 0 ||
-	    tmbr_layout_tree(screen, tree->children[TMBR_DIR_RIGHT], x + xoff, y + yoff, rw, rh) < 0)
+	if (tmbr_layout_tree(screen, tree->left, x, y, lw, lh) < 0 ||
+	    tmbr_layout_tree(screen, tree->right, x + xoff, y + yoff, rw, rh) < 0)
 		die("Unable to layout subtrees");
 
 	return 0;
