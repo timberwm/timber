@@ -145,41 +145,6 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 	}
 }
 
-static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
-		xcb_window_t window)
-{
-	if (!tree)
-		return -1;
-
-	if (tree->client && tree->client->window == window) {
-		*node = tree;
-		return 0;
-	} else if (tmbr_tree_find_by_window(node, tree->children[TMBR_DIR_LEFT], window) == 0) {
-		return 0;
-	} else if (tmbr_tree_find_by_window(node, tree->children[TMBR_DIR_RIGHT], window) == 0) {
-		return 0;
-	}
-
-	return -1;
-}
-
-static int tmbr_tree_find_by_focus(tmbr_tree_t **node, tmbr_tree_t *tree)
-{
-	if (!tree)
-		return -1;
-
-	if (tree->client && tree->client->focussed) {
-		*node = tree;
-		return 0;
-	} else if (tmbr_tree_find_by_focus(node, tree->children[TMBR_DIR_LEFT]) == 0) {
-		return 0;
-	} else if (tmbr_tree_find_by_focus(node, tree->children[TMBR_DIR_RIGHT]) == 0) {
-		return 0;
-	}
-
-	return -1;
-}
-
 static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_dir_t dir)
 {
 	unsigned char upwards_dir = dir, downwards_dir = !dir;
@@ -205,6 +170,39 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_di
 	*node = tree;
 
 	return 0;
+}
+
+#define tmbr_tree_foreach_leaf(t, i, n) \
+	i = NULL, n = t; \
+	while (tmbr_tree_find_sibling(&n, n, TMBR_DIR_RIGHT) == 0 && ((!i && tmbr_tree_find_sibling(&i, t, TMBR_DIR_RIGHT) == 0) || i != n))
+
+static int tmbr_tree_find_by_focus(tmbr_tree_t **node, tmbr_tree_t *tree)
+{
+	tmbr_tree_t *n, *it;
+
+	tmbr_tree_foreach_leaf(tree, it, n) {
+		if (n->client->focussed) {
+			*node = n;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
+static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
+		xcb_window_t window)
+{
+	tmbr_tree_t *n, *it;
+
+	tmbr_tree_foreach_leaf(tree, it, n) {
+		if (n->client->window == window) {
+			*node = n;
+			return 0;
+		}
+	}
+
+	return -1;
 }
 
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
