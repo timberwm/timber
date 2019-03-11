@@ -113,7 +113,8 @@ static int tmbr_tree_new(tmbr_tree_t **out, tmbr_client_t *client)
 	t->ratio = 50;
 	t->split = TMBR_SPLIT_VERTICAL;
 	t->client = client;
-	client->tree = t;
+	if (client)
+		client->tree = t;
 
 	*out = t;
 	return 0;
@@ -121,28 +122,24 @@ static int tmbr_tree_new(tmbr_tree_t **out, tmbr_client_t *client)
 
 static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 {
-	if (!*tree) {
-		if (tmbr_tree_new(tree, client) < 0)
-			die("Unable to allocate tree");
-		return 0;
-	} else if ((*tree)->client) {
-		tmbr_tree_t *l, *r;
+	tmbr_tree_t *l, *r, *t = *tree;
 
-		if (tmbr_tree_new(&l, (*tree)->client) < 0 || tmbr_tree_new(&r, client) < 0)
-			die("Unable to allocate trees");
+	if (!t)
+		return tmbr_tree_new(tree, client);
 
-		(*tree)->children[TMBR_DIR_LEFT] = l;
-		l->parent = (*tree);
-		(*tree)->children[TMBR_DIR_RIGHT] = r;
-		r->parent = (*tree);
-		(*tree)->client = NULL;
+	if (tmbr_tree_new(&l, t->client) < 0 || tmbr_tree_new(&r, client) < 0)
+		die("Unable to allocate right tree");
 
-		return 0;
-	} else if (!(*tree)->children[TMBR_DIR_LEFT]) {
-		return tmbr_tree_insert(&(*tree)->children[TMBR_DIR_LEFT], client);
-	} else {
-		return tmbr_tree_insert(&(*tree)->children[TMBR_DIR_RIGHT], client);
-	}
+	l->children[TMBR_DIR_LEFT] = t->children[TMBR_DIR_LEFT];
+	l->children[TMBR_DIR_RIGHT] = t->children[TMBR_DIR_RIGHT];
+	l->parent = t;
+	r->parent = t;
+
+	t->client = NULL;
+	t->children[TMBR_DIR_LEFT] = l;
+	t->children[TMBR_DIR_RIGHT] = r;
+
+	return 0;
 }
 
 static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_dir_t dir)
