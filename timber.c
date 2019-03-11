@@ -209,7 +209,7 @@ static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
 
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
-	tmbr_tree_t *parent = node->parent;
+	tmbr_tree_t *parent = node->parent, *uplift;
 
 	if (node == *tree) {
 		free(node);
@@ -217,16 +217,17 @@ static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 		return 0;
 	}
 
-	if (parent->left == node)
-		parent->client = parent->right->client;
-	else if (parent->right == node)
-		parent->client = parent->left->client;
+	uplift = (parent->left == node) ? parent->right : parent->left;
 
-	parent->client->tree = parent;
-	free(parent->left);
-	parent->left = NULL;
-	free(parent->right);
-	parent->right = NULL;
+	if ((parent->client = uplift->client) != NULL)
+		parent->client->tree = parent;
+	if ((parent->left = uplift->left) != NULL)
+		parent->left->parent = parent;
+	if ((parent->right = uplift->right) != NULL)
+		parent->right->parent = parent;
+
+	free(uplift);
+	free(node);
 
 	return 0;
 }
