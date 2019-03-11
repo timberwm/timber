@@ -29,11 +29,7 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_event.h>
 
-#define FIFO_PATH "/tmp/timber.s"
 #define TMBR_UNUSED(x) (void)(x)
-#define TMBR_BORDER_WIDTH 3
-#define TMBR_COLOR_ACTIVE 0xFF005577
-#define TMBR_COLOR_INACTIVE 0xFF222222
 
 typedef struct tmbr_client tmbr_client_t;
 typedef struct tmbr_command_args tmbr_command_args_t;
@@ -84,6 +80,12 @@ struct tmbr_tree {
 	tmbr_client_t *client;
 	tmbr_orientation_t orientation;
 };
+
+static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args);
+static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args);
+static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args);
+
+#include "config.h"
 
 static tmbr_screen_t *screens;
 static xcb_connection_t *conn;
@@ -589,13 +591,6 @@ static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args)
 
 static void tmbr_handle_command(int fd)
 {
-	const tmbr_command_t cmds[] = {
-		{ "client_focus_prev",       tmbr_cmd_focus_sibling,      { TMBR_DIR_LEFT }  },
-		{ "client_focus_next",       tmbr_cmd_focus_sibling,      { TMBR_DIR_RIGHT } },
-		{ "client_swap_prev",        tmbr_cmd_swap_sibling,       { TMBR_DIR_LEFT }  },
-		{ "client_swap_next",        tmbr_cmd_swap_sibling,       { TMBR_DIR_RIGHT } },
-		{ "tree_toggle_orientation", tmbr_cmd_toggle_orientation, { 0 }              },
-	};
 	char cmd[BUFSIZ];
 	ssize_t n;
 	size_t i;

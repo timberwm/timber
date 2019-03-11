@@ -6,7 +6,14 @@ project(
 
 executable(
   'timber',
-  sources: [ 'timber.c' ],
+  sources: [
+    'timber.c',
+    configure_file(
+      input: 'config.h.in',
+      output: 'config.h',
+      copy: true,
+    ),
+  ],
   dependencies: dependency('xcb'),
   install: true,
 )
