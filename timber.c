@@ -283,6 +283,9 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 	if (tmbr_tree_insert(focussed ? &focussed : &screen->tree, client) < 0)
 		die("Unable to remove client from tree");
 
+	if (tmbr_client_focus(client) < 0)
+		die("Unable to focus client");
+
 	return 0;
 }
 
@@ -578,6 +581,7 @@ static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args)
 	next->client = c;
 
 	tmbr_layout(screen);
+	tmbr_client_focus(c);
 }
 
 static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
