@@ -234,7 +234,6 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 	tmbr_tree_t *focussed = NULL;
 	xcb_void_cookie_t cookie;
 	tmbr_client_t *client;
-	int error = 0;
 
 	cookie = xcb_change_window_attributes_checked(conn, window, XCB_CW_EVENT_MASK, values);
 	if ((xcb_request_check(conn, cookie)) != NULL)
@@ -251,7 +250,7 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 	if (tmbr_tree_insert(focussed ? &focussed : &screen->tree, client) < 0)
 		die("Unable to remove client from tree");
 
-	return error;
+	return 0;
 }
 
 static int tmbr_client_unmanage(tmbr_client_t *client)
