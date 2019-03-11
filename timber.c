@@ -79,8 +79,10 @@ struct tmbr_tree {
 	tmbr_tree_t *parent;
 	tmbr_client_t *client;
 	tmbr_split_t split;
+	uint8_t ratio;
 };
 
+static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args);
 static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args);
 static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args);
 static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args);
@@ -108,6 +110,7 @@ static int tmbr_tree_new(tmbr_tree_t **out, tmbr_client_t *client)
 
 	if ((t = calloc(1, sizeof(*t))) == NULL)
 		return -1;
+	t->ratio = 50;
 	t->split = TMBR_SPLIT_VERTICAL;
 	t->client = client;
 	client->tree = t;
@@ -343,24 +346,28 @@ next:
 static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
 		uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
-	uint16_t xoff = 0, yoff = 0;
+	uint16_t xoff, yoff, lw, rw, lh, rh;
 
 	if (tree->client)
 		return tmbr_client_layout(tree->client, x, y, w, h);
 
 	if (tree->split == TMBR_SPLIT_VERTICAL) {
-		w /= 2;
-		xoff = w;
+		lw = w * (tree->ratio / 100.0);
+		rw = w - lw;
+		lh = rh = h;
+		xoff = lw;
+		yoff = 0;
 	} else {
-		h /= 2;
-		yoff = h;
+		lh = h * (tree->ratio / 100.0);
+		rh = h - lh;
+		lw = rw = w;
+		yoff = lh;
+		xoff = 0;
 	}
 
-	if (tmbr_layout_tree(screen, tree->children[TMBR_DIR_LEFT], x, y, w, h) < 0)
-		die("Unable to layout left tree");
-
-	if (tmbr_layout_tree(screen, tree->children[TMBR_DIR_RIGHT], x + xoff, y + yoff, w, h) < 0)
-		die("Unable to layout right tree");
+	if (tmbr_layout_tree(screen, tree->children[TMBR_DIR_LEFT], x, y, lw, lh) < 0 ||
+	    tmbr_layout_tree(screen, tree->children[TMBR_DIR_RIGHT], x + xoff, y + yoff, rw, rh) < 0)
+		die("Unable to layout subtrees");
 
 	return 0;
 }
@@ -584,6 +591,27 @@ static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
 		return;
 
 	focussed->parent->split = !focussed->parent->split;
+
+	tmbr_layout(screen);
+}
+
+static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
+{
+	tmbr_screen_t *screen;
+	tmbr_tree_t *focussed;
+	uint8_t ratio;
+
+	if (tmbr_screens_find_by_focus(&screen) < 0 ||
+	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
+	    !focussed->parent)
+		return;
+
+	ratio = focussed->parent->ratio;
+	if ((args->i < 0 && args->i >= ratio) ||
+	    (args->i > 0 && args->i + ratio >= 100))
+		return;
+
+	focussed->parent->ratio += args->i;
 
 	tmbr_layout(screen);
 }
