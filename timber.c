@@ -44,9 +44,9 @@ typedef enum {
 } tmbr_dir_t;
 
 typedef enum {
-	TMBR_ORIENTATION_VERTICAL,
-	TMBR_ORIENTATION_HORIZONTAL
-} tmbr_orientation_t;
+	TMBR_SPLIT_VERTICAL,
+	TMBR_SPLIT_HORIZONTAL
+} tmbr_split_t;
 
 struct tmbr_command_args {
 	int i;
@@ -78,12 +78,12 @@ struct tmbr_tree {
 	tmbr_tree_t *children[TMBR_DIR_MAX];
 	tmbr_tree_t *parent;
 	tmbr_client_t *client;
-	tmbr_orientation_t orientation;
+	tmbr_split_t split;
 };
 
 static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args);
 static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args);
-static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args);
+static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args);
 
 #include "config.h"
 
@@ -349,7 +349,7 @@ static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
 	if (tree->client)
 		return tmbr_client_layout(tree->client, x, y, w, h);
 
-	if (tree->orientation == TMBR_ORIENTATION_VERTICAL) {
+	if (tree->split == TMBR_SPLIT_VERTICAL) {
 		w /= 2;
 		xoff = w;
 	} else {
@@ -572,7 +572,7 @@ static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args)
 	tmbr_layout(screen);
 }
 
-static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args)
+static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
 {
 	tmbr_screen_t *screen;
 	tmbr_tree_t *focussed;
@@ -584,7 +584,7 @@ static void tmbr_cmd_toggle_orientation(const tmbr_command_args_t *args)
 	    !focussed->parent)
 		return;
 
-	focussed->parent->orientation = !focussed->parent->orientation;
+	focussed->parent->split = !focussed->parent->split;
 
 	tmbr_layout(screen);
 }
