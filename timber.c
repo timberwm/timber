@@ -39,8 +39,7 @@ typedef struct tmbr_tree tmbr_tree_t;
 
 typedef enum {
 	TMBR_DIR_LEFT,
-	TMBR_DIR_RIGHT,
-	TMBR_DIR_MAX
+	TMBR_DIR_RIGHT
 } tmbr_dir_t;
 
 typedef enum {
@@ -75,12 +74,15 @@ struct tmbr_screen {
 };
 
 struct tmbr_tree {
-	tmbr_tree_t *children[TMBR_DIR_MAX];
 	tmbr_tree_t *parent;
+	tmbr_tree_t *left;
+	tmbr_tree_t *right;
 	tmbr_client_t *client;
 	tmbr_split_t split;
+	uint8_t ratio;
 };
 
+static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args);
 static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args);
 static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args);
 static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args);
@@ -102,79 +104,47 @@ static void die(const char *fmt, ...)
 	exit(-1);
 }
 
-static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
+static int tmbr_tree_new(tmbr_tree_t **out, tmbr_client_t *client)
 {
-	if (!*tree) {
-		tmbr_tree_t *t;
+	tmbr_tree_t *t;
 
-		if ((t = calloc(1, sizeof(*t))) == NULL)
-			die("Unable to allocate tree");
-		t->client = client;
+	if ((t = calloc(1, sizeof(*t))) == NULL)
+		return -1;
+	t->ratio = 50;
+	t->split = TMBR_SPLIT_VERTICAL;
+	t->client = client;
+	if (client)
 		client->tree = t;
 
-		*tree = t;
-
-		return 0;
-	} else if ((*tree)->client) {
-		tmbr_tree_t *l, *r;
-
-		if ((l = calloc(1, sizeof(*l))) == NULL ||
-		    (r = calloc(1, sizeof(*r))) == NULL)
-			die("Unable to allocate trees");
-
-		l->client = (*tree)->client;
-		l->client->tree = l;
-		l->parent = (*tree);
-
-		r->client = client;
-		r->client->tree = r;
-		r->parent = (*tree);
-
-		(*tree)->client = NULL;
-		(*tree)->children[TMBR_DIR_LEFT] = l;
-		(*tree)->children[TMBR_DIR_RIGHT] = r;
-
-		return 0;
-	} else if (!(*tree)->children[TMBR_DIR_LEFT]) {
-		return tmbr_tree_insert(&(*tree)->children[TMBR_DIR_LEFT], client);
-	} else {
-		return tmbr_tree_insert(&(*tree)->children[TMBR_DIR_RIGHT], client);
-	}
+	*out = t;
+	return 0;
 }
 
-static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
-		xcb_window_t window)
+static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 {
-	if (!tree)
-		return -1;
+	tmbr_tree_t *l, *r, *t = *tree;
 
-	if (tree->client && tree->client->window == window) {
-		*node = tree;
-		return 0;
-	} else if (tmbr_tree_find_by_window(node, tree->children[TMBR_DIR_LEFT], window) == 0) {
-		return 0;
-	} else if (tmbr_tree_find_by_window(node, tree->children[TMBR_DIR_RIGHT], window) == 0) {
-		return 0;
-	}
+	if (!t)
+		return tmbr_tree_new(tree, client);
 
-	return -1;
+	if (tmbr_tree_new(&l, t->client) < 0 || tmbr_tree_new(&r, client) < 0)
+		die("Unable to allocate right tree");
+
+	l->left = t->left;
+	l->right = t->right;
+	l->parent = t;
+	r->parent = t;
+
+	t->client = NULL;
+	t->left = l;
+	t->right = r;
+
+	return 0;
 }
 
-static int tmbr_tree_find_by_focus(tmbr_tree_t **node, tmbr_tree_t *tree)
+static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, tmbr_dir_t dir)
 {
-	if (!tree)
-		return -1;
-
-	if (tree->client && tree->client->focussed) {
-		*node = tree;
-		return 0;
-	} else if (tmbr_tree_find_by_focus(node, tree->children[TMBR_DIR_LEFT]) == 0) {
-		return 0;
-	} else if (tmbr_tree_find_by_focus(node, tree->children[TMBR_DIR_RIGHT]) == 0) {
-		return 0;
-	}
-
-	return -1;
+	return (dir == TMBR_DIR_LEFT) ? tree->left : tree->right;
 }
 
 static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_dir_t dir)
@@ -185,9 +155,9 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_di
 		if (!tree->parent) {
 			/* We want to wrap to the leftmost node */
 			break;
-		} else if (tree != (tree->parent->children[upwards_dir])) {
+		} else if (tree != (tmbr_tree_get_child(tree->parent, upwards_dir))) {
 			/* Go to the leftmost node of the right parent node */
-			tree = tree->parent->children[upwards_dir];
+			tree = tmbr_tree_get_child(tree->parent, upwards_dir);
 			break;
 		}
 		tree = tree->parent;
@@ -196,17 +166,50 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_di
 	if (!tree)
 		return -1;
 
-	while (tree->children[downwards_dir])
-		tree = tree->children[downwards_dir];
+	while (tmbr_tree_get_child(tree, downwards_dir))
+		tree = tmbr_tree_get_child(tree, downwards_dir);
 
 	*node = tree;
 
 	return 0;
 }
 
+#define tmbr_tree_foreach_leaf(t, i, n) \
+	i = NULL, n = t; \
+	while (tmbr_tree_find_sibling(&n, n, TMBR_DIR_RIGHT) == 0 && ((!i && tmbr_tree_find_sibling(&i, t, TMBR_DIR_RIGHT) == 0) || i != n))
+
+static int tmbr_tree_find_by_focus(tmbr_tree_t **node, tmbr_tree_t *tree)
+{
+	tmbr_tree_t *n, *it;
+
+	tmbr_tree_foreach_leaf(tree, it, n) {
+		if (n->client->focussed) {
+			*node = n;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
+static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
+		xcb_window_t window)
+{
+	tmbr_tree_t *n, *it;
+
+	tmbr_tree_foreach_leaf(tree, it, n) {
+		if (n->client->window == window) {
+			*node = n;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
-	tmbr_tree_t *parent = node->parent;
+	tmbr_tree_t *parent = node->parent, *uplift;
 
 	if (node == *tree) {
 		free(node);
@@ -214,16 +217,17 @@ static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 		return 0;
 	}
 
-	if (parent->children[TMBR_DIR_LEFT] == node)
-		parent->client = parent->children[TMBR_DIR_RIGHT]->client;
-	else if (parent->children[TMBR_DIR_RIGHT] == node)
-		parent->client = parent->children[TMBR_DIR_LEFT]->client;
+	uplift = (parent->left == node) ? parent->right : parent->left;
 
-	parent->client->tree = parent;
-	free(parent->children[TMBR_DIR_LEFT]);
-	parent->children[TMBR_DIR_LEFT] = NULL;
-	free(parent->children[TMBR_DIR_RIGHT]);
-	parent->children[TMBR_DIR_RIGHT] = NULL;
+	if ((parent->client = uplift->client) != NULL)
+		parent->client->tree = parent;
+	if ((parent->left = uplift->left) != NULL)
+		parent->left->parent = parent;
+	if ((parent->right = uplift->right) != NULL)
+		parent->right->parent = parent;
+
+	free(uplift);
+	free(node);
 
 	return 0;
 }
@@ -343,24 +347,28 @@ next:
 static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
 		uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
-	uint16_t xoff = 0, yoff = 0;
+	uint16_t xoff, yoff, lw, rw, lh, rh;
 
 	if (tree->client)
 		return tmbr_client_layout(tree->client, x, y, w, h);
 
 	if (tree->split == TMBR_SPLIT_VERTICAL) {
-		w /= 2;
-		xoff = w;
+		lw = w * (tree->ratio / 100.0);
+		rw = w - lw;
+		lh = rh = h;
+		xoff = lw;
+		yoff = 0;
 	} else {
-		h /= 2;
-		yoff = h;
+		lh = h * (tree->ratio / 100.0);
+		rh = h - lh;
+		lw = rw = w;
+		yoff = lh;
+		xoff = 0;
 	}
 
-	if (tmbr_layout_tree(screen, tree->children[TMBR_DIR_LEFT], x, y, w, h) < 0)
-		die("Unable to layout left tree");
-
-	if (tmbr_layout_tree(screen, tree->children[TMBR_DIR_RIGHT], x + xoff, y + yoff, w, h) < 0)
-		die("Unable to layout right tree");
+	if (tmbr_layout_tree(screen, tree->left, x, y, lw, lh) < 0 ||
+	    tmbr_layout_tree(screen, tree->right, x + xoff, y + yoff, rw, rh) < 0)
+		die("Unable to layout subtrees");
 
 	return 0;
 }
@@ -584,6 +592,27 @@ static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
 		return;
 
 	focussed->parent->split = !focussed->parent->split;
+
+	tmbr_layout(screen);
+}
+
+static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
+{
+	tmbr_screen_t *screen;
+	tmbr_tree_t *focussed;
+	uint8_t ratio;
+
+	if (tmbr_screens_find_by_focus(&screen) < 0 ||
+	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
+	    !focussed->parent)
+		return;
+
+	ratio = focussed->parent->ratio;
+	if ((args->i < 0 && args->i >= ratio) ||
+	    (args->i > 0 && args->i + ratio >= 100))
+		return;
+
+	focussed->parent->ratio += args->i;
 
 	tmbr_layout(screen);
 }
