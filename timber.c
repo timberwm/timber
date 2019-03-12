@@ -87,6 +87,7 @@ struct tmbr_tree {
 
 static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args);
 static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args);
+static void tmbr_cmd_kill(const tmbr_command_args_t *args);
 static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args);
 static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args);
 
@@ -614,6 +615,28 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
 	}
 }
 
+static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
+{
+	tmbr_screen_t *screen;
+	tmbr_tree_t *focussed;
+	uint8_t ratio;
+
+	if (tmbr_screens_find_by_focus(&screen) < 0 ||
+	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
+	    !focussed->parent)
+		return;
+
+	ratio = focussed->parent->ratio;
+	if ((args->i < 0 && args->i >= ratio) ||
+	    (args->i > 0 && args->i + ratio >= 100))
+		return;
+
+	focussed->parent->ratio += args->i;
+
+	tmbr_layout(screen);
+	tmbr_client_focus(focussed->client);
+}
+
 static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
 {
 	tmbr_tree_t *focussed, *next;
@@ -624,7 +647,21 @@ static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
 	    tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
 		return;
 
-    tmbr_client_focus(next->client);
+	tmbr_client_focus(next->client);
+}
+
+static void tmbr_cmd_kill(const tmbr_command_args_t *args)
+{
+	tmbr_tree_t *focussed;
+	tmbr_screen_t *screen;
+
+	TMBR_UNUSED(args);
+
+	if (tmbr_screens_find_by_focus(&screen) < 0 ||
+	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0)
+		return;
+
+	xcb_kill_client(conn, focussed->client->window);
 }
 
 static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args)
@@ -655,28 +692,6 @@ static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
 		return;
 
 	focussed->parent->split = !focussed->parent->split;
-
-	tmbr_layout(screen);
-	tmbr_client_focus(focussed->client);
-}
-
-static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
-{
-	tmbr_screen_t *screen;
-	tmbr_tree_t *focussed;
-	uint8_t ratio;
-
-	if (tmbr_screens_find_by_focus(&screen) < 0 ||
-	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
-	    !focussed->parent)
-		return;
-
-	ratio = focussed->parent->ratio;
-	if ((args->i < 0 && args->i >= ratio) ||
-	    (args->i > 0 && args->i + ratio >= 100))
-		return;
-
-	focussed->parent->ratio += args->i;
 
 	tmbr_layout(screen);
 	tmbr_client_focus(focussed->client);
