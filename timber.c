@@ -563,13 +563,17 @@ static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 	tmbr_screen_t *screen;
 
 	for (screen = screens; screen; screen = screen->next) {
-		tmbr_tree_t *node;
+		tmbr_tree_t *node, *parent;
 
 		if ((tmbr_tree_find_by_window(&node, screen->tree, ev->window)) < 0)
 			continue;
 
+		parent = node->parent;
+
 		if (tmbr_client_unmanage(node->client) < 0)
 			die("Unable to unmanage client");
+		if (parent)
+			tmbr_client_focus(parent->client);
 
 		return tmbr_layout(screen);
 	}
