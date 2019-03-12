@@ -611,6 +611,7 @@ static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
 	focussed->parent->split = !focussed->parent->split;
 
 	tmbr_layout(screen);
+	tmbr_client_focus(focussed->client);
 }
 
 static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
@@ -632,6 +633,7 @@ static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
 	focussed->parent->ratio += args->i;
 
 	tmbr_layout(screen);
+	tmbr_client_focus(focussed->client);
 }
 
 static void tmbr_handle_command(int fd)
