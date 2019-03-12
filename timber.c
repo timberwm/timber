@@ -26,8 +26,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#define inline
 #include <xcb/xcb.h>
 #include <xcb/xcb_event.h>
+#include <xcb/xcb_ewmh.h>
+#undef inline
 
 #define TMBR_UNUSED(x) (void)(x)
 
@@ -91,6 +94,7 @@ static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args);
 
 static tmbr_screen_t *screens;
 static xcb_connection_t *conn;
+static xcb_ewmh_connection_t ewmh;
 static int fifofd = -1;
 
 static void die(const char *fmt, ...)
@@ -665,6 +669,7 @@ static void tmbr_cleanup(int signal)
 	unlink(FIFO_PATH);
 
 	tmbr_screens_free(screens);
+	xcb_ewmh_connection_wipe(&ewmh);
 	xcb_disconnect(conn);
 }
 
@@ -678,6 +683,9 @@ static int tmbr_setup(void)
 
 	if ((conn = xcb_connect(NULL, NULL)) == NULL)
 		die("Unable to connect to X server");
+
+	if (xcb_ewmh_init_atoms_replies(&ewmh, xcb_ewmh_init_atoms(conn, &ewmh), NULL) == 0)
+		die("Unable to initialize EWMH atoms");
 
 	if (tmbr_screens_enumerate(conn) < 0)
 		die("Unable to enumerate screens");
