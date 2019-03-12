@@ -261,22 +261,17 @@ static int tmbr_client_draw_border(tmbr_client_t *client, uint32_t color)
 
 static int tmbr_client_focus(tmbr_client_t *client)
 {
-	xcb_void_cookie_t cookie;
 	tmbr_tree_t *focussed;
 
-	cookie = xcb_set_input_focus(conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
-	if ((xcb_request_check(conn, cookie)) != NULL)
-		die("Could not focus client");
+	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
 
 	if (tmbr_tree_find_by_focus(&focussed, client->screen->tree) == 0) {
-		focussed->client->focussed = 0;
-		focussed->client->screen->focussed = 0;
+		focussed->client->focussed = focussed->client->screen->focussed = 0;
 		tmbr_client_draw_border(focussed->client, TMBR_COLOR_INACTIVE);
 	}
 
 	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
-	client->focussed = 1;
-	client->screen->focussed = 1;
+	client->focussed = client->screen->focussed = 1;
 
 	return 0;
 }
