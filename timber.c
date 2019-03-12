@@ -259,7 +259,7 @@ static int tmbr_client_focus(tmbr_client_t *client)
 	xcb_void_cookie_t cookie;
 	tmbr_tree_t *focussed;
 
-	cookie = xcb_set_input_focus(conn, XCB_INPUT_FOCUS_NONE, client->window, XCB_CURRENT_TIME);
+	cookie = xcb_set_input_focus(conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
 	if ((xcb_request_check(conn, cookie)) != NULL)
 		die("Could not focus client");
 
