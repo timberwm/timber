@@ -266,12 +266,12 @@ static int tmbr_client_focus(tmbr_client_t *client)
 	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
 
 	if (tmbr_tree_find_by_focus(&focussed, client->screen->tree) == 0) {
-		focussed->client->focussed = focussed->client->screen->focussed = 0;
+		focussed->client->focussed = 0;
 		tmbr_client_draw_border(focussed->client, TMBR_COLOR_INACTIVE);
 	}
 
 	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
-	client->focussed = client->screen->focussed = 1;
+	client->focussed = 1;
 
 	return 0;
 }
@@ -424,6 +424,30 @@ next:
 	return 0;
 }
 
+static int tmbr_screen_get_focussed(tmbr_screen_t **out)
+{
+	tmbr_screen_t *s;
+
+	for (s = screens; s; s = s->next) {
+		if (!s->focussed)
+			continue;
+
+		*out = s;
+		return 0;
+	}
+
+	return -1;
+}
+
+static int tmbr_screen_set_focussed(tmbr_screen_t *screen)
+{
+	tmbr_screen_t *focus;
+	if (tmbr_screen_get_focussed(&focus) == 0)
+		focus->focussed = 0;
+	screen->focussed = 1;
+	return 0;
+}
+
 static int tmbr_screen_manage(xcb_screen_t *screen)
 {
 	const uint32_t values[] = {
@@ -451,6 +475,9 @@ static int tmbr_screen_manage(xcb_screen_t *screen)
 
 	if (tmbr_screen_manage_clients(s) < 0)
 		die("Unable to enumerate clients");
+
+	if (tmbr_screen_set_focussed(s) < 0)
+		die("Unable to focus screen");
 
 	if (tmbr_layout(s) < 0)
 		die("Unable to layout screen");
@@ -499,21 +526,6 @@ static int tmbr_screens_find_by_root(tmbr_screen_t **out, xcb_window_t root)
 	return -1;
 }
 
-static int tmbr_screens_find_by_focus(tmbr_screen_t **out)
-{
-	tmbr_screen_t *s;
-
-	for (s = screens; s; s = s->next) {
-		if (!s->focussed)
-			continue;
-
-		*out = s;
-		return 0;
-	}
-
-	return -1;
-}
-
 static void tmbr_screens_free(tmbr_screen_t *s)
 {
 	tmbr_screen_t *n;
@@ -539,7 +551,8 @@ static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 		if ((tmbr_tree_find_by_window(&entered, screen->tree, ev->event)) < 0)
 			continue;
 
-		if (tmbr_client_focus(entered->client) < 0)
+		if (tmbr_client_focus(entered->client) < 0 ||
+		    tmbr_screen_set_focussed(screen) < 0)
 			return -1;
 
 		return 0;
@@ -633,7 +646,7 @@ static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
 	tmbr_tree_t *focussed;
 	uint8_t ratio;
 
-	if (tmbr_screens_find_by_focus(&screen) < 0 ||
+	if (tmbr_screen_get_focussed(&screen) < 0 ||
 	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
 	    !focussed->parent)
 		return;
@@ -654,7 +667,7 @@ static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
 	tmbr_tree_t *focussed, *next;
 	tmbr_screen_t *screen;
 
-	if (tmbr_screens_find_by_focus(&screen) < 0 ||
+	if (tmbr_screen_get_focussed(&screen) < 0 ||
 	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
 	    tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
 		return;
@@ -669,7 +682,7 @@ static void tmbr_cmd_kill(const tmbr_command_args_t *args)
 
 	TMBR_UNUSED(args);
 
-	if (tmbr_screens_find_by_focus(&screen) < 0 ||
+	if (tmbr_screen_get_focussed(&screen) < 0 ||
 	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0)
 		return;
 
@@ -681,7 +694,7 @@ static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args)
 	tmbr_tree_t *focussed, *next;
 	tmbr_screen_t *screen;
 
-	if (tmbr_screens_find_by_focus(&screen) < 0 ||
+	if (tmbr_screen_get_focussed(&screen) < 0 ||
 	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
 	    tmbr_tree_find_sibling(&next, focussed, args->i) < 0 ||
 	    tmbr_tree_swap(focussed, next) < 0)
@@ -698,7 +711,7 @@ static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
 
 	TMBR_UNUSED(args);
 
-	if (tmbr_screens_find_by_focus(&screen) < 0 ||
+	if (tmbr_screen_get_focussed(&screen) < 0 ||
 	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
 	    !focussed->parent)
 		return;
