@@ -281,7 +281,7 @@ static int tmbr_client_manage(tmbr_screen_t *screen, xcb_window_t window)
 	tmbr_tree_find_by_focus(&focussed, screen->tree);
 
 	if (tmbr_tree_insert(focussed ? &focussed : &screen->tree, client) < 0)
-		die("Unable to remove client from tree");
+		die("Unable to insert client into tree");
 
 	if (tmbr_client_focus(client) < 0)
 		die("Unable to focus client");
