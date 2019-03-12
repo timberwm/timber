@@ -318,7 +318,7 @@ static int tmbr_client_unmanage(tmbr_client_t *client)
 	return 0;
 }
 
-static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h)
+static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t border)
 {
 	uint32_t values[5];
 	uint16_t mask =
@@ -328,11 +328,19 @@ static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uin
 
 	values[0] = x;
 	values[1] = y;
-	values[2] = w - 2 * TMBR_BORDER_WIDTH;
-	values[3] = h - 2 * TMBR_BORDER_WIDTH;
-	values[4] = TMBR_BORDER_WIDTH;
+	values[2] = w - 2 * border;
+	values[3] = h - 2 * border;
+	values[4] = border;
 
 	xcb_configure_window(conn, client->window, mask, values);
+	return 0;
+}
+
+static int tmbr_client_set_fullscreen(tmbr_client_t *client, char fs)
+{
+	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
+	xcb_ewmh_set_wm_state(&ewmh, client->window, fs, &ewmh._NET_WM_STATE_FULLSCREEN);
+	xcb_configure_window(conn, client->window, XCB_CONFIG_WINDOW_STACK_MODE, values);
 	return 0;
 }
 
@@ -374,7 +382,7 @@ static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
 	uint16_t xoff, yoff, lw, rw, lh, rh;
 
 	if (tree->client)
-		return tmbr_client_layout(tree->client, x, y, w, h);
+		return tmbr_client_layout(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
 
 	if (tree->split == TMBR_SPLIT_VERTICAL) {
 		lw = w * (tree->ratio / 100.0);
@@ -456,6 +464,16 @@ static int tmbr_screens_enumerate(xcb_connection_t *conn)
 	}
 
 	return 0;
+}
+
+static int tmbr_screen_set_fullscreen(tmbr_screen_t *screen, tmbr_client_t *client, char fs)
+{
+	if (fs)
+		tmbr_client_layout(client, 0, 0, screen->width, screen->height, 0);
+	else
+		tmbr_layout(screen);
+
+	return tmbr_client_set_fullscreen(client, fs);
 }
 
 static int tmbr_screens_find_by_root(tmbr_screen_t **out, xcb_window_t root)
@@ -558,6 +576,28 @@ static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 	return -1;
 }
 
+static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
+{
+	xcb_atom_t state = ev->data.data32[1];
+	uint32_t action = ev->data.data32[0];
+	tmbr_screen_t *screen;
+
+	if (ev->type != ewmh._NET_WM_STATE)
+		return 0;
+
+	for (screen = screens; screen; screen = screen->next) {
+		tmbr_tree_t *t;
+
+		if (tmbr_tree_find_by_window(&t, screen->tree, ev->window) < 0)
+			continue;
+
+		if (state == ewmh._NET_WM_STATE_FULLSCREEN)
+			tmbr_screen_set_fullscreen(screen, t->client, action == XCB_EWMH_WM_STATE_ADD);
+	}
+
+	return 0;
+}
+
 static int tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
@@ -567,6 +607,8 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
 			return tmbr_handle_map_request((xcb_map_request_event_t *) ev);
 		case XCB_DESTROY_NOTIFY:
 			return tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
+		case XCB_CLIENT_MESSAGE:
+			return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
 		default:
 			return -1;
 	}
