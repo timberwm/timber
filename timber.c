@@ -259,23 +259,6 @@ static int tmbr_client_draw_border(tmbr_client_t *client, uint32_t color)
 	return 0;
 }
 
-static int tmbr_client_focus(tmbr_client_t *client)
-{
-	tmbr_tree_t *focussed;
-
-	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
-
-	if (tmbr_tree_find_by_focus(&focussed, client->screen->tree) == 0) {
-		focussed->client->focussed = 0;
-		tmbr_client_draw_border(focussed->client, TMBR_COLOR_INACTIVE);
-	}
-
-	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
-	client->focussed = 1;
-
-	return 0;
-}
-
 static int tmbr_client_new(tmbr_client_t **out, tmbr_screen_t *screen, xcb_window_t window)
 {
 	const uint32_t values[] = { XCB_EVENT_MASK_ENTER_WINDOW };
@@ -365,19 +348,43 @@ static int tmbr_layout(tmbr_screen_t *screen)
 				screen->screen->height_in_pixels);
 }
 
+static int tmbr_screen_get_focussed_client(tmbr_client_t **out, tmbr_screen_t *screen)
+{
+	tmbr_tree_t *focus;
+	if (tmbr_tree_find_by_focus(&focus, screen->tree) < 0)
+		return -1;
+	*out = focus->client;
+	return 0;
+}
+
+static int tmbr_screen_set_focussed_client(tmbr_screen_t *screen, tmbr_client_t *client)
+{
+	tmbr_client_t *focus;
+
+	if (tmbr_screen_get_focussed_client(&focus, screen) == 0) {
+		focus->focussed = 0;
+		tmbr_client_draw_border(focus, TMBR_COLOR_INACTIVE);
+	}
+
+	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
+	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
+	client->focussed = 1;
+
+	return 0;
+}
+
 static int tmbr_screen_manage_window(tmbr_screen_t *screen, xcb_window_t window)
 {
-	tmbr_tree_t *focussed = NULL;
-	tmbr_client_t *client;
+	tmbr_client_t *client, *focus = NULL;
 
 	if (tmbr_client_new(&client, screen, window) < 0)
 		die("Unable to create new client");
 
-	tmbr_tree_find_by_focus(&focussed, screen->tree);
-	if (tmbr_tree_insert(focussed ? &focussed : &screen->tree, client) < 0)
+	tmbr_screen_get_focussed_client(&focus, screen);
+	if (tmbr_tree_insert(focus ? &focus->tree : &screen->tree, client) < 0)
 		die("Unable to insert client into tree");
 
-	if (tmbr_client_focus(client) < 0)
+	if (tmbr_screen_set_focussed_client(screen, client) < 0)
 		die("Unable to focus client");
 
 	return 0;
@@ -551,7 +558,7 @@ static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 		if ((tmbr_tree_find_by_window(&entered, screen->tree, ev->event)) < 0)
 			continue;
 
-		if (tmbr_client_focus(entered->client) < 0 ||
+		if (tmbr_screen_set_focussed_client(screen, entered->client) < 0 ||
 		    tmbr_screen_set_focussed(screen) < 0)
 			return -1;
 
@@ -594,7 +601,7 @@ static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 		if (tmbr_screen_unmanage_clients(node->client) < 0)
 			die("Unable to unmanage client");
 		if (parent)
-			tmbr_client_focus(parent->client);
+			tmbr_screen_set_focussed_client(screen, parent->client);
 
 		return tmbr_layout(screen);
 	}
@@ -643,83 +650,86 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
 static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
 {
 	tmbr_screen_t *screen;
-	tmbr_tree_t *focussed;
+	tmbr_client_t *focus;
+	tmbr_tree_t *parent;
 	uint8_t ratio;
 
 	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
-	    !focussed->parent)
+	    tmbr_screen_get_focussed_client(&focus, screen) < 0 ||
+	    (parent = focus->tree->parent) == NULL)
 		return;
 
-	ratio = focussed->parent->ratio;
+	ratio = parent->ratio;
 	if ((args->i < 0 && args->i >= ratio) ||
 	    (args->i > 0 && args->i + ratio >= 100))
 		return;
 
-	focussed->parent->ratio += args->i;
+	parent->ratio += args->i;
 
 	tmbr_layout(screen);
-	tmbr_client_focus(focussed->client);
+	tmbr_screen_set_focussed_client(screen, focus);
 }
 
 static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
 {
-	tmbr_tree_t *focussed, *next;
 	tmbr_screen_t *screen;
+	tmbr_client_t *focus;
+	tmbr_tree_t *next;
 
 	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
-	    tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
+	    tmbr_screen_get_focussed_client(&focus, screen) < 0 ||
+	    tmbr_tree_find_sibling(&next, focus->tree, args->i) < 0)
 		return;
 
-	tmbr_client_focus(next->client);
+	tmbr_screen_set_focussed_client(screen, next->client);
 }
 
 static void tmbr_cmd_kill(const tmbr_command_args_t *args)
 {
-	tmbr_tree_t *focussed;
 	tmbr_screen_t *screen;
+	tmbr_client_t *focus;
 
 	TMBR_UNUSED(args);
 
 	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0)
+	    tmbr_screen_get_focussed_client(&focus, screen) < 0)
 		return;
 
-	xcb_kill_client(conn, focussed->client->window);
+	xcb_kill_client(conn, focus->window);
 }
 
 static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args)
 {
-	tmbr_tree_t *focussed, *next;
 	tmbr_screen_t *screen;
+	tmbr_client_t *focus;
+	tmbr_tree_t *next;
 
 	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
-	    tmbr_tree_find_sibling(&next, focussed, args->i) < 0 ||
-	    tmbr_tree_swap(focussed, next) < 0)
+	    tmbr_screen_get_focussed_client(&focus, screen) < 0 ||
+	    tmbr_tree_find_sibling(&next, focus->tree, args->i) < 0 ||
+	    tmbr_tree_swap(focus->tree, next) < 0)
 		return;
 
 	tmbr_layout(screen);
-	tmbr_client_focus(next->client);
+	tmbr_screen_set_focussed_client(screen, next->client);
 }
 
 static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
 {
 	tmbr_screen_t *screen;
-	tmbr_tree_t *focussed;
+	tmbr_client_t *focus;
 
 	TMBR_UNUSED(args);
 
 	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
-	    !focussed->parent)
+	    tmbr_screen_get_focussed_client(&focus, screen) < 0 ||
+	    !focus->tree->parent)
 		return;
 
-	focussed->parent->split = !focussed->parent->split;
+	focus->tree->parent->split = !focus->tree->parent->split;
 
 	tmbr_layout(screen);
-	tmbr_client_focus(focussed->client);
+	tmbr_screen_set_focussed_client(screen, focus);
 }
 
 static void tmbr_handle_command(int fd)
