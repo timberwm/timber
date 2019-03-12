@@ -557,13 +557,13 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	if (tmbr_screens_find_by_root(&screen, ev->parent) < 0)
 		return -1;
 
+	xcb_map_window(conn, ev->window);
+
 	if (tmbr_screen_manage_window(screen, ev->window) < 0)
 		return -1;
 
 	if (tmbr_layout(screen) < 0)
 		return -1;
-
-	xcb_map_window(conn, ev->window);
 
 	return 0;
 }
