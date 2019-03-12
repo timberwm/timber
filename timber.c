@@ -306,8 +306,7 @@ static int tmbr_client_set_fullscreen(tmbr_client_t *client, char fs)
 	return 0;
 }
 
-static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
-		uint16_t x, uint16_t y, uint16_t w, uint16_t h)
+static int tmbr_layout_tree(tmbr_tree_t *tree, uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
 	uint16_t xoff, yoff, lw, rw, lh, rh;
 
@@ -328,24 +327,10 @@ static int tmbr_layout_tree(tmbr_screen_t *screen, tmbr_tree_t *tree,
 		xoff = 0;
 	}
 
-	if (tmbr_layout_tree(screen, tree->left, x, y, lw, lh) < 0 ||
-	    tmbr_layout_tree(screen, tree->right, x + xoff, y + yoff, rw, rh) < 0)
+	if (tmbr_layout_tree(tree->left, x, y, lw, lh) < 0 ||
+	    tmbr_layout_tree(tree->right, x + xoff, y + yoff, rw, rh) < 0)
 		die("Unable to layout subtrees");
 
-	return 0;
-}
-
-static int tmbr_layout(tmbr_screen_t *screen)
-{
-	if (!screen || !screen->focus->clients)
-		return 0;
-
-	if (tmbr_layout_tree(screen, screen->focus->clients, 0, 0,
-			     screen->screen->width_in_pixels,
-			     screen->screen->height_in_pixels) < 0)
-		die("Unable to layout tree");
-
-	tmbr_discard_events(XCB_ENTER_NOTIFY);
 	return 0;
 }
 
@@ -380,6 +365,32 @@ static int tmbr_desktop_set_focussed_client(tmbr_desktop_t *desktop, tmbr_client
 	desktop->focus = client;
 
 	return 0;
+}
+
+static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
+{
+	if (!desktop->clients)
+		return 0;
+
+	if (tmbr_layout_tree(desktop->clients, 0, 0,
+			     desktop->screen->screen->width_in_pixels,
+			     desktop->screen->screen->height_in_pixels) < 0)
+		die("Unable to layout tree");
+
+	tmbr_discard_events(XCB_ENTER_NOTIFY);
+	return 0;
+}
+
+static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
+{
+	if (fs)
+		tmbr_client_layout(client, 0, 0,
+				   desktop->screen->width,
+				   desktop->screen->height, 0);
+	else
+		tmbr_desktop_layout(desktop);
+
+	return tmbr_client_set_fullscreen(client, fs);
 }
 
 static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
@@ -507,7 +518,7 @@ static int tmbr_screen_manage(xcb_screen_t *screen)
 	if (tmbr_screen_set_focussed(s) < 0)
 		die("Unable to focus screen");
 
-	if (tmbr_layout(s) < 0)
+	if (tmbr_desktop_layout(s->focus) < 0)
 		die("Unable to layout screen");
 
 	return 0;
@@ -528,16 +539,6 @@ static int tmbr_screens_enumerate(xcb_connection_t *conn)
 	}
 
 	return 0;
-}
-
-static int tmbr_screen_set_fullscreen(tmbr_screen_t *screen, tmbr_client_t *client, char fs)
-{
-	if (fs)
-		tmbr_client_layout(client, 0, 0, screen->width, screen->height, 0);
-	else
-		tmbr_layout(screen);
-
-	return tmbr_client_set_fullscreen(client, fs);
 }
 
 static int tmbr_screens_find_by_root(tmbr_screen_t **out, xcb_window_t root)
@@ -621,7 +622,7 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	if (tmbr_desktop_add_client(screen->focus, client) < 0)
 		return -1;
 
-	if (tmbr_layout(screen) < 0)
+	if (tmbr_desktop_layout(screen->focus) < 0)
 		return -1;
 
 	return 0;
@@ -646,7 +647,7 @@ static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 			if (parent)
 				tmbr_desktop_set_focussed_client(desktop, parent->client);
 
-			return tmbr_layout(screen);
+			return tmbr_desktop_layout(desktop);
 		}
 	}
 
@@ -671,7 +672,7 @@ static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
 				continue;
 
 			if (state == ewmh._NET_WM_STATE_FULLSCREEN)
-				tmbr_screen_set_fullscreen(screen, t->client, action == XCB_EWMH_WM_STATE_ADD);
+				tmbr_desktop_set_fullscreen(desktop, t->client, action == XCB_EWMH_WM_STATE_ADD);
 		}
 	}
 
@@ -728,7 +729,7 @@ static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
 
 	parent->ratio += args->i;
 
-	tmbr_layout(screen);
+	tmbr_desktop_layout(screen->focus);
 }
 
 static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
@@ -771,7 +772,7 @@ static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args)
 	    tmbr_tree_swap(focus->tree, next) < 0)
 		return;
 
-	tmbr_layout(screen);
+	tmbr_desktop_layout(screen->focus);
 	tmbr_desktop_set_focussed_client(screen->focus, next->client);
 }
 
@@ -789,7 +790,7 @@ static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
 
 	focus->tree->parent->split = !focus->tree->parent->split;
 
-	tmbr_layout(screen);
+	tmbr_desktop_layout(screen->focus);
 }
 
 static void tmbr_handle_command(int fd)
