@@ -207,6 +207,28 @@ static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
 	return -1;
 }
 
+static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
+{
+	tmbr_tree_t *l = a->left, *r = a->right;
+	tmbr_client_t *c = a->client;
+
+	if ((a->client = b->client) != NULL)
+		a->client->tree = a;
+	if ((a->left = b->left) != NULL)
+		a->left->parent = a;
+	if ((a->right = b->right) != NULL)
+		a->right->parent = a;
+
+	if ((b->client = c) != NULL)
+		b->client->tree = b;
+	if ((b->left = l) != NULL)
+		b->left->parent = b;
+	if ((b->right = r) != NULL)
+		b->right->parent = b;
+
+	return 0;
+}
+
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
 	tmbr_tree_t *parent = node->parent, *uplift;
@@ -219,16 +241,10 @@ static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 
 	uplift = (parent->left == node) ? parent->right : parent->left;
 
-	if ((parent->client = uplift->client) != NULL)
-		parent->client->tree = parent;
-	if ((parent->left = uplift->left) != NULL)
-		parent->left->parent = parent;
-	if ((parent->right = uplift->right) != NULL)
-		parent->right->parent = parent;
+	tmbr_tree_swap(uplift, node->parent);
 
 	free(uplift);
 	free(node);
-
 	return 0;
 }
 
@@ -569,19 +585,15 @@ static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args)
 {
 	tmbr_tree_t *focussed, *next;
 	tmbr_screen_t *screen;
-	tmbr_client_t *c;
 
 	if (tmbr_screens_find_by_focus(&screen) < 0 ||
 	    tmbr_tree_find_by_focus(&focussed, screen->tree) < 0 ||
-	    tmbr_tree_find_sibling(&next, focussed, args->i) < 0)
+	    tmbr_tree_find_sibling(&next, focussed, args->i) < 0 ||
+	    tmbr_tree_swap(focussed, next) < 0)
 		return;
 
-	c = focussed->client;
-	focussed->client = next->client;
-	next->client = c;
-
 	tmbr_layout(screen);
-	tmbr_client_focus(c);
+	tmbr_client_focus(next->client);
 }
 
 static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
