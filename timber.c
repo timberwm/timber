@@ -194,21 +194,6 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_di
 	i = NULL, n = t; \
 	while (tmbr_tree_find_sibling(&n, n, TMBR_DIR_RIGHT) == 0 && ((!i && tmbr_tree_find_sibling(&i, t, TMBR_DIR_RIGHT) == 0) || i != n))
 
-static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
-		xcb_window_t window)
-{
-	tmbr_tree_t *n, *it;
-
-	tmbr_tree_foreach_leaf(tree, it, n) {
-		if (n->client->window == window) {
-			*node = n;
-			return 0;
-		}
-	}
-
-	return -1;
-}
-
 static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 {
 	tmbr_tree_t *l = a->left, *r = a->right;
@@ -393,6 +378,21 @@ static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *c
 	return tmbr_client_set_fullscreen(client, fs);
 }
 
+static int tmbr_desktop_find_window(tmbr_client_t **out, tmbr_desktop_t *desktop,
+		xcb_window_t window)
+{
+	tmbr_tree_t *n, *it;
+
+	tmbr_tree_foreach_leaf(desktop->clients, it, n) {
+		if (n->client->window == window) {
+			*out = n->client;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
 static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	tmbr_client_t *focus = NULL;
@@ -409,18 +409,17 @@ static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *clien
 
 static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
-	desktop->focus = NULL;
+	if (desktop->focus == client) {
+		tmbr_tree_t *sibling = NULL;
+		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_DIR_RIGHT) == 0)
+			tmbr_desktop_set_focussed_client(desktop, sibling->client);
+		else
+			desktop->focus = NULL;
+	}
+
 	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
 		die("Unable to remove client from tree");
-	return 0;
-}
 
-static int tmbr_screen_unmanage_window(tmbr_screen_t *screen, tmbr_client_t *client)
-{
-	screen->focus->focus = NULL;
-	if (tmbr_desktop_remove_client(screen->focus, client) < 0)
-		die("Unable to remove client from tree");
-	tmbr_client_free(client);
 	return 0;
 }
 
@@ -590,12 +589,12 @@ static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 	for (screen = screens; screen; screen = screen->next) {
 		tmbr_desktop_t *desktop;
 		for (desktop = screen->desktops; desktop; desktop = desktop->next) {
-			tmbr_tree_t *entered;
+			tmbr_client_t *entered;
 
-			if ((tmbr_tree_find_by_window(&entered, desktop->clients, ev->event)) < 0)
+			if ((tmbr_desktop_find_window(&entered, desktop, ev->event)) < 0)
 				continue;
 
-			if (tmbr_desktop_set_focussed_client(desktop, entered->client) < 0 ||
+			if (tmbr_desktop_set_focussed_client(desktop, entered) < 0 ||
 			    tmbr_screen_set_focussed(screen) < 0)
 				return -1;
 
@@ -635,17 +634,14 @@ static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 	for (screen = screens; screen; screen = screen->next) {
 		tmbr_desktop_t *desktop;
 		for (desktop = screen->desktops; desktop; desktop = desktop->next) {
-			tmbr_tree_t *node, *parent;
+			tmbr_client_t *client;
 
-			if ((tmbr_tree_find_by_window(&node, desktop->clients, ev->window)) < 0)
+			if ((tmbr_desktop_find_window(&client, desktop, ev->window)) < 0)
 				continue;
 
-			parent = node->parent;
-
-			if (tmbr_screen_unmanage_window(screen, node->client) < 0)
-				die("Unable to unmanage client");
-			if (parent)
-				tmbr_desktop_set_focussed_client(desktop, parent->client);
+			if (tmbr_desktop_remove_client(desktop, client) < 0)
+				die("Unable to remove client from tree");
+			tmbr_client_free(client);
 
 			return tmbr_desktop_layout(desktop);
 		}
@@ -666,13 +662,13 @@ static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
 	for (screen = screens; screen; screen = screen->next) {
 		tmbr_desktop_t *desktop;
 		for (desktop = screen->desktops; desktop; desktop = desktop->next) {
-			tmbr_tree_t *t;
+			tmbr_client_t *c;
 
-			if (tmbr_tree_find_by_window(&t, desktop->clients, ev->window) < 0)
+			if (tmbr_desktop_find_window(&c, desktop, ev->window) < 0)
 				continue;
 
 			if (state == ewmh._NET_WM_STATE_FULLSCREEN)
-				tmbr_desktop_set_fullscreen(desktop, t->client, action == XCB_EWMH_WM_STATE_ADD);
+				tmbr_desktop_set_fullscreen(desktop, c, action == XCB_EWMH_WM_STATE_ADD);
 		}
 	}
 
