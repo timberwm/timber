@@ -14,6 +14,6 @@ executable(
       copy: true,
     ),
   ],
-  dependencies: dependency('xcb'),
+  dependencies: [ dependency('xcb'), dependency('xcb-ewmh') ],
   install: true,
 )
