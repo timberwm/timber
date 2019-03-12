@@ -58,7 +58,6 @@ struct tmbr_client {
 	tmbr_screen_t *screen;
 	tmbr_tree_t *tree;
 	xcb_window_t window;
-	char focussed;
 };
 
 struct tmbr_command {
@@ -70,6 +69,7 @@ struct tmbr_command {
 struct tmbr_screen {
 	tmbr_screen_t *next;
 	tmbr_tree_t *tree;
+	tmbr_client_t *focus;
 	xcb_screen_t *screen;
 	uint16_t width;
 	uint16_t height;
@@ -182,20 +182,6 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_di
 #define tmbr_tree_foreach_leaf(t, i, n) \
 	i = NULL, n = t; \
 	while (tmbr_tree_find_sibling(&n, n, TMBR_DIR_RIGHT) == 0 && ((!i && tmbr_tree_find_sibling(&i, t, TMBR_DIR_RIGHT) == 0) || i != n))
-
-static int tmbr_tree_find_by_focus(tmbr_tree_t **node, tmbr_tree_t *tree)
-{
-	tmbr_tree_t *n, *it;
-
-	tmbr_tree_foreach_leaf(tree, it, n) {
-		if (n->client->focussed) {
-			*node = n;
-			return 0;
-		}
-	}
-
-	return -1;
-}
 
 static int tmbr_tree_find_by_window(tmbr_tree_t **node, tmbr_tree_t *tree,
 		xcb_window_t window)
@@ -350,10 +336,8 @@ static int tmbr_layout(tmbr_screen_t *screen)
 
 static int tmbr_screen_get_focussed_client(tmbr_client_t **out, tmbr_screen_t *screen)
 {
-	tmbr_tree_t *focus;
-	if (tmbr_tree_find_by_focus(&focus, screen->tree) < 0)
+	if ((*out = screen->focus) == NULL)
 		return -1;
-	*out = focus->client;
 	return 0;
 }
 
@@ -361,14 +345,12 @@ static int tmbr_screen_set_focussed_client(tmbr_screen_t *screen, tmbr_client_t 
 {
 	tmbr_client_t *focus;
 
-	if (tmbr_screen_get_focussed_client(&focus, screen) == 0) {
-		focus->focussed = 0;
+	if (tmbr_screen_get_focussed_client(&focus, screen) == 0)
 		tmbr_client_draw_border(focus, TMBR_COLOR_INACTIVE);
-	}
+	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
 
 	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
-	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
-	client->focussed = 1;
+	screen->focus = client;
 
 	return 0;
 }
@@ -392,9 +374,9 @@ static int tmbr_screen_manage_window(tmbr_screen_t *screen, xcb_window_t window)
 
 static int tmbr_screen_unmanage_clients(tmbr_client_t *client)
 {
+	client->screen->focus = NULL;
 	if (tmbr_tree_remove(&client->screen->tree, client->tree) < 0)
 		die("Unable to remove client from tree");
-
 	tmbr_client_free(client);
 	return 0;
 }
