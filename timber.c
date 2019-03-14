@@ -98,6 +98,7 @@ struct tmbr_tree {
 
 static void tmbr_cmd_client_kill(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_focus(const tmbr_command_args_t *args);
+static void tmbr_cmd_client_move(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args);
@@ -820,6 +821,24 @@ static void tmbr_cmd_client_focus(const tmbr_command_args_t *args)
 		return;
 
 	tmbr_desktop_set_focussed_client(focus->desktop, next->client);
+}
+
+static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
+{
+	tmbr_desktop_t *source, *target;
+	tmbr_client_t *focus;
+
+	if (tmbr_client_find_by_focus(&focus) < 0)
+		return;
+	source = focus->desktop;
+
+	if ((target = (args->i == TMBR_DIR_LEFT) ? focus->desktop->prev : focus->desktop->next) == NULL)
+		return;
+
+	tmbr_desktop_remove_client(focus->desktop, focus);
+	tmbr_client_hide(focus);
+	tmbr_desktop_add_client(target, focus);
+	tmbr_desktop_layout(source);
 }
 
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
