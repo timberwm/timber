@@ -35,12 +35,23 @@
 
 #define TMBR_UNUSED(x) (void)(x)
 
+#define TMBR_ARG_NONE      { 0, 0 }
+#define TMBR_ARG_SEL(i)    { i, 0 }
+#define TMBR_ARG_DIR(d, i) { i, d }
+
 typedef struct tmbr_client tmbr_client_t;
 typedef struct tmbr_command_args tmbr_command_args_t;
 typedef struct tmbr_command tmbr_command_t;
 typedef struct tmbr_desktop tmbr_desktop_t;
 typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
+
+typedef enum {
+	TMBR_DIR_NORTH,
+	TMBR_DIR_SOUTH,
+	TMBR_DIR_EAST,
+	TMBR_DIR_WEST
+} tmbr_dir_t;
 
 typedef enum {
 	TMBR_SELECT_PREV,
@@ -55,6 +66,7 @@ typedef enum {
 
 struct tmbr_command_args {
 	int i;
+	tmbr_dir_t dir;
 };
 
 struct tmbr_client {
@@ -99,11 +111,11 @@ struct tmbr_tree {
 static void tmbr_cmd_client_kill(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_focus(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_move(const tmbr_command_args_t *args);
+static void tmbr_cmd_client_resize(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args);
-static void tmbr_cmd_tree_ratio(const tmbr_command_args_t *args);
 static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args);
 
 #include "config.h"
@@ -843,6 +855,44 @@ static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
 	tmbr_desktop_layout(source);
 }
 
+static void tmbr_cmd_client_resize(const tmbr_command_args_t *args)
+{
+	tmbr_client_t *client;
+	tmbr_select_t select;
+	tmbr_split_t split;
+	tmbr_tree_t *tree;
+
+	if (tmbr_client_find_by_focus(&client) < 0)
+		return;
+
+	switch (args->dir) {
+	    case TMBR_DIR_NORTH:
+		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_SELECT_NEXT; break;
+	    case TMBR_DIR_SOUTH:
+		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_SELECT_PREV; break;
+	    case TMBR_DIR_EAST:
+		split = TMBR_SPLIT_VERTICAL; select = TMBR_SELECT_PREV; break;
+	    case TMBR_DIR_WEST:
+		split = TMBR_SPLIT_VERTICAL; select = TMBR_SELECT_NEXT; break;
+	}
+
+	for (tree = client->tree; tree; tree = tree->parent) {
+		if (!tree->parent)
+			return;
+		if (tmbr_tree_get_child(tree->parent, select) != tree ||
+		    tree->parent->split != split)
+			continue;
+		tree = tree->parent;
+		break;
+	}
+
+	if ((args->i < 0 && args->i >= tree->ratio) ||
+	    (args->i > 0 && args->i + tree->ratio >= 100))
+		return;
+	tree->ratio += args->i;
+	tmbr_desktop_layout(client->desktop);
+}
+
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
 {
 	tmbr_client_t *focus;
@@ -903,26 +953,6 @@ static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
 		tmbr_screen_set_focussed_desktop(screen, p);
 	else if (args->i == TMBR_SELECT_NEXT && c && c->next)
 		tmbr_screen_set_focussed_desktop(screen, c->next);
-}
-
-static void tmbr_cmd_tree_ratio(const tmbr_command_args_t *args)
-{
-	tmbr_client_t *focus;
-	tmbr_tree_t *parent;
-	uint8_t ratio;
-
-	if (tmbr_client_find_by_focus(&focus) < 0 ||
-	    (parent = focus->tree->parent) == NULL)
-		return;
-
-	ratio = parent->ratio;
-	if ((args->i < 0 && args->i >= ratio) ||
-	    (args->i > 0 && args->i + ratio >= 100))
-		return;
-
-	parent->ratio += args->i;
-
-	tmbr_desktop_layout(focus->desktop);
 }
 
 static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args)
