@@ -169,33 +169,37 @@ static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, tmbr_dir_t dir)
 static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_dir_t dir)
 {
 	unsigned char upwards_dir = dir, downwards_dir = !dir;
+	tmbr_tree_t *t = tree;
 
-	while (tree) {
-		if (!tree->parent) {
+	while (t) {
+		if (!t->parent) {
 			/* We want to wrap to the leftmost node */
 			break;
-		} else if (tree != (tmbr_tree_get_child(tree->parent, upwards_dir))) {
+		} else if (t != (tmbr_tree_get_child(t->parent, upwards_dir))) {
 			/* Go to the leftmost node of the right parent node */
-			tree = tmbr_tree_get_child(tree->parent, upwards_dir);
+			t = tmbr_tree_get_child(t->parent, upwards_dir);
 			break;
 		}
-		tree = tree->parent;
+		t = t->parent;
 	}
 
-	if (!tree)
+	if (!t)
 		return -1;
 
-	while (tmbr_tree_get_child(tree, downwards_dir))
-		tree = tmbr_tree_get_child(tree, downwards_dir);
+	while (tmbr_tree_get_child(t, downwards_dir))
+		t = tmbr_tree_get_child(t, downwards_dir);
 
-	*node = tree;
+	if (t == tree)
+		return -1;
+
+	*node = t;
 
 	return 0;
 }
 
 #define tmbr_tree_foreach_leaf(t, i, n) \
 	i = NULL, n = t; \
-	while (tmbr_tree_find_sibling(&n, n, TMBR_DIR_RIGHT) == 0 && ((!i && tmbr_tree_find_sibling(&i, t, TMBR_DIR_RIGHT) == 0) || i != n))
+	while ((!i && n && n->client && (i = n)) || (tmbr_tree_find_sibling(&n, n, TMBR_DIR_RIGHT) == 0 && ((!i && (i = n)) || i != n)))
 
 static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 {
