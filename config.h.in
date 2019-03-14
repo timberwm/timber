@@ -5,20 +5,26 @@
 #define TMBR_COLOR_INACTIVE 0xFF222222
 
 static const tmbr_command_t cmds[] = {
-	{ "client_kill",         tmbr_cmd_client_kill,   { 0 }              },
-	{ "client_focus_prev",   tmbr_cmd_client_focus,  { TMBR_DIR_LEFT }  },
-	{ "client_focus_next",   tmbr_cmd_client_focus,  { TMBR_DIR_RIGHT } },
-	{ "client_move_prev",    tmbr_cmd_client_move,   { TMBR_DIR_LEFT }  },
-	{ "client_move_next",    tmbr_cmd_client_move,   { TMBR_DIR_RIGHT } },
-	{ "client_swap_prev",    tmbr_cmd_client_swap,   { TMBR_DIR_LEFT }  },
-	{ "client_swap_next",    tmbr_cmd_client_swap,   { TMBR_DIR_RIGHT } },
-	{ "desktop_new",         tmbr_cmd_desktop_new,   { 0 }              },
-	{ "desktop_kill",        tmbr_cmd_desktop_kill,  { 0 }              },
-	{ "desktop_focus_prev",  tmbr_cmd_desktop_focus, { TMBR_DIR_LEFT }  },
-	{ "desktop_focus_next",  tmbr_cmd_desktop_focus, { TMBR_DIR_RIGHT } },
-	{ "tree_ratio_decrease", tmbr_cmd_tree_ratio,    { -5 }             },
-	{ "tree_ratio_increase", tmbr_cmd_tree_ratio,    { +5 }             },
-	{ "tree_rotate",         tmbr_cmd_tree_rotate,   { 0 }              }
+	{ "client_kill",         tmbr_cmd_client_kill,   TMBR_ARG_NONE                    },
+	{ "client_focus_prev",   tmbr_cmd_client_focus,  TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
+	{ "client_focus_next",   tmbr_cmd_client_focus,  TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
+	{ "client_move_prev",    tmbr_cmd_client_move,   TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
+	{ "client_move_next",    tmbr_cmd_client_move,   TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
+	{ "client_expand_north", tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_NORTH, -5) },
+	{ "client_expand_south", tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_SOUTH, +5) },
+	{ "client_expand_east",  tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_EAST,  +5) },
+	{ "client_expand_west",  tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_WEST,  -5) },
+	{ "client_shrink_north", tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_NORTH, +5) },
+	{ "client_shrink_south", tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_SOUTH, -5) },
+	{ "client_shrink_east",  tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_EAST,  -5) },
+	{ "client_shrink_west",  tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_WEST,  +5) },
+	{ "client_swap_prev",    tmbr_cmd_client_swap,   TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
+	{ "client_swap_next",    tmbr_cmd_client_swap,   TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
+	{ "desktop_new",         tmbr_cmd_desktop_new,   TMBR_ARG_NONE                    },
+	{ "desktop_kill",        tmbr_cmd_desktop_kill,  TMBR_ARG_NONE                    },
+	{ "desktop_focus_prev",  tmbr_cmd_desktop_focus, TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
+	{ "desktop_focus_next",  tmbr_cmd_desktop_focus, TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
+	{ "tree_rotate",         tmbr_cmd_tree_rotate,   TMBR_ARG_NONE                    }
 };
 
 /* vim: set tabstop=8 noexpandtab : */
