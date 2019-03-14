@@ -468,6 +468,7 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 		die("Unable to remove client from tree");
 
 	client->desktop = NULL;
+	client->tree = NULL;
 
 	return 0;
 }
