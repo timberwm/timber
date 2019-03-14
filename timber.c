@@ -28,6 +28,7 @@
 
 #define inline
 #include <xcb/xcb.h>
+#include <xcb/xcb_aux.h>
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_ewmh.h>
 #undef inline
@@ -92,6 +93,8 @@ static void tmbr_cmd_swap_sibling(const tmbr_command_args_t *args);
 static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args);
 
 #include "config.h"
+
+static void tmbr_discard_events(uint8_t type);
 
 static tmbr_screen_t *screens;
 static xcb_connection_t *conn;
@@ -329,9 +332,13 @@ static int tmbr_layout(tmbr_screen_t *screen)
 	if (!screen || !screen->tree)
 		return 0;
 
-	return tmbr_layout_tree(screen, screen->tree, 0, 0,
-				screen->screen->width_in_pixels,
-				screen->screen->height_in_pixels);
+	if (tmbr_layout_tree(screen, screen->tree, 0, 0,
+			     screen->screen->width_in_pixels,
+			     screen->screen->height_in_pixels) < 0)
+		die("Unable to layout tree");
+
+	tmbr_discard_events(XCB_ENTER_NOTIFY);
+	return 0;
 }
 
 static int tmbr_screen_get_focussed_client(tmbr_client_t **out, tmbr_screen_t *screen)
@@ -527,6 +534,19 @@ static void tmbr_screens_free(tmbr_screen_t *s)
 	screens = NULL;
 }
 
+static int tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
+{
+	tmbr_screen_t *screen;
+	tmbr_client_t *client;
+
+	if (tmbr_screen_get_focussed(&screen) < 0 ||
+	    tmbr_screen_get_focussed_client(&client, screen) < 0 ||
+	    client->window == ev->event)
+		return 0;
+
+	return tmbr_screen_set_focussed_client(screen, client);
+}
+
 static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 {
 	tmbr_screen_t *screen;
@@ -616,6 +636,8 @@ static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
 static int tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
+		case XCB_FOCUS_IN:
+			return tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
 		case XCB_ENTER_NOTIFY:
 			return tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
 		case XCB_MAP_REQUEST:
@@ -626,6 +648,19 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
 			return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
 		default:
 			return -1;
+	}
+}
+
+static void tmbr_discard_events(uint8_t type)
+{
+	xcb_generic_event_t *ev;
+
+	xcb_aux_sync(conn);
+
+	while ((ev = xcb_poll_for_event(conn)) != NULL) {
+		if (XCB_EVENT_RESPONSE_TYPE(ev) != type)
+			tmbr_handle_event(ev);
+		free(ev);
 	}
 }
 
@@ -649,7 +684,6 @@ static void tmbr_cmd_adjust_ratio(const tmbr_command_args_t *args)
 	parent->ratio += args->i;
 
 	tmbr_layout(screen);
-	tmbr_screen_set_focussed_client(screen, focus);
 }
 
 static void tmbr_cmd_focus_sibling(const tmbr_command_args_t *args)
@@ -711,7 +745,6 @@ static void tmbr_cmd_toggle_split(const tmbr_command_args_t *args)
 	focus->tree->parent->split = !focus->tree->parent->split;
 
 	tmbr_layout(screen);
-	tmbr_screen_set_focussed_client(screen, focus);
 }
 
 static void tmbr_handle_command(int fd)
