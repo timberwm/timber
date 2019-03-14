@@ -385,18 +385,6 @@ static int tmbr_desktop_set_focussed_client(tmbr_desktop_t *desktop, tmbr_client
 	return 0;
 }
 
-static int tmbr_desktop_set_focussed(tmbr_desktop_t *desktop)
-{
-	tmbr_tree_t *it, *t;
-
-	tmbr_tree_foreach_leaf(desktop->screen->focus->clients, it, t)
-		tmbr_client_hide(t->client);
-	tmbr_tree_foreach_leaf(desktop->clients, it, t)
-		tmbr_client_show(t->client);
-
-	return tmbr_desktop_set_focussed_client(desktop, desktop->focus);
-}
-
 static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 {
 	if (!desktop->clients)
@@ -409,6 +397,19 @@ static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 
 	tmbr_discard_events(XCB_ENTER_NOTIFY);
 	return 0;
+}
+
+static int tmbr_desktop_set_focussed(tmbr_desktop_t *desktop)
+{
+	tmbr_tree_t *it, *t;
+
+	tmbr_tree_foreach_leaf(desktop->screen->focus->clients, it, t)
+		tmbr_client_hide(t->client);
+	tmbr_tree_foreach_leaf(desktop->clients, it, t)
+		tmbr_client_show(t->client);
+
+	tmbr_desktop_set_focussed_client(desktop, desktop->focus);
+	return tmbr_desktop_layout(desktop);
 }
 
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
