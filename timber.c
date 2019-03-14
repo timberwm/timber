@@ -619,17 +619,24 @@ static void tmbr_screens_free(tmbr_screen_t *s)
 	screens = NULL;
 }
 
-static int tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
+static int tmbr_client_find_by_focus(tmbr_client_t **out)
 {
 	tmbr_screen_t *screen;
+	if (tmbr_screen_get_focussed(&screen) < 0 ||
+	    tmbr_desktop_get_focussed_client(out, screen->focus) < 0)
+		return -1;
+	return 0;
+}
+
+static int tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
+{
 	tmbr_client_t *client;
 
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_desktop_get_focussed_client(&client, screen->focus) < 0 ||
+	if (tmbr_client_find_by_focus(&client) < 0 ||
 	    client->window == ev->event)
 		return 0;
 
-	return tmbr_desktop_set_focussed_client(screen->focus, client);
+	return tmbr_desktop_set_focussed_client(client->desktop, client);
 }
 
 static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
@@ -765,13 +772,11 @@ static void tmbr_discard_events(uint8_t type)
 
 static void tmbr_cmd_client_kill(const tmbr_command_args_t *args)
 {
-	tmbr_screen_t *screen;
 	tmbr_client_t *focus;
 
 	TMBR_UNUSED(args);
 
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_desktop_get_focussed_client(&focus, screen->focus) < 0)
+	if (tmbr_client_find_by_focus(&focus) < 0)
 		return;
 
 	xcb_kill_client(conn, focus->window);
@@ -779,32 +784,28 @@ static void tmbr_cmd_client_kill(const tmbr_command_args_t *args)
 
 static void tmbr_cmd_client_focus(const tmbr_command_args_t *args)
 {
-	tmbr_screen_t *screen;
 	tmbr_client_t *focus;
 	tmbr_tree_t *next;
 
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_desktop_get_focussed_client(&focus, screen->focus) < 0 ||
+	if (tmbr_client_find_by_focus(&focus) < 0 ||
 	    tmbr_tree_find_sibling(&next, focus->tree, args->i) < 0)
 		return;
 
-	tmbr_desktop_set_focussed_client(screen->focus, next->client);
+	tmbr_desktop_set_focussed_client(focus->desktop, next->client);
 }
 
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
 {
-	tmbr_screen_t *screen;
 	tmbr_client_t *focus;
 	tmbr_tree_t *next;
 
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_desktop_get_focussed_client(&focus, screen->focus) < 0 ||
+	if (tmbr_client_find_by_focus(&focus) < 0 ||
 	    tmbr_tree_find_sibling(&next, focus->tree, args->i) < 0 ||
 	    tmbr_tree_swap(focus->tree, next) < 0)
 		return;
 
-	tmbr_desktop_layout(screen->focus);
-	tmbr_desktop_set_focussed_client(screen->focus, next->client);
+	tmbr_desktop_layout(focus->desktop);
+	tmbr_desktop_set_focussed_client(focus->desktop, next->client);
 }
 
 
@@ -865,13 +866,11 @@ static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
 
 static void tmbr_cmd_tree_ratio(const tmbr_command_args_t *args)
 {
-	tmbr_screen_t *screen;
 	tmbr_client_t *focus;
 	tmbr_tree_t *parent;
 	uint8_t ratio;
 
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_desktop_get_focussed_client(&focus, screen->focus) < 0 ||
+	if (tmbr_client_find_by_focus(&focus) < 0 ||
 	    (parent = focus->tree->parent) == NULL)
 		return;
 
@@ -882,24 +881,22 @@ static void tmbr_cmd_tree_ratio(const tmbr_command_args_t *args)
 
 	parent->ratio += args->i;
 
-	tmbr_desktop_layout(screen->focus);
+	tmbr_desktop_layout(focus->desktop);
 }
 
 static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args)
 {
-	tmbr_screen_t *screen;
 	tmbr_client_t *focus;
 
 	TMBR_UNUSED(args);
 
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_desktop_get_focussed_client(&focus, screen->focus) < 0 ||
+	if (tmbr_client_find_by_focus(&focus) < 0 ||
 	    !focus->tree->parent)
 		return;
 
 	focus->tree->parent->split = !focus->tree->parent->split;
 
-	tmbr_desktop_layout(screen->focus);
+	tmbr_desktop_layout(focus->desktop);
 }
 
 static void tmbr_handle_command(int fd)
