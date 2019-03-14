@@ -5,18 +5,18 @@
 #define TMBR_COLOR_INACTIVE 0xFF222222
 
 static const tmbr_command_t cmds[] = {
-	{ "client_kill",         tmbr_cmd_kill,          { 0 }              },
-	{ "client_focus_prev",   tmbr_cmd_focus_sibling, { TMBR_DIR_LEFT }  },
-	{ "client_focus_next",   tmbr_cmd_focus_sibling, { TMBR_DIR_RIGHT } },
-	{ "client_swap_prev",    tmbr_cmd_swap_sibling,  { TMBR_DIR_LEFT }  },
-	{ "client_swap_next",    tmbr_cmd_swap_sibling,  { TMBR_DIR_RIGHT } },
+	{ "client_kill",         tmbr_cmd_client_kill,   { 0 }              },
+	{ "client_focus_prev",   tmbr_cmd_client_focus,  { TMBR_DIR_LEFT }  },
+	{ "client_focus_next",   tmbr_cmd_client_focus,  { TMBR_DIR_RIGHT } },
+	{ "client_swap_prev",    tmbr_cmd_client_swap,   { TMBR_DIR_LEFT }  },
+	{ "client_swap_next",    tmbr_cmd_client_swap,   { TMBR_DIR_RIGHT } },
 	{ "desktop_new",         tmbr_cmd_desktop_new,   { 0 }              },
 	{ "desktop_kill",        tmbr_cmd_desktop_kill,  { 0 }              },
 	{ "desktop_focus_prev",  tmbr_cmd_desktop_focus, { TMBR_DIR_LEFT }  },
 	{ "desktop_focus_next",  tmbr_cmd_desktop_focus, { TMBR_DIR_RIGHT } },
-	{ "tree_decrease_ratio", tmbr_cmd_adjust_ratio,  { -5 }             },
-	{ "tree_increase_ratio", tmbr_cmd_adjust_ratio,  { +5 }             },
-	{ "tree_toggle_split",   tmbr_cmd_toggle_split,  { 0 }              }
+	{ "tree_ratio_decrease", tmbr_cmd_tree_ratio,    { -5 }             },
+	{ "tree_ratio_increase", tmbr_cmd_tree_ratio,    { +5 }             },
+	{ "tree_rotate",         tmbr_cmd_tree_rotate,   { 0 }              }
 };
 
 /* vim: set tabstop=8 noexpandtab : */
