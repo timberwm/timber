@@ -534,6 +534,19 @@ static void tmbr_screens_free(tmbr_screen_t *s)
 	screens = NULL;
 }
 
+static int tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
+{
+	tmbr_screen_t *screen;
+	tmbr_client_t *client;
+
+	if (tmbr_screen_get_focussed(&screen) < 0 ||
+	    tmbr_screen_get_focussed_client(&client, screen) < 0 ||
+	    client->window == ev->event)
+		return 0;
+
+	return tmbr_screen_set_focussed_client(screen, client);
+}
+
 static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 {
 	tmbr_screen_t *screen;
@@ -623,6 +636,8 @@ static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
 static int tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
+		case XCB_FOCUS_IN:
+			return tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
 		case XCB_ENTER_NOTIFY:
 			return tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
 		case XCB_MAP_REQUEST:
