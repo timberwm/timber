@@ -494,13 +494,15 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 							     NULL)) == NULL)
 			goto next;
 
-		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE)
+		if (attrs->map_state == XCB_MAP_STATE_UNVIEWABLE)
 			goto next;
 
 		if (tmbr_client_new(&client, children[i]) < 0)
 			die("Unable to create new client");
 		if (tmbr_desktop_add_client(screen->focus, client) < 0)
 			die("Unable to add client to desktop");
+		if (attrs->map_state == XCB_MAP_STATE_UNMAPPED)
+			tmbr_client_show(client);
 next:
 		free(attrs);
 	}
