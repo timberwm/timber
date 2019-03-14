@@ -344,13 +344,12 @@ static int tmbr_layout_tree(tmbr_tree_t *tree, uint16_t x, uint16_t y, uint16_t 
 	return 0;
 }
 
-static int tmbr_desktop_new(tmbr_desktop_t **out, tmbr_screen_t *screen)
+static int tmbr_desktop_new(tmbr_desktop_t **out)
 {
 	tmbr_desktop_t *d;
 
 	if ((d = calloc(1, sizeof(*d))) == NULL)
 		die("Unable to allocate desktop");
-	d->screen = screen;
 
 	*out = d;
 	return 0;
@@ -543,6 +542,37 @@ static int tmbr_screen_set_focussed_desktop(tmbr_screen_t *screen, tmbr_desktop_
 	return 0;
 }
 
+static int tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
+{
+	desktop->screen = screen;
+	desktop->next = screen->focus ? screen->focus->next : NULL;
+	if (screen->focus) {
+		screen->focus->next = desktop;
+	} else {
+		screen->focus = desktop;
+	}
+	if (!screen->desktops)
+		screen->desktops = desktop;
+	return 0;
+}
+
+static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
+{
+	tmbr_desktop_t *p, **d;
+
+	if (desktop->clients || (screen->desktops == desktop && !desktop->next))
+		return -1;
+
+	for (p = NULL, d = &screen->desktops; *d && (*d) != screen->focus; p = *d, d = &(*d)->next)
+		;
+	*d = (*d)->next;
+
+	if (screen->focus == desktop)
+		tmbr_screen_set_focussed_desktop(screen, p ? p : *d);
+
+	return 0;
+}
+
 static int tmbr_screen_manage(xcb_screen_t *screen)
 {
 	const uint32_t values[] = {
@@ -551,11 +581,12 @@ static int tmbr_screen_manage(xcb_screen_t *screen)
 	};
 	xcb_generic_error_t *error;
 	xcb_void_cookie_t cookie;
+	tmbr_desktop_t *d;
 	tmbr_screen_t *s;
 
 	if ((s = calloc(1, sizeof(*s))) == NULL)
 		die("Cannot allocate screen");
-	if (tmbr_desktop_new(&s->desktops, s) < 0)
+	if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
 		die("Cannot set up desktop");
 
 	s->focus = s->desktops;
@@ -800,7 +831,6 @@ static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
 	tmbr_desktop_set_focussed_client(focus->desktop, next->client);
 }
 
-
 static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args)
 {
 	tmbr_desktop_t *desktop;
@@ -808,12 +838,10 @@ static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args)
 
 	TMBR_UNUSED(args);
 
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_desktop_new(&desktop, screen) < 0)
+	if (tmbr_desktop_new(&desktop) < 0 ||
+	    tmbr_screen_get_focussed(&screen) < 0 ||
+	    tmbr_screen_add_desktop(screen, desktop) < 0)
 		return;
-
-	desktop->next = screen->focus->next;
-	screen->focus->next = desktop;
 
 	tmbr_screen_set_focussed_desktop(screen, desktop);
 }
@@ -821,21 +849,16 @@ static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args)
 static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args)
 {
 	tmbr_screen_t *screen;
-	tmbr_desktop_t *p, **d;
+	tmbr_desktop_t *desktop;
 
 	TMBR_UNUSED(args);
 
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    screen->focus->clients)
+	if (tmbr_screen_get_focussed(&screen) < 0)
 		return;
-
-	for (p = NULL, d = &screen->desktops; *d && (*d) != screen->focus; p = *d, d = &(*d)->next);
-	if (!p && !(*d)->next)
+	desktop = screen->focus;
+	if (tmbr_screen_remove_desktop(screen, screen->focus) < 0)
 		return;
-	*d = (*d)->next;
-
-	tmbr_desktop_free(screen->focus);
-	tmbr_screen_set_focussed_desktop(screen, p ? p : *d);
+	tmbr_desktop_free(desktop);
 }
 
 static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
