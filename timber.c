@@ -44,7 +44,8 @@ typedef struct tmbr_tree tmbr_tree_t;
 
 typedef enum {
 	TMBR_DIR_LEFT,
-	TMBR_DIR_RIGHT
+	TMBR_DIR_RIGHT,
+	TMBR_DIR_NEAREST
 } tmbr_dir_t;
 
 typedef enum {
@@ -168,8 +169,14 @@ static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, tmbr_dir_t dir)
 
 static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_dir_t dir)
 {
-	unsigned char upwards_dir = dir, downwards_dir = !dir;
+	unsigned char upwards_dir, downwards_dir;
 	tmbr_tree_t *t = tree;
+
+	if (dir == TMBR_DIR_NEAREST)
+		dir = (t && t->parent && t->parent->left == t) ? TMBR_DIR_RIGHT : TMBR_DIR_LEFT;
+
+	upwards_dir = dir;
+	downwards_dir = !dir;
 
 	while (t) {
 		if (!t->parent) {
@@ -450,7 +457,7 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 {
 	if (desktop->focus == client) {
 		tmbr_tree_t *sibling = NULL;
-		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_DIR_RIGHT) == 0)
+		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_DIR_NEAREST) == 0)
 			tmbr_desktop_set_focussed_client(desktop, sibling->client);
 		else
 			desktop->focus = NULL;
