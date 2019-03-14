@@ -57,7 +57,7 @@ struct tmbr_command_args {
 };
 
 struct tmbr_client {
-	tmbr_screen_t *screen;
+	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
 	xcb_window_t window;
 };
@@ -260,7 +260,7 @@ static int tmbr_client_hide(tmbr_client_t *client)
 	return 0;
 }
 
-static int tmbr_client_new(tmbr_client_t **out, tmbr_screen_t *screen, xcb_window_t window)
+static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
 {
 	const uint32_t values[] = { XCB_EVENT_MASK_ENTER_WINDOW };
 	xcb_void_cookie_t cookie;
@@ -269,7 +269,6 @@ static int tmbr_client_new(tmbr_client_t **out, tmbr_screen_t *screen, xcb_windo
 	if ((client = calloc(1, sizeof(*client))) == NULL)
 		die("Unable to allocate client");
 	client->window = window;
-	client->screen = screen;
 
 	cookie = xcb_change_window_attributes_checked(conn, window, XCB_CW_EVENT_MASK, values);
 	if ((xcb_request_check(conn, cookie)) != NULL)
@@ -442,6 +441,7 @@ static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *clien
 
 	if (tmbr_desktop_set_focussed_client(desktop, client) < 0)
 		die("Unable to focus client");
+	client->desktop = desktop;
 
 	return 0;
 }
@@ -458,6 +458,8 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 
 	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
 		die("Unable to remove client from tree");
+
+	client->desktop = NULL;
 
 	return 0;
 }
@@ -485,7 +487,7 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE)
 			goto next;
 
-		if (tmbr_client_new(&client, screen, children[i]) < 0)
+		if (tmbr_client_new(&client, children[i]) < 0)
 			die("Unable to create new client");
 		if (tmbr_desktop_add_client(screen->focus, client) < 0)
 			die("Unable to add client to desktop");
@@ -670,7 +672,7 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 
 	xcb_map_window(conn, ev->window);
 
-	if (tmbr_client_new(&client, screen, ev->window) < 0)
+	if (tmbr_client_new(&client, ev->window) < 0)
 		die("Unable to create new client");
 
 	if (tmbr_desktop_add_client(screen->focus, client) < 0)
