@@ -628,6 +628,19 @@ static int tmbr_client_find_by_focus(tmbr_client_t **out)
 	return 0;
 }
 
+static int tmbr_client_find_by_window(tmbr_client_t **out, xcb_window_t window)
+{
+	tmbr_screen_t *screen;
+	tmbr_desktop_t *desktop;
+
+	for (screen = screens; screen; screen = screen->next)
+		for (desktop = screen->desktops; desktop; desktop = desktop->next)
+			if ((tmbr_desktop_find_window(out, desktop, window)) == 0)
+				return 0;
+
+	return -1;
+}
+
 static int tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
 {
 	tmbr_client_t *client;
@@ -641,41 +654,28 @@ static int tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
 
 static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 {
-	tmbr_screen_t *screen;
+	tmbr_client_t *client;
 
-	if (ev->mode != XCB_NOTIFY_MODE_NORMAL)
+	if (ev->mode != XCB_NOTIFY_MODE_NORMAL ||
+	    tmbr_client_find_by_window(&client, ev->event) < 0)
 		return 0;
 
-	for (screen = screens; screen; screen = screen->next) {
-		tmbr_desktop_t *desktop;
-		for (desktop = screen->desktops; desktop; desktop = desktop->next) {
-			tmbr_client_t *entered;
+	if (tmbr_desktop_set_focussed_client(client->desktop, client) < 0 ||
+	    tmbr_screen_set_focussed(client->desktop->screen) < 0)
+		return -1;
 
-			if ((tmbr_desktop_find_window(&entered, desktop, ev->event)) < 0)
-				continue;
-
-			if (tmbr_desktop_set_focussed_client(desktop, entered) < 0 ||
-			    tmbr_screen_set_focussed(screen) < 0)
-				return -1;
-
-			return 0;
-		}
-	}
-
-	return -1;
+	return 0;
 }
 
 static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 {
-	tmbr_desktop_t *desktop;
 	tmbr_client_t *client;
 	tmbr_screen_t *screen;
 
 	if (tmbr_screens_find_by_root(&screen, ev->parent) < 0)
 		return -1;
-	for (desktop = screen->desktops; desktop; desktop = desktop->next)
-		if (tmbr_desktop_find_window(&client, desktop, ev->window) == 0)
-			return 0;
+	if (tmbr_client_find_by_window(&client, ev->window) == 0)
+		return 0;
 
 	xcb_map_window(conn, ev->window);
 
@@ -693,48 +693,33 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 
 static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
-	tmbr_screen_t *screen;
+	tmbr_desktop_t *desktop;
+	tmbr_client_t *client;
 
-	for (screen = screens; screen; screen = screen->next) {
-		tmbr_desktop_t *desktop;
-		for (desktop = screen->desktops; desktop; desktop = desktop->next) {
-			tmbr_client_t *client;
+	if (tmbr_client_find_by_window(&client, ev->window) < 0)
+		return 0;
+	desktop = client->desktop;
 
-			if ((tmbr_desktop_find_window(&client, desktop, ev->window)) < 0)
-				continue;
+	if (tmbr_desktop_remove_client(desktop, client) < 0)
+		die("Unable to remove client from tree");
+	tmbr_client_free(client);
 
-			if (tmbr_desktop_remove_client(desktop, client) < 0)
-				die("Unable to remove client from tree");
-			tmbr_client_free(client);
-
-			return tmbr_desktop_layout(desktop);
-		}
-	}
-
-	return -1;
+	return tmbr_desktop_layout(desktop);
 }
 
 static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
 {
 	xcb_atom_t state = ev->data.data32[1];
 	uint32_t action = ev->data.data32[0];
-	tmbr_screen_t *screen;
+	tmbr_client_t *client;
 
-	if (ev->type != ewmh._NET_WM_STATE)
+	if (ev->type != ewmh._NET_WM_STATE ||
+	    tmbr_client_find_by_window(&client, ev->window) < 0)
 		return 0;
 
-	for (screen = screens; screen; screen = screen->next) {
-		tmbr_desktop_t *desktop;
-		for (desktop = screen->desktops; desktop; desktop = desktop->next) {
-			tmbr_client_t *c;
-
-			if (tmbr_desktop_find_window(&c, desktop, ev->window) < 0)
-				continue;
-
-			if (state == ewmh._NET_WM_STATE_FULLSCREEN)
-				tmbr_desktop_set_fullscreen(desktop, c, action == XCB_EWMH_WM_STATE_ADD);
-		}
-	}
+	if (state == ewmh._NET_WM_STATE_FULLSCREEN &&
+	    tmbr_desktop_set_fullscreen(client->desktop, client, action == XCB_EWMH_WM_STATE_ADD) < 0)
+		return -1;
 
 	return 0;
 }
