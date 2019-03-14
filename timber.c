@@ -70,6 +70,7 @@ struct tmbr_command {
 };
 
 struct tmbr_desktop {
+	tmbr_desktop_t *prev;
 	tmbr_desktop_t *next;
 	tmbr_screen_t *screen;
 	tmbr_tree_t *clients;
@@ -545,30 +546,33 @@ static int tmbr_screen_set_focussed_desktop(tmbr_screen_t *screen, tmbr_desktop_
 static int tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
 	desktop->screen = screen;
-	desktop->next = screen->focus ? screen->focus->next : NULL;
+
 	if (screen->focus) {
+		desktop->prev = screen->focus;
+		desktop->next = screen->focus->next;
 		screen->focus->next = desktop;
 	} else {
-		screen->focus = desktop;
+		desktop->prev = desktop->next = NULL;
+		screen->desktops = screen->focus = desktop;
 	}
-	if (!screen->desktops)
-		screen->desktops = desktop;
+
 	return 0;
 }
 
 static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
-	tmbr_desktop_t *p, **d;
-
 	if (desktop->clients || (screen->desktops == desktop && !desktop->next))
 		return -1;
 
-	for (p = NULL, d = &screen->desktops; *d && (*d) != screen->focus; p = *d, d = &(*d)->next)
-		;
-	*d = (*d)->next;
+	if (desktop->prev)
+		desktop->prev->next = desktop->next;
+	if (desktop->next)
+		desktop->next->prev = desktop->prev;
 
+	if (screen->desktops == desktop)
+		screen->desktops = desktop->next;
 	if (screen->focus == desktop)
-		tmbr_screen_set_focussed_desktop(screen, p ? p : *d);
+		tmbr_screen_set_focussed_desktop(screen, desktop->next ? desktop->next : desktop->prev);
 
 	return 0;
 }
@@ -589,7 +593,6 @@ static int tmbr_screen_manage(xcb_screen_t *screen)
 	if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
 		die("Cannot set up desktop");
 
-	s->focus = s->desktops;
 	s->screen = screen;
 	s->width = screen->width_in_pixels;
 	s->height = screen->height_in_pixels;
