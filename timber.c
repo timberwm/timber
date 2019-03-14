@@ -43,10 +43,10 @@ typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
 
 typedef enum {
-	TMBR_DIR_LEFT,
-	TMBR_DIR_RIGHT,
-	TMBR_DIR_NEAREST
-} tmbr_dir_t;
+	TMBR_SELECT_PREV,
+	TMBR_SELECT_NEXT,
+	TMBR_SELECT_NEAREST
+} tmbr_select_t;
 
 typedef enum {
 	TMBR_SPLIT_VERTICAL,
@@ -164,29 +164,29 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 	return 0;
 }
 
-static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, tmbr_dir_t dir)
+static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, tmbr_select_t which)
 {
-	return (dir == TMBR_DIR_LEFT) ? tree->left : tree->right;
+	return (which == TMBR_SELECT_PREV) ? tree->left : tree->right;
 }
 
-static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_dir_t dir)
+static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_select_t which)
 {
-	unsigned char upwards_dir, downwards_dir;
+	tmbr_select_t upwards, downwards;
 	tmbr_tree_t *t = tree;
 
-	if (dir == TMBR_DIR_NEAREST)
-		dir = (t && t->parent && t->parent->left == t) ? TMBR_DIR_RIGHT : TMBR_DIR_LEFT;
+	if (which == TMBR_SELECT_NEAREST)
+		which = (t && t->parent && t->parent->left == t) ? TMBR_SELECT_NEXT : TMBR_SELECT_PREV;
 
-	upwards_dir = dir;
-	downwards_dir = !dir;
+	upwards = which;
+	downwards = !which;
 
 	while (t) {
 		if (!t->parent) {
 			/* We want to wrap to the leftmost node */
 			break;
-		} else if (t != (tmbr_tree_get_child(t->parent, upwards_dir))) {
+		} else if (t != (tmbr_tree_get_child(t->parent, upwards))) {
 			/* Go to the leftmost node of the right parent node */
-			t = tmbr_tree_get_child(t->parent, upwards_dir);
+			t = tmbr_tree_get_child(t->parent, upwards);
 			break;
 		}
 		t = t->parent;
@@ -195,8 +195,8 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_di
 	if (!t)
 		return -1;
 
-	while (tmbr_tree_get_child(t, downwards_dir))
-		t = tmbr_tree_get_child(t, downwards_dir);
+	while (tmbr_tree_get_child(t, downwards))
+		t = tmbr_tree_get_child(t, downwards);
 
 	if (t == tree)
 		return -1;
@@ -208,7 +208,7 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_di
 
 #define tmbr_tree_foreach_leaf(t, i, n) \
 	i = NULL, n = t; \
-	while ((!i && n && n->client && (i = n)) || (tmbr_tree_find_sibling(&n, n, TMBR_DIR_RIGHT) == 0 && ((!i && (i = n)) || i != n)))
+	while ((!i && n && n->client && (i = n)) || (tmbr_tree_find_sibling(&n, n, TMBR_SELECT_NEXT) == 0 && ((!i && (i = n)) || i != n)))
 
 static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 {
@@ -459,7 +459,7 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 {
 	if (desktop->focus == client) {
 		tmbr_tree_t *sibling = NULL;
-		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_DIR_NEAREST) == 0)
+		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST) == 0)
 			tmbr_desktop_set_focussed_client(desktop, sibling->client);
 		else
 			desktop->focus = NULL;
@@ -834,7 +834,7 @@ static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
 		return;
 	source = focus->desktop;
 
-	if ((target = (args->i == TMBR_DIR_LEFT) ? focus->desktop->prev : focus->desktop->next) == NULL)
+	if ((target = (args->i == TMBR_SELECT_PREV) ? focus->desktop->prev : focus->desktop->next) == NULL)
 		return;
 
 	tmbr_desktop_remove_client(focus->desktop, focus);
@@ -899,9 +899,9 @@ static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
 		if (c == screen->focus)
 			break;
 
-	if (args->i == TMBR_DIR_LEFT && p)
+	if (args->i == TMBR_SELECT_PREV && p)
 		tmbr_screen_set_focussed_desktop(screen, p);
-	else if (args->i == TMBR_DIR_RIGHT && c && c->next)
+	else if (args->i == TMBR_SELECT_NEXT && c && c->next)
 		tmbr_screen_set_focussed_desktop(screen, c->next);
 }
 
