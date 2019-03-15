@@ -93,7 +93,7 @@ struct tmbr_screen {
 	tmbr_screen_t *next;
 	tmbr_desktop_t *desktops;
 	tmbr_desktop_t *focus;
-	xcb_screen_t *screen;
+	xcb_window_t root;
 	uint16_t x;
 	uint16_t y;
 	uint16_t width;
@@ -408,8 +408,8 @@ static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 	if (tmbr_layout_tree(desktop->clients,
 			     desktop->screen->x,
 			     desktop->screen->y,
-			     desktop->screen->screen->width_in_pixels,
-			     desktop->screen->screen->height_in_pixels) < 0)
+			     desktop->screen->width,
+			     desktop->screen->height) < 0)
 		die("Unable to layout tree");
 
 	tmbr_discard_events(XCB_ENTER_NOTIFY);
@@ -498,7 +498,7 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 	xcb_window_t *children;
 	int i;
 
-	if ((tree = xcb_query_tree_reply(conn, xcb_query_tree(conn, screen->screen->root), NULL)) == NULL)
+	if ((tree = xcb_query_tree_reply(conn, xcb_query_tree(conn, screen->root), NULL)) == NULL)
 		die("Unable to query tree");
 
 	children = xcb_query_tree_children(tree);
@@ -600,7 +600,7 @@ static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 	return 0;
 }
 
-static int tmbr_screen_manage(xcb_screen_t *screen, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
+static int tmbr_screen_manage(xcb_window_t root, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
 {
 	const uint32_t values[] = {
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
@@ -616,7 +616,7 @@ static int tmbr_screen_manage(xcb_screen_t *screen, uint16_t x, uint16_t y, uint
 	if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
 		die("Cannot set up desktop");
 
-	s->screen = screen;
+	s->root = root;
 	s->x = x;
 	s->y = y;
 	s->width = width;
@@ -624,7 +624,7 @@ static int tmbr_screen_manage(xcb_screen_t *screen, uint16_t x, uint16_t y, uint
 	s->next = screens;
 	screens = s;
 
-	cookie = xcb_change_window_attributes_checked(conn, screen->root,
+	cookie = xcb_change_window_attributes_checked(conn, s->root,
 						      XCB_CW_EVENT_MASK, values);
 
 	if ((error = xcb_request_check(conn, cookie)) != NULL)
@@ -653,7 +653,7 @@ static int tmbr_screens_enumerate(xcb_connection_t *conn)
 	iter = xcb_setup_roots_iterator(setup);
 	while (iter.rem) {
 		xcb_screen_t *screen = iter.data;
-		tmbr_screen_manage(screen, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+		tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
 		xcb_screen_next(&iter);
 	}
 
