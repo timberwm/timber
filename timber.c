@@ -547,6 +547,20 @@ next:
 	return 0;
 }
 
+static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, tmbr_select_t which)
+{
+	tmbr_screen_t *p;
+
+	for (p = screens; p && p->next != screen; p = p->next);
+
+	if ((which == TMBR_SELECT_PREV && !p) ||
+	    (which == TMBR_SELECT_NEXT && !screen->next))
+		return -1;
+
+	*out = (which == TMBR_SELECT_PREV) ? p : screen->next;
+	return 0;
+}
+
 static int tmbr_screen_get_focussed(tmbr_screen_t **out)
 {
 	tmbr_screen_t *s;
@@ -924,17 +938,13 @@ static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
 
 static void tmbr_cmd_screen_focus(const tmbr_command_args_t *args)
 {
-	tmbr_screen_t *p, *s;
+	tmbr_screen_t *focus, *sibling;
 
-	if (tmbr_screen_get_focussed(&s) < 0)
+	if (tmbr_screen_get_focussed(&focus) < 0 ||
+	    tmbr_screen_find_sibling(&sibling, focus, args->i) < 0)
 		return;
 
-	for (p = screens; p && p->next != s; p = p->next);
-
-	if (args->i == TMBR_SELECT_PREV && p)
-		tmbr_screen_set_focussed(p);
-	else if (args->i == TMBR_SELECT_NEXT && s->next)
-		tmbr_screen_set_focussed(s->next);
+	tmbr_screen_set_focussed(sibling);
 }
 
 static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args)
