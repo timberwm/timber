@@ -487,7 +487,7 @@ static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *clien
 		die("Unable to focus client");
 	client->desktop = desktop;
 
-	return 0;
+	return tmbr_desktop_layout(desktop);
 }
 
 static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
@@ -506,7 +506,7 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 	client->desktop = NULL;
 	client->tree = NULL;
 
-	return 0;
+	return tmbr_desktop_layout(desktop);
 }
 
 static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
@@ -727,13 +727,7 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	if (tmbr_client_new(&client, ev->window) < 0)
 		die("Unable to create new client");
 
-	if (tmbr_desktop_add_client(screen->focus, client) < 0)
-		return -1;
-
-	if (tmbr_desktop_layout(screen->focus) < 0)
-		return -1;
-
-	return 0;
+	return tmbr_desktop_add_client(screen->focus, client);
 }
 
 static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
@@ -748,8 +742,7 @@ static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 	if (tmbr_desktop_remove_client(desktop, client) < 0)
 		die("Unable to remove client from tree");
 	tmbr_client_free(client);
-
-	return tmbr_desktop_layout(desktop);
+	return 0;
 }
 
 static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
@@ -826,12 +819,11 @@ static void tmbr_cmd_client_focus(const tmbr_command_args_t *args)
 
 static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
 {
-	tmbr_desktop_t *source, *target;
+	tmbr_desktop_t *target;
 	tmbr_client_t *focus;
 
 	if (tmbr_client_find_by_focus(&focus) < 0)
 		return;
-	source = focus->desktop;
 
 	if ((target = (args->i == TMBR_SELECT_PREV) ? focus->desktop->prev : focus->desktop->next) == NULL)
 		return;
@@ -839,7 +831,6 @@ static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
 	tmbr_desktop_remove_client(focus->desktop, focus);
 	tmbr_client_hide(focus);
 	tmbr_desktop_add_client(target, focus);
-	tmbr_desktop_layout(source);
 }
 
 static void tmbr_cmd_client_resize(const tmbr_command_args_t *args)
