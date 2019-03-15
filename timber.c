@@ -94,6 +94,8 @@ struct tmbr_screen {
 	tmbr_desktop_t *desktops;
 	tmbr_desktop_t *focus;
 	xcb_screen_t *screen;
+	uint16_t x;
+	uint16_t y;
 	uint16_t width;
 	uint16_t height;
 	char focussed;
@@ -403,7 +405,9 @@ static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 	if (!desktop->clients)
 		return 0;
 
-	if (tmbr_layout_tree(desktop->clients, 0, 0,
+	if (tmbr_layout_tree(desktop->clients,
+			     desktop->screen->x,
+			     desktop->screen->y,
 			     desktop->screen->screen->width_in_pixels,
 			     desktop->screen->screen->height_in_pixels) < 0)
 		die("Unable to layout tree");
@@ -428,7 +432,9 @@ static int tmbr_desktop_set_focussed(tmbr_desktop_t *desktop)
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
 {
 	if (fs)
-		tmbr_client_layout(client, 0, 0,
+		tmbr_client_layout(client,
+				   desktop->screen->x,
+				   desktop->screen->y,
 				   desktop->screen->width,
 				   desktop->screen->height, 0);
 	else
@@ -594,7 +600,7 @@ static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 	return 0;
 }
 
-static int tmbr_screen_manage(xcb_screen_t *screen)
+static int tmbr_screen_manage(xcb_screen_t *screen, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
 {
 	const uint32_t values[] = {
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
@@ -611,8 +617,10 @@ static int tmbr_screen_manage(xcb_screen_t *screen)
 		die("Cannot set up desktop");
 
 	s->screen = screen;
-	s->width = screen->width_in_pixels;
-	s->height = screen->height_in_pixels;
+	s->x = x;
+	s->y = y;
+	s->width = width;
+	s->height = height;
 	s->next = screens;
 	screens = s;
 
@@ -644,7 +652,8 @@ static int tmbr_screens_enumerate(xcb_connection_t *conn)
 
 	iter = xcb_setup_roots_iterator(setup);
 	while (iter.rem) {
-		tmbr_screen_manage(iter.data);
+		xcb_screen_t *screen = iter.data;
+		tmbr_screen_manage(screen, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
 		xcb_screen_next(&iter);
 	}
 
