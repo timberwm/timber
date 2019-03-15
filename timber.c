@@ -996,7 +996,7 @@ static void tmbr_cleanup(int signal)
 
 	if (fifofd >= 0)
 		close(fifofd);
-	unlink(FIFO_PATH);
+	unlink(TMBR_CTRL_PATH);
 
 	tmbr_screens_free(screens);
 	xcb_ewmh_connection_wipe(&ewmh);
@@ -1005,10 +1005,11 @@ static void tmbr_cleanup(int signal)
 
 static int tmbr_setup(void)
 {
-	if (mkfifo(FIFO_PATH, 0644) < 0)
+	if ((mkdir(TMBR_CTRL_DIR, 0700) < 0 && errno != EEXIST) ||
+	    (mkfifo(TMBR_CTRL_PATH, 0600) < 0 && errno != EEXIST))
 		die("Unable to create fifo");
 
-	if ((fifofd = open(FIFO_PATH, O_RDWR|O_NONBLOCK)) < 0)
+	if ((fifofd = open(TMBR_CTRL_PATH, O_RDWR|O_NONBLOCK)) < 0)
 		die("Unable to open fifo");
 
 	if ((conn = xcb_connect(NULL, NULL)) == NULL)
