@@ -602,12 +602,6 @@ static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 
 static int tmbr_screen_manage(xcb_window_t root, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
 {
-	const uint32_t values[] = {
-		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
-		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
-	};
-	xcb_generic_error_t *error;
-	xcb_void_cookie_t cookie;
 	tmbr_desktop_t *d;
 	tmbr_screen_t *s;
 
@@ -623,12 +617,6 @@ static int tmbr_screen_manage(xcb_window_t root, uint16_t x, uint16_t y, uint16_
 	s->height = height;
 	s->next = screens;
 	screens = s;
-
-	cookie = xcb_change_window_attributes_checked(conn, s->root,
-						      XCB_CW_EVENT_MASK, values);
-
-	if ((error = xcb_request_check(conn, cookie)) != NULL)
-		die("Another window manager is running already.");
 
 	if (tmbr_screen_set_focussed(s) < 0)
 		die("Unable to focus screen");
@@ -991,10 +979,18 @@ static int tmbr_ewmh_setup(xcb_connection_t *conn)
 
 static int tmbr_display_setup(xcb_connection_t *conn)
 {
+	const uint32_t values[] = {
+		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
+		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
+	};
 	xcb_screen_t *screen;
 
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
 		die("Unable to get root screen");
+
+	if (xcb_request_check(conn, xcb_change_window_attributes_checked(conn, screen->root,
+									 XCB_CW_EVENT_MASK, values)) != NULL)
+		die("Another window manager is running already.");
 
 	tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
 
