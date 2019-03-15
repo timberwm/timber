@@ -388,15 +388,16 @@ static int tmbr_desktop_set_focussed_client(tmbr_desktop_t *desktop, tmbr_client
 {
 	tmbr_client_t *focus;
 
-	if (!client)
-		return 0;
-
 	if (tmbr_desktop_get_focussed_client(&focus, desktop) == 0)
 		tmbr_client_draw_border(focus, TMBR_COLOR_INACTIVE);
-	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
 
+	if ((desktop->focus = client) == NULL || !desktop->screen->focussed) {
+		xcb_set_input_focus(conn, XCB_INPUT_FOCUS_PARENT, desktop->screen->root, XCB_CURRENT_TIME);
+		return 0;
+	}
+
+	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
 	xcb_set_input_focus(conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
-	desktop->focus = client;
 
 	return 0;
 }
@@ -421,10 +422,12 @@ static int tmbr_desktop_set_focussed(tmbr_desktop_t *desktop)
 {
 	tmbr_tree_t *it, *t;
 
-	tmbr_tree_foreach_leaf(desktop->screen->focus->clients, it, t)
-		tmbr_client_hide(t->client);
-	tmbr_tree_foreach_leaf(desktop->clients, it, t)
-		tmbr_client_show(t->client);
+	if (desktop->screen->focus != desktop) {
+		tmbr_tree_foreach_leaf(desktop->screen->focus->clients, it, t)
+			tmbr_client_hide(t->client);
+		tmbr_tree_foreach_leaf(desktop->clients, it, t)
+			tmbr_client_show(t->client);
+	}
 
 	tmbr_desktop_set_focussed_client(desktop, desktop->focus);
 	return tmbr_desktop_layout(desktop);
@@ -552,7 +555,7 @@ static int tmbr_screen_set_focussed(tmbr_screen_t *screen)
 	if (tmbr_screen_get_focussed(&focus) == 0)
 		focus->focussed = 0;
 	screen->focussed = 1;
-	return 0;
+	return tmbr_desktop_set_focussed(screen->focus);
 }
 
 static int tmbr_screen_set_focussed_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
@@ -618,9 +621,6 @@ static int tmbr_screen_manage(xcb_window_t root, uint16_t x, uint16_t y, uint16_
 	s->height = height;
 	s->next = screens;
 	screens = s;
-
-	if (tmbr_screen_set_focussed(s) < 0)
-		die("Unable to focus screen");
 
 	return 0;
 }
@@ -1034,6 +1034,9 @@ next:
 
 	if (tmbr_screen_manage_windows(screens) < 0)
 		die("Unable to manage clients");
+
+	if (tmbr_screen_set_focussed(screens) < 0)
+		die("Unable to focus screen");
 
 	if (tmbr_desktop_layout(screens->focus) < 0)
 		die("Unable to layout screen");
