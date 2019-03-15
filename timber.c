@@ -642,24 +642,6 @@ static int tmbr_screen_manage(xcb_window_t root, uint16_t x, uint16_t y, uint16_
 	return 0;
 }
 
-static int tmbr_screens_enumerate(xcb_connection_t *conn)
-{
-	xcb_screen_iterator_t iter;
-	const xcb_setup_t *setup;
-
-	if ((setup = xcb_get_setup(conn)) == NULL)
-		die("Unable to get X setup");
-
-	iter = xcb_setup_roots_iterator(setup);
-	while (iter.rem) {
-		xcb_screen_t *screen = iter.data;
-		tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
-		xcb_screen_next(&iter);
-	}
-
-	return 0;
-}
-
 static void tmbr_screens_free(tmbr_screen_t *s)
 {
 	tmbr_screen_t *n;
@@ -1013,6 +995,24 @@ static int tmbr_ewmh_setup(xcb_connection_t *conn)
 	return 0;
 }
 
+static int tmbr_display_setup(xcb_connection_t *conn)
+{
+	xcb_screen_iterator_t iter;
+	const xcb_setup_t *setup;
+
+	if ((setup = xcb_get_setup(conn)) == NULL)
+		die("Unable to get X setup");
+
+	iter = xcb_setup_roots_iterator(setup);
+	while (iter.rem) {
+		xcb_screen_t *screen = iter.data;
+		tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+		xcb_screen_next(&iter);
+	}
+
+	return 0;
+}
+
 static int tmbr_setup(void)
 {
 	if ((mkdir(TMBR_CTRL_DIR, 0700) < 0 && errno != EEXIST) ||
@@ -1029,8 +1029,8 @@ static int tmbr_setup(void)
 	if (tmbr_ewmh_setup(conn) < 0)
 		die("Unable to setup EWMH");
 
-	if (tmbr_screens_enumerate(conn) < 0)
-		die("Unable to enumerate screens");
+	if (tmbr_display_setup(conn) < 0)
+		die("Unable to setup display");
 
 	signal(SIGINT, tmbr_cleanup);
 	signal(SIGHUP, tmbr_cleanup);
