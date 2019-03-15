@@ -115,6 +115,7 @@ static void tmbr_cmd_client_kill(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_focus(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_move(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_resize(const tmbr_command_args_t *args);
+static void tmbr_cmd_client_send(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args);
@@ -869,6 +870,19 @@ static void tmbr_cmd_client_resize(const tmbr_command_args_t *args)
 		return;
 	tree->ratio += args->i;
 	tmbr_desktop_layout(client->desktop);
+}
+
+static void tmbr_cmd_client_send(const tmbr_command_args_t *args)
+{
+	tmbr_screen_t *screen;
+	tmbr_client_t *client;
+
+	if (tmbr_client_find_by_focus(&client) < 0 ||
+	    tmbr_screen_find_sibling(&screen, client->desktop->screen, args->i) < 0)
+		return;
+
+	tmbr_desktop_remove_client(client->desktop, client);
+	tmbr_desktop_add_client(screen->focus, client);
 }
 
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
