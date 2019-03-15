@@ -25,6 +25,8 @@ static const tmbr_command_t cmds[] = {
 	{ "desktop_kill",        tmbr_cmd_desktop_kill,  TMBR_ARG_NONE                    },
 	{ "desktop_focus_prev",  tmbr_cmd_desktop_focus, TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
 	{ "desktop_focus_next",  tmbr_cmd_desktop_focus, TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
+	{ "screen_focus_prev",   tmbr_cmd_screen_focus,  TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
+	{ "screen_focus_next",   tmbr_cmd_screen_focus,  TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
 	{ "tree_rotate",         tmbr_cmd_tree_rotate,   TMBR_ARG_NONE                    }
 };
 

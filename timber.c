@@ -119,6 +119,7 @@ static void tmbr_cmd_client_swap(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args);
+static void tmbr_cmd_screen_focus(const tmbr_command_args_t *args);
 static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args);
 
 #include "config.h"
@@ -913,6 +914,21 @@ static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
 		tmbr_screen_set_focussed_desktop(screen, p);
 	else if (args->i == TMBR_SELECT_NEXT && c && c->next)
 		tmbr_screen_set_focussed_desktop(screen, c->next);
+}
+
+static void tmbr_cmd_screen_focus(const tmbr_command_args_t *args)
+{
+	tmbr_screen_t *p, *s;
+
+	if (tmbr_screen_get_focussed(&s) < 0)
+		return;
+
+	for (p = screens; p && p->next != s; p = p->next);
+
+	if (args->i == TMBR_SELECT_PREV && p)
+		tmbr_screen_set_focussed(p);
+	else if (args->i == TMBR_SELECT_NEXT && s->next)
+		tmbr_screen_set_focussed(s->next);
 }
 
 static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args)
