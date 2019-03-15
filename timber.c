@@ -1027,7 +1027,8 @@ static int tmbr_setup(void)
 	if ((fifofd = open(TMBR_CTRL_PATH, O_RDWR|O_NONBLOCK)) < 0)
 		die("Unable to open fifo");
 
-	if ((conn = xcb_connect(NULL, NULL)) == NULL)
+	if ((conn = xcb_connect(NULL, NULL)) == NULL ||
+	    xcb_connection_has_error(conn) != 0)
 		die("Unable to connect to X server");
 
 	if (tmbr_ewmh_setup(conn) < 0)
