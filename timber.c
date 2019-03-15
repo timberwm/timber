@@ -651,20 +651,6 @@ static int tmbr_screens_enumerate(xcb_connection_t *conn)
 	return 0;
 }
 
-static int tmbr_screens_find_by_root(tmbr_screen_t **out, xcb_window_t root)
-{
-	tmbr_screen_t *s;
-
-	for (s = screens; s; s = s->next) {
-		if (s->screen->root == root) {
-			*out = s;
-			return 0;
-		}
-	}
-
-	return -1;
-}
-
 static void tmbr_screens_free(tmbr_screen_t *s)
 {
 	tmbr_screen_t *n;
@@ -730,7 +716,7 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	tmbr_client_t *client;
 	tmbr_screen_t *screen;
 
-	if (tmbr_screens_find_by_root(&screen, ev->parent) < 0)
+	if (tmbr_screen_get_focussed(&screen) < 0)
 		return -1;
 	if (tmbr_client_find_by_window(&client, ev->window) == 0)
 		return 0;
