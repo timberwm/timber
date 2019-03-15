@@ -31,6 +31,7 @@
 #include <xcb/xcb_aux.h>
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_ewmh.h>
+#include <xcb/randr.h>
 #undef inline
 
 #define TMBR_UNUSED(x) (void)(x)
@@ -992,7 +993,44 @@ static int tmbr_display_setup(xcb_connection_t *conn)
 									 XCB_CW_EVENT_MASK, values)) != NULL)
 		die("Another window manager is running already.");
 
-	tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+	if (xcb_get_extension_data(conn, &xcb_randr_id)->present) {
+		xcb_randr_get_screen_resources_reply_t *screens;
+		xcb_randr_output_t *outputs;
+		int i;
+
+		if ((screens = xcb_randr_get_screen_resources_reply(conn,
+								    xcb_randr_get_screen_resources(conn, screen->root),
+								    NULL)) == NULL)
+			die("Unable to get screen resources");
+
+		outputs = xcb_randr_get_screen_resources_outputs(screens);
+
+		for (i = 0; i < xcb_randr_get_screen_resources_outputs_length(screens); i++) {
+			xcb_randr_get_output_info_reply_t *output = NULL;
+			xcb_randr_get_crtc_info_reply_t *crtc = NULL;
+
+			output = xcb_randr_get_output_info_reply(conn,
+								 xcb_randr_get_output_info(conn, outputs[i], XCB_CURRENT_TIME),
+								 NULL);
+			if (output == NULL || output->crtc == XCB_NONE)
+				goto next;
+
+			crtc = xcb_randr_get_crtc_info_reply(conn,
+							     xcb_randr_get_crtc_info(conn, output->crtc, XCB_CURRENT_TIME),
+							     NULL);
+			if (crtc == NULL)
+				goto next;
+
+			tmbr_screen_manage(screen->root, crtc->x, crtc->y, crtc->width, crtc->height);
+next:
+			free(output);
+			free(crtc);
+		}
+
+		free(screens);
+	} else {
+		tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+	}
 
 	if (tmbr_screen_manage_windows(screens) < 0)
 		die("Unable to manage clients");
