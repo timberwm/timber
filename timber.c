@@ -991,18 +991,12 @@ static int tmbr_ewmh_setup(xcb_connection_t *conn)
 
 static int tmbr_display_setup(xcb_connection_t *conn)
 {
-	xcb_screen_iterator_t iter;
-	const xcb_setup_t *setup;
+	xcb_screen_t *screen;
 
-	if ((setup = xcb_get_setup(conn)) == NULL)
-		die("Unable to get X setup");
+	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
+		die("Unable to get root screen");
 
-	iter = xcb_setup_roots_iterator(setup);
-	while (iter.rem) {
-		xcb_screen_t *screen = iter.data;
-		tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
-		xcb_screen_next(&iter);
-	}
+	tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
 
 	if (tmbr_screen_manage_windows(screens) < 0)
 		die("Unable to manage clients");
