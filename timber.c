@@ -630,14 +630,8 @@ static int tmbr_screen_manage(xcb_window_t root, uint16_t x, uint16_t y, uint16_
 	if ((error = xcb_request_check(conn, cookie)) != NULL)
 		die("Another window manager is running already.");
 
-	if (tmbr_screen_manage_windows(s) < 0)
-		die("Unable to enumerate clients");
-
 	if (tmbr_screen_set_focussed(s) < 0)
 		die("Unable to focus screen");
-
-	if (tmbr_desktop_layout(s->focus) < 0)
-		die("Unable to layout screen");
 
 	return 0;
 }
@@ -1009,6 +1003,12 @@ static int tmbr_display_setup(xcb_connection_t *conn)
 		tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
 		xcb_screen_next(&iter);
 	}
+
+	if (tmbr_screen_manage_windows(screens) < 0)
+		die("Unable to manage clients");
+
+	if (tmbr_desktop_layout(screens->focus) < 0)
+		die("Unable to layout screen");
 
 	return 0;
 }
