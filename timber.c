@@ -1003,6 +1003,21 @@ static void tmbr_cleanup(int signal)
 	xcb_disconnect(conn);
 }
 
+static int tmbr_ewmh_setup(xcb_connection_t *conn)
+{
+	xcb_atom_t atoms[2];
+
+	if (xcb_ewmh_init_atoms_replies(&ewmh, xcb_ewmh_init_atoms(conn, &ewmh), NULL) == 0)
+		die("Unable to initialize EWMH atoms");
+
+	atoms[0] = ewmh._NET_WM_STATE;
+	atoms[1] = ewmh._NET_WM_STATE_FULLSCREEN;
+
+	xcb_ewmh_set_supported(&ewmh, 0, sizeof(atoms) / sizeof(*atoms), atoms);
+
+	return 0;
+}
+
 static int tmbr_setup(void)
 {
 	if ((mkdir(TMBR_CTRL_DIR, 0700) < 0 && errno != EEXIST) ||
@@ -1015,8 +1030,8 @@ static int tmbr_setup(void)
 	if ((conn = xcb_connect(NULL, NULL)) == NULL)
 		die("Unable to connect to X server");
 
-	if (xcb_ewmh_init_atoms_replies(&ewmh, xcb_ewmh_init_atoms(conn, &ewmh), NULL) == 0)
-		die("Unable to initialize EWMH atoms");
+	if (tmbr_ewmh_setup(conn) < 0)
+		die("Unable to setup EWMH");
 
 	if (tmbr_screens_enumerate(conn) < 0)
 		die("Unable to enumerate screens");
