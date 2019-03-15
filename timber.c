@@ -378,6 +378,18 @@ static void tmbr_desktop_free(tmbr_desktop_t *desktop)
 	free(desktop);
 }
 
+static int tmbr_desktop_find_sibling(tmbr_desktop_t **out, tmbr_desktop_t *desktop, tmbr_select_t which)
+{
+	if (!desktop)
+		return -1;
+
+	if ((which == TMBR_SELECT_PREV && !desktop->prev) ||
+	    (which == TMBR_SELECT_NEXT && !desktop->next))
+		return -1;
+	*out = (which == TMBR_SELECT_PREV) ? desktop->prev : desktop->next;
+	return 0;
+}
+
 static int tmbr_desktop_get_focussed_client(tmbr_client_t **out, tmbr_desktop_t *desktop)
 {
 	if ((*out = desktop->focus) == NULL)
@@ -900,20 +912,14 @@ static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args)
 
 static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
 {
-	tmbr_desktop_t *c, *p;
+	tmbr_desktop_t *sibling;
 	tmbr_screen_t *screen;
 
-	if (tmbr_screen_get_focussed(&screen) < 0)
+	if (tmbr_screen_get_focussed(&screen) < 0 ||
+	    tmbr_desktop_find_sibling(&sibling, screen->focus, args->i) < 0)
 		return;
 
-	for (p = NULL, c = screen->desktops; c; p = c, c = c->next)
-		if (c == screen->focus)
-			break;
-
-	if (args->i == TMBR_SELECT_PREV && p)
-		tmbr_screen_set_focussed_desktop(screen, p);
-	else if (args->i == TMBR_SELECT_NEXT && c && c->next)
-		tmbr_screen_set_focussed_desktop(screen, c->next);
+	tmbr_screen_set_focussed_desktop(screen, sibling);
 }
 
 static void tmbr_cmd_screen_focus(const tmbr_command_args_t *args)
