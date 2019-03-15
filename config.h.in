@@ -19,12 +19,16 @@ static const tmbr_command_t cmds[] = {
 	{ "client_shrink_south", tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_SOUTH, -5) },
 	{ "client_shrink_east",  tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_EAST,  -5) },
 	{ "client_shrink_west",  tmbr_cmd_client_resize, TMBR_ARG_DIR(TMBR_DIR_WEST,  +5) },
+	{ "client_send_prev",    tmbr_cmd_client_send,   TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
+	{ "client_send_next",    tmbr_cmd_client_send,   TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
 	{ "client_swap_prev",    tmbr_cmd_client_swap,   TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
 	{ "client_swap_next",    tmbr_cmd_client_swap,   TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
 	{ "desktop_new",         tmbr_cmd_desktop_new,   TMBR_ARG_NONE                    },
 	{ "desktop_kill",        tmbr_cmd_desktop_kill,  TMBR_ARG_NONE                    },
 	{ "desktop_focus_prev",  tmbr_cmd_desktop_focus, TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
 	{ "desktop_focus_next",  tmbr_cmd_desktop_focus, TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
+	{ "screen_focus_prev",   tmbr_cmd_screen_focus,  TMBR_ARG_SEL(TMBR_SELECT_PREV)   },
+	{ "screen_focus_next",   tmbr_cmd_screen_focus,  TMBR_ARG_SEL(TMBR_SELECT_NEXT)   },
 	{ "tree_rotate",         tmbr_cmd_tree_rotate,   TMBR_ARG_NONE                    }
 };
 
