@@ -416,6 +416,7 @@ static int tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *cli
 	if (tmbr_client_unfocus(desktop->focus) < 0 ||
 	    tmbr_client_focus(client) < 0)
 		return -1;
+	desktop->focus = client;
 	return 0;
 }
 
@@ -453,8 +454,14 @@ static int tmbr_desktop_show(tmbr_desktop_t *d)
 
 static int tmbr_desktop_focus(tmbr_desktop_t *desktop)
 {
-	tmbr_desktop_focus_client(desktop, desktop->focus);
-	return tmbr_desktop_layout(desktop);
+	return tmbr_desktop_focus_client(desktop, desktop->focus);
+}
+
+static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
+{
+	if (!desktop)
+		return 0;
+	return tmbr_client_unfocus(desktop->focus);
 }
 
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
@@ -571,7 +578,10 @@ static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, 
 
 static int tmbr_screen_focus(tmbr_screen_t *screen)
 {
-	if (tmbr_desktop_focus(screen->focus) < 0)
+	if (state.screen == screen)
+		return 0;
+	if ((state.screen && tmbr_desktop_unfocus(state.screen->focus) < 0) ||
+	    tmbr_desktop_focus(screen->focus) < 0)
 		return -1;
 	state.screen = screen;
 	return 0;
@@ -584,13 +594,14 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 	if (desktop->screen != screen)
 		return -1;
 
-	if (tmbr_desktop_hide(screen->focus) < 0 ||
+	if (tmbr_desktop_unfocus(screen->focus) < 0 ||
+	    tmbr_desktop_hide(screen->focus) < 0 ||
 	    tmbr_desktop_show(desktop) < 0||
 	    tmbr_desktop_focus(desktop) < 0)
 		return -1;
 
 	screen->focus = desktop;
-	return 0;
+	return tmbr_desktop_layout(desktop);
 }
 
 static int tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
