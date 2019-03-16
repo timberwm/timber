@@ -276,6 +276,24 @@ static int tmbr_client_draw_border(tmbr_client_t *client, uint32_t color)
 	return 0;
 }
 
+static int tmbr_client_focus(tmbr_client_t *client)
+{
+	if (!client)
+		return 0;
+	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
+	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
+	return 0;
+}
+
+static int tmbr_client_unfocus(tmbr_client_t *client)
+{
+	if (!client)
+		return 0;
+	tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
+	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, client->desktop->screen->root, XCB_CURRENT_TIME);
+	return 0;
+}
+
 static int tmbr_client_show(tmbr_client_t *client)
 {
 	xcb_map_window(state.conn, client->window);
@@ -395,17 +413,9 @@ static int tmbr_desktop_find_sibling(tmbr_desktop_t **out, tmbr_desktop_t *deskt
 
 static int tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
-	if (desktop->focus)
-		tmbr_client_draw_border(desktop->focus, TMBR_COLOR_INACTIVE);
-
-	if ((desktop->focus = client) == NULL || !state.screen) {
-		xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, desktop->screen->root, XCB_CURRENT_TIME);
-		return 0;
-	}
-
-	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
-	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
-
+	if (tmbr_client_unfocus(desktop->focus) < 0 ||
+	    tmbr_client_focus(client) < 0)
+		return -1;
 	return 0;
 }
 
