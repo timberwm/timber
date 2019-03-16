@@ -393,19 +393,10 @@ static int tmbr_desktop_find_sibling(tmbr_desktop_t **out, tmbr_desktop_t *deskt
 	return 0;
 }
 
-static int tmbr_desktop_get_focussed_client(tmbr_client_t **out, tmbr_desktop_t *desktop)
-{
-	if ((*out = desktop->focus) == NULL)
-		return -1;
-	return 0;
-}
-
 static int tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
-	tmbr_client_t *focus;
-
-	if (tmbr_desktop_get_focussed_client(&focus, desktop) == 0)
-		tmbr_client_draw_border(focus, TMBR_COLOR_INACTIVE);
+	if (desktop->focus)
+		tmbr_client_draw_border(desktop->focus, TMBR_COLOR_INACTIVE);
 
 	if ((desktop->focus = client) == NULL || !state.screen) {
 		xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, desktop->screen->root, XCB_CURRENT_TIME);
@@ -480,10 +471,7 @@ static int tmbr_desktop_find_window(tmbr_client_t **out, tmbr_desktop_t *desktop
 
 static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
-	tmbr_client_t *focus = NULL;
-
-	tmbr_desktop_get_focussed_client(&focus, desktop);
-	if (tmbr_tree_insert(focus ? &focus->tree : &desktop->clients, client) < 0)
+	if (tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client) < 0)
 		die("Unable to insert client into tree");
 
 	if (tmbr_desktop_focus_client(desktop, client) < 0)
@@ -653,7 +641,7 @@ static void tmbr_screens_free(tmbr_screen_t *s)
 
 static int tmbr_client_find_by_focus(tmbr_client_t **out)
 {
-	if (tmbr_desktop_get_focussed_client(out, state.screen->focus) < 0)
+	if ((*out = state.screen->focus->focus) == NULL)
 		return -1;
 	return 0;
 }
