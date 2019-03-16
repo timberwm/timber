@@ -425,17 +425,24 @@ static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 	return 0;
 }
 
-static int tmbr_desktop_focus(tmbr_desktop_t *desktop)
+static int tmbr_desktop_hide(tmbr_desktop_t *d)
 {
 	tmbr_tree_t *it, *t;
+	tmbr_tree_foreach_leaf(d->clients, it, t)
+		tmbr_client_hide(t->client);
+	return 0;
+}
 
-	if (desktop->screen->focus != desktop) {
-		tmbr_tree_foreach_leaf(desktop->screen->focus->clients, it, t)
-			tmbr_client_hide(t->client);
-		tmbr_tree_foreach_leaf(desktop->clients, it, t)
-			tmbr_client_show(t->client);
-	}
+static int tmbr_desktop_show(tmbr_desktop_t *d)
+{
+	tmbr_tree_t *it, *t;
+	tmbr_tree_foreach_leaf(d->clients, it, t)
+		tmbr_client_show(t->client);
+	return 0;
+}
 
+static int tmbr_desktop_focus(tmbr_desktop_t *desktop)
+{
 	tmbr_desktop_focus_client(desktop, desktop->focus);
 	return tmbr_desktop_layout(desktop);
 }
@@ -566,8 +573,12 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 		return 0;
 	if (desktop->screen != screen)
 		return -1;
-	if (tmbr_desktop_focus(desktop) < 0)
+
+	if (tmbr_desktop_hide(screen->focus) < 0 ||
+	    tmbr_desktop_show(desktop) < 0||
+	    tmbr_desktop_focus(desktop) < 0)
 		return -1;
+
 	screen->focus = desktop;
 	return 0;
 }
