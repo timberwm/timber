@@ -99,7 +99,6 @@ struct tmbr_screen {
 	uint16_t y;
 	uint16_t width;
 	uint16_t height;
-	char focussed;
 };
 
 struct tmbr_tree {
@@ -129,10 +128,11 @@ static void tmbr_discard_events(uint8_t type);
 
 static struct {
 	tmbr_screen_t *screens;
+	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
 	xcb_ewmh_connection_t ewmh;
 	int fifofd;
-} state = { NULL, NULL, { 0 }, -1 };
+} state = { NULL, NULL, NULL, { 0 }, -1 };
 
 static void die(const char *fmt, ...)
 {
@@ -407,7 +407,7 @@ static int tmbr_desktop_set_focussed_client(tmbr_desktop_t *desktop, tmbr_client
 	if (tmbr_desktop_get_focussed_client(&focus, desktop) == 0)
 		tmbr_client_draw_border(focus, TMBR_COLOR_INACTIVE);
 
-	if ((desktop->focus = client) == NULL || !desktop->screen->focussed) {
+	if ((desktop->focus = client) == NULL || !state.screen) {
 		xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, desktop->screen->root, XCB_CURRENT_TIME);
 		return 0;
 	}
@@ -564,28 +564,12 @@ static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, 
 	return 0;
 }
 
-static int tmbr_screen_get_focussed(tmbr_screen_t **out)
-{
-	tmbr_screen_t *s;
-
-	for (s = state.screens; s; s = s->next) {
-		if (!s->focussed)
-			continue;
-
-		*out = s;
-		return 0;
-	}
-
-	return -1;
-}
-
 static int tmbr_screen_set_focussed(tmbr_screen_t *screen)
 {
-	tmbr_screen_t *focus;
-	if (tmbr_screen_get_focussed(&focus) == 0)
-		focus->focussed = 0;
-	screen->focussed = 1;
-	return tmbr_desktop_set_focussed(screen->focus);
+	if (tmbr_desktop_set_focussed(screen->focus) < 0)
+		return -1;
+	state.screen = screen;
+	return 0;
 }
 
 static int tmbr_screen_set_focussed_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
@@ -669,9 +653,7 @@ static void tmbr_screens_free(tmbr_screen_t *s)
 
 static int tmbr_client_find_by_focus(tmbr_client_t **out)
 {
-	tmbr_screen_t *screen;
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_desktop_get_focussed_client(out, screen->focus) < 0)
+	if (tmbr_desktop_get_focussed_client(out, state.screen->focus) < 0)
 		return -1;
 	return 0;
 }
@@ -718,10 +700,7 @@ static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 {
 	tmbr_client_t *client;
-	tmbr_screen_t *screen;
 
-	if (tmbr_screen_get_focussed(&screen) < 0)
-		return -1;
 	if (tmbr_client_find_by_window(&client, ev->window) == 0)
 		return 0;
 
@@ -730,7 +709,7 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	if (tmbr_client_new(&client, ev->window) < 0)
 		die("Unable to create new client");
 
-	return tmbr_desktop_add_client(screen->focus, client);
+	return tmbr_desktop_add_client(state.screen->focus, client);
 }
 
 static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
@@ -904,29 +883,24 @@ static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
 static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args)
 {
 	tmbr_desktop_t *desktop;
-	tmbr_screen_t *screen;
 
 	TMBR_UNUSED(args);
 
 	if (tmbr_desktop_new(&desktop) < 0 ||
-	    tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_screen_add_desktop(screen, desktop) < 0)
+	    tmbr_screen_add_desktop(state.screen, desktop) < 0)
 		return;
 
-	tmbr_screen_set_focussed_desktop(screen, desktop);
+	tmbr_screen_set_focussed_desktop(state.screen, desktop);
 }
 
 static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args)
 {
-	tmbr_screen_t *screen;
 	tmbr_desktop_t *desktop;
 
 	TMBR_UNUSED(args);
 
-	if (tmbr_screen_get_focussed(&screen) < 0)
-		return;
-	desktop = screen->focus;
-	if (tmbr_screen_remove_desktop(screen, screen->focus) < 0)
+	desktop = state.screen->focus;
+	if (tmbr_screen_remove_desktop(state.screen, state.screen->focus) < 0)
 		return;
 	tmbr_desktop_free(desktop);
 }
@@ -934,21 +908,18 @@ static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args)
 static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
 {
 	tmbr_desktop_t *sibling;
-	tmbr_screen_t *screen;
 
-	if (tmbr_screen_get_focussed(&screen) < 0 ||
-	    tmbr_desktop_find_sibling(&sibling, screen->focus, args->i) < 0)
+	if (tmbr_desktop_find_sibling(&sibling, state.screen->focus, args->i) < 0)
 		return;
 
-	tmbr_screen_set_focussed_desktop(screen, sibling);
+	tmbr_screen_set_focussed_desktop(state.screen, sibling);
 }
 
 static void tmbr_cmd_screen_focus(const tmbr_command_args_t *args)
 {
-	tmbr_screen_t *focus, *sibling;
+	tmbr_screen_t *sibling;
 
-	if (tmbr_screen_get_focussed(&focus) < 0 ||
-	    tmbr_screen_find_sibling(&sibling, focus, args->i) < 0)
+	if (tmbr_screen_find_sibling(&sibling, state.screen, args->i) < 0)
 		return;
 
 	tmbr_screen_set_focussed(sibling);
