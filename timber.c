@@ -74,6 +74,10 @@ struct tmbr_client {
 	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
 	xcb_window_t window;
+	uint16_t x;
+	uint16_t y;
+	uint16_t width;
+	uint16_t height;
 };
 
 struct tmbr_command {
@@ -337,10 +341,10 @@ static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint1
 		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
 		XCB_CONFIG_WINDOW_BORDER_WIDTH;
 
-	values[0] = x;
-	values[1] = y;
-	values[2] = w - 2 * border;
-	values[3] = h - 2 * border;
+	values[0] = client->x = x;
+	values[1] = client->y = y;
+	values[2] = client->width = w - 2 * border;
+	values[3] = client->height = h - 2 * border;
 	values[4] = border;
 
 	xcb_configure_window(state.conn, client->window, mask, values);
