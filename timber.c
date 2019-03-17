@@ -956,8 +956,12 @@ static void tmbr_handle_command(int fd)
 	ssize_t n;
 	size_t i;
 
-	if ((n = read(fd, cmd, sizeof(cmd) - 1)) <= 0)
+	if ((n = read(fd, cmd, sizeof(cmd) - 1)) <= 0) {
+		if (n == 0)
+			die("Control FIFO has been closed");
 		return;
+	}
+
 	if (cmd[n - 1] == '\n')
 		cmd[--n] = '\0';
 	else
