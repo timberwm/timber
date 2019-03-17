@@ -74,6 +74,10 @@ struct tmbr_client {
 	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
 	xcb_window_t window;
+	uint16_t x;
+	uint16_t y;
+	uint16_t width;
+	uint16_t height;
 };
 
 struct tmbr_command {
@@ -294,18 +298,6 @@ static int tmbr_client_unfocus(tmbr_client_t *client)
 	return 0;
 }
 
-static int tmbr_client_show(tmbr_client_t *client)
-{
-	xcb_map_window(state.conn, client->window);
-	return 0;
-}
-
-static int tmbr_client_hide(tmbr_client_t *client)
-{
-	xcb_unmap_window(state.conn, client->window);
-	return 0;
-}
-
 static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
 {
 	const uint32_t values[] = { XCB_EVENT_MASK_ENTER_WINDOW };
@@ -329,7 +321,7 @@ static void tmbr_client_free(tmbr_client_t *client)
 	free(client);
 }
 
-static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t border)
+static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t border)
 {
 	uint32_t values[5];
 	uint16_t mask =
@@ -337,14 +329,19 @@ static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uin
 		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
 		XCB_CONFIG_WINDOW_BORDER_WIDTH;
 
-	values[0] = x;
-	values[1] = y;
-	values[2] = w - 2 * border;
-	values[3] = h - 2 * border;
+	values[0] = client->x = x;
+	values[1] = client->y = y;
+	values[2] = client->width = w - 2 * border;
+	values[3] = client->height = h - 2 * border;
 	values[4] = border;
 
 	xcb_configure_window(state.conn, client->window, mask, values);
 	return 0;
+}
+
+static int tmbr_client_hide(tmbr_client_t *c)
+{
+	return tmbr_client_move(c, c->desktop->screen->width, c->y, c->width, c->height, 0);
 }
 
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, char fs)
@@ -360,7 +357,7 @@ static int tmbr_layout_tree(tmbr_tree_t *tree, uint16_t x, uint16_t y, uint16_t 
 	uint16_t xoff, yoff, lw, rw, lh, rh;
 
 	if (tree->client)
-		return tmbr_client_layout(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
+		return tmbr_client_move(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
 
 	if (tree->split == TMBR_SPLIT_VERTICAL) {
 		lw = w * (tree->ratio / 100.0);
@@ -445,14 +442,6 @@ static int tmbr_desktop_hide(tmbr_desktop_t *d)
 	return 0;
 }
 
-static int tmbr_desktop_show(tmbr_desktop_t *d)
-{
-	tmbr_tree_t *it, *t;
-	tmbr_tree_foreach_leaf(d->clients, it, t)
-		tmbr_client_show(t->client);
-	return 0;
-}
-
 static int tmbr_desktop_focus(tmbr_desktop_t *desktop)
 {
 	return tmbr_desktop_focus_client(desktop, desktop->focus, 1);
@@ -468,11 +457,11 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
 {
 	if (fs)
-		tmbr_client_layout(client,
-				   desktop->screen->x,
-				   desktop->screen->y,
-				   desktop->screen->width,
-				   desktop->screen->height, 0);
+		tmbr_client_move(client,
+				 desktop->screen->x,
+				 desktop->screen->y,
+				 desktop->screen->width,
+				 desktop->screen->height, 0);
 	else
 		tmbr_desktop_layout(desktop);
 
@@ -545,15 +534,13 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 							     NULL)) == NULL)
 			goto next;
 
-		if (attrs->map_state == XCB_MAP_STATE_UNVIEWABLE)
+		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE)
 			goto next;
 
 		if (tmbr_client_new(&client, children[i]) < 0)
 			die("Unable to create new client");
 		if (tmbr_desktop_add_client(screen->focus, client, 1) < 0)
 			die("Unable to add client to desktop");
-		if (attrs->map_state == XCB_MAP_STATE_UNMAPPED)
-			tmbr_client_show(client);
 next:
 		free(attrs);
 	}
@@ -600,7 +587,6 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 
 	if (tmbr_desktop_unfocus(screen->focus) < 0 ||
 	    tmbr_desktop_hide(screen->focus) < 0 ||
-	    tmbr_desktop_show(desktop) < 0||
 	    tmbr_desktop_focus(desktop) < 0)
 		return -1;
 
