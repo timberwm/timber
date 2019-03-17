@@ -567,14 +567,17 @@ static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, 
 {
 	tmbr_screen_t *p;
 
-	for (p = state.screens; p && p->next != screen; p = p->next);
+	if (which == TMBR_SELECT_PREV)
+		for (p = state.screens; p && p->next != screen; p = p->next);
+	else
+		p = screen->next;
 
-	if ((which == TMBR_SELECT_PREV && !p) ||
-	    (which == TMBR_SELECT_NEXT && !screen->next))
-		return -1;
+	if (!p && which == TMBR_SELECT_PREV)
+		for (p = state.screens; p && p->next; p = p->next);
+	else if (!p && which == TMBR_SELECT_NEXT)
+		p = state.screens;
 
-	*out = (which == TMBR_SELECT_PREV) ? p : screen->next;
-	return 0;
+	return (*out = p) ? 0 : -1;
 }
 
 static int tmbr_screen_focus(tmbr_screen_t *screen)
