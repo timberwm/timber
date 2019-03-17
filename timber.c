@@ -329,7 +329,7 @@ static void tmbr_client_free(tmbr_client_t *client)
 	free(client);
 }
 
-static int tmbr_client_layout(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t border)
+static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t border)
 {
 	uint32_t values[5];
 	uint16_t mask =
@@ -360,7 +360,7 @@ static int tmbr_layout_tree(tmbr_tree_t *tree, uint16_t x, uint16_t y, uint16_t 
 	uint16_t xoff, yoff, lw, rw, lh, rh;
 
 	if (tree->client)
-		return tmbr_client_layout(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
+		return tmbr_client_move(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
 
 	if (tree->split == TMBR_SPLIT_VERTICAL) {
 		lw = w * (tree->ratio / 100.0);
@@ -468,11 +468,11 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
 {
 	if (fs)
-		tmbr_client_layout(client,
-				   desktop->screen->x,
-				   desktop->screen->y,
-				   desktop->screen->width,
-				   desktop->screen->height, 0);
+		tmbr_client_move(client,
+				 desktop->screen->x,
+				 desktop->screen->y,
+				 desktop->screen->width,
+				 desktop->screen->height, 0);
 	else
 		tmbr_desktop_layout(desktop);
 
