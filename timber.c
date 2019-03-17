@@ -298,18 +298,6 @@ static int tmbr_client_unfocus(tmbr_client_t *client)
 	return 0;
 }
 
-static int tmbr_client_show(tmbr_client_t *client)
-{
-	xcb_map_window(state.conn, client->window);
-	return 0;
-}
-
-static int tmbr_client_hide(tmbr_client_t *client)
-{
-	xcb_unmap_window(state.conn, client->window);
-	return 0;
-}
-
 static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
 {
 	const uint32_t values[] = { XCB_EVENT_MASK_ENTER_WINDOW };
@@ -349,6 +337,11 @@ static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint1
 
 	xcb_configure_window(state.conn, client->window, mask, values);
 	return 0;
+}
+
+static int tmbr_client_hide(tmbr_client_t *c)
+{
+	return tmbr_client_move(c, c->desktop->screen->width, c->y, c->width, c->height, 0);
 }
 
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, char fs)
@@ -446,14 +439,6 @@ static int tmbr_desktop_hide(tmbr_desktop_t *d)
 	tmbr_tree_t *it, *t;
 	tmbr_tree_foreach_leaf(d->clients, it, t)
 		tmbr_client_hide(t->client);
-	return 0;
-}
-
-static int tmbr_desktop_show(tmbr_desktop_t *d)
-{
-	tmbr_tree_t *it, *t;
-	tmbr_tree_foreach_leaf(d->clients, it, t)
-		tmbr_client_show(t->client);
 	return 0;
 }
 
@@ -557,7 +542,7 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 		if (tmbr_desktop_add_client(screen->focus, client, 1) < 0)
 			die("Unable to add client to desktop");
 		if (attrs->map_state == XCB_MAP_STATE_UNMAPPED)
-			tmbr_client_show(client);
+			xcb_map_window(state.conn, client->window);
 next:
 		free(attrs);
 	}
@@ -604,7 +589,6 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 
 	if (tmbr_desktop_unfocus(screen->focus) < 0 ||
 	    tmbr_desktop_hide(screen->focus) < 0 ||
-	    tmbr_desktop_show(desktop) < 0||
 	    tmbr_desktop_focus(desktop) < 0)
 		return -1;
 
