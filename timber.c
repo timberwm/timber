@@ -420,7 +420,7 @@ static int tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *cli
 
 static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 {
-	if (!desktop->clients)
+	if (!desktop->clients || desktop->screen->focus != desktop)
 		return 0;
 
 	if (tmbr_layout_tree(desktop->clients,
