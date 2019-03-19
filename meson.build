@@ -18,6 +18,7 @@ executable(
     dependency('xcb'),
     dependency('xcb-aux'),
     dependency('xcb-ewmh'),
+    dependency('xcb-icccm'),
     dependency('xcb-randr')
   ],
   install: true,

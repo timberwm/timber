@@ -31,6 +31,7 @@
 #include <xcb/xcb_aux.h>
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_ewmh.h>
+#include <xcb/xcb_icccm.h>
 #include <xcb/randr.h>
 #undef inline
 
@@ -46,6 +47,11 @@ typedef struct tmbr_command tmbr_command_t;
 typedef struct tmbr_desktop tmbr_desktop_t;
 typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
+
+typedef enum {
+	TMBR_ATOM_WM_DELETE_WINDOW,
+	TMBR_ATOM_LAST
+} tmbr_atom_t;
 
 typedef enum {
 	TMBR_DIR_NORTH,
@@ -135,8 +141,9 @@ static struct {
 	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
 	xcb_ewmh_connection_t ewmh;
+	xcb_atom_t atoms[TMBR_ATOM_LAST];
 	int fifofd;
-} state = { NULL, NULL, NULL, { 0 }, -1 };
+} state = { NULL, NULL, NULL, { 0 }, { 0 }, -1 };
 
 static void die(const char *fmt, ...)
 {
@@ -320,6 +327,45 @@ static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
 static void tmbr_client_free(tmbr_client_t *client)
 {
 	free(client);
+}
+
+static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
+{
+	xcb_icccm_get_wm_protocols_reply_t protos;
+	xcb_client_message_event_t msg = { 0 };
+	size_t i;
+
+	if (xcb_icccm_get_wm_protocols_reply(state.conn,
+					     xcb_icccm_get_wm_protocols(state.conn,
+									client->window,
+									state.ewmh.WM_PROTOCOLS),
+									&protos, NULL) != 1)
+		return -1;
+	for (i = 0; i < protos.atoms_len; i++)
+		if (protos.atoms[i] == value)
+			break;
+	xcb_icccm_get_wm_protocols_reply_wipe(&protos);
+
+	if (i == protos.atoms_len)
+		return -1;
+
+	msg.response_type = XCB_CLIENT_MESSAGE;
+	msg.window = client->window;
+	msg.type = state.ewmh.WM_PROTOCOLS;
+	msg.format = 32;
+	msg.data.data32[0] = value;
+	msg.data.data32[1] = XCB_CURRENT_TIME;
+
+	xcb_send_event(state.conn, 0, client->window, XCB_EVENT_MASK_NO_EVENT, (char *) &msg);
+	xcb_flush(state.conn);
+
+	return 0;
+}
+
+static void tmbr_client_kill(tmbr_client_t *client)
+{
+	if (tmbr_client_send_message(client, state.atoms[TMBR_ATOM_WM_DELETE_WINDOW]) < 0)
+		xcb_kill_client(state.conn, client->window);
 }
 
 static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t border)
@@ -793,7 +839,7 @@ static void tmbr_cmd_client_kill(const tmbr_command_args_t *args)
 	if (tmbr_client_find_by_focus(&focus) < 0)
 		return;
 
-	xcb_kill_client(state.conn, focus->window);
+	tmbr_client_kill(focus);
 }
 
 static void tmbr_cmd_client_focus(const tmbr_command_args_t *args)
@@ -986,22 +1032,31 @@ static void tmbr_cleanup(int signal)
 	xcb_disconnect(state.conn);
 }
 
-static int tmbr_ewmh_setup(xcb_connection_t *conn)
+void tmbr_setup_atom(xcb_atom_t *out, char *name)
 {
-	xcb_atom_t atoms[2];
+	xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(state.conn,
+							       xcb_intern_atom(state.conn, 0, strlen(name), name),
+							       NULL);
+	*out = reply ? reply->atom : XCB_NONE;
+	free(reply);
+}
+
+static int tmbr_setup_atoms(xcb_connection_t *conn)
+{
+	xcb_atom_t netatoms[2];
 
 	if (xcb_ewmh_init_atoms_replies(&state.ewmh, xcb_ewmh_init_atoms(conn, &state.ewmh), NULL) == 0)
 		die("Unable to initialize EWMH atoms");
+	netatoms[0] = state.ewmh._NET_WM_STATE;
+	netatoms[1] = state.ewmh._NET_WM_STATE_FULLSCREEN;
+	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(netatoms) / sizeof(*netatoms), netatoms);
 
-	atoms[0] = state.ewmh._NET_WM_STATE;
-	atoms[1] = state.ewmh._NET_WM_STATE_FULLSCREEN;
-
-	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(atoms) / sizeof(*atoms), atoms);
+	tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW");
 
 	return 0;
 }
 
-static int tmbr_display_setup(xcb_connection_t *conn)
+static int tmbr_setup_display(xcb_connection_t *conn)
 {
 	const uint32_t values[] = {
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
@@ -1080,10 +1135,10 @@ static int tmbr_setup(void)
 	    xcb_connection_has_error(state.conn) != 0)
 		die("Unable to connect to X server");
 
-	if (tmbr_ewmh_setup(state.conn) < 0)
-		die("Unable to setup EWMH");
+	if (tmbr_setup_atoms(state.conn) < 0)
+		die("Unable to setup atoms");
 
-	if (tmbr_display_setup(state.conn) < 0)
+	if (tmbr_setup_display(state.conn) < 0)
 		die("Unable to setup display");
 
 	signal(SIGINT, tmbr_cleanup);
