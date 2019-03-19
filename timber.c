@@ -790,6 +790,11 @@ static void tmbr_discard_events(uint8_t type)
 	}
 }
 
+static void tmbr_client_kill(tmbr_client_t *client)
+{
+	xcb_kill_client(state.conn, client->window);
+}
+
 static void tmbr_cmd_client_kill(const tmbr_command_args_t *args)
 {
 	tmbr_client_t *focus;
@@ -799,7 +804,7 @@ static void tmbr_cmd_client_kill(const tmbr_command_args_t *args)
 	if (tmbr_client_find_by_focus(&focus) < 0)
 		return;
 
-	xcb_kill_client(state.conn, focus->window);
+	tmbr_client_kill(focus);
 }
 
 static void tmbr_cmd_client_focus(const tmbr_command_args_t *args)
