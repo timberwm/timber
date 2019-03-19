@@ -445,13 +445,15 @@ static void tmbr_desktop_free(tmbr_desktop_t *desktop)
 
 static int tmbr_desktop_find_sibling(tmbr_desktop_t **out, tmbr_desktop_t *desktop, tmbr_select_t which)
 {
-	if (!desktop)
+	if (!desktop || (!desktop->prev && !desktop->next))
 		return -1;
+	if ((*out = (which == TMBR_SELECT_PREV) ? desktop->prev : desktop->next) != NULL)
+		return 0;
 
-	if ((which == TMBR_SELECT_PREV && !desktop->prev) ||
-	    (which == TMBR_SELECT_NEXT && !desktop->next))
-		return -1;
-	*out = (which == TMBR_SELECT_PREV) ? desktop->prev : desktop->next;
+	if (which == TMBR_SELECT_PREV)
+		for (*out = desktop->screen->desktops; *out && (*out)->next; *out = (*out)->next);
+	else if  (which == TMBR_SELECT_NEXT)
+		*out = desktop->screen->desktops;
 	return 0;
 }
 
