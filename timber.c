@@ -80,10 +80,7 @@ struct tmbr_client {
 	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
 	xcb_window_t window;
-	uint16_t x;
-	uint16_t y;
-	uint16_t width;
-	uint16_t height;
+	uint16_t x, y, w, h;
 };
 
 struct tmbr_command {
@@ -106,10 +103,7 @@ struct tmbr_screen {
 	tmbr_desktop_t *focus;
 	xcb_randr_output_t output;
 	xcb_window_t root;
-	uint16_t x;
-	uint16_t y;
-	uint16_t width;
-	uint16_t height;
+	uint16_t x, y, w, h;
 };
 
 struct tmbr_tree {
@@ -380,8 +374,8 @@ static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint1
 
 	values[0] = client->x = x;
 	values[1] = client->y = y;
-	values[2] = client->width = w - 2 * border;
-	values[3] = client->height = h - 2 * border;
+	values[2] = client->w = w - 2 * border;
+	values[3] = client->h = h - 2 * border;
 	values[4] = border;
 
 	xcb_configure_window(state.conn, client->window, mask, values);
@@ -390,7 +384,7 @@ static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint1
 
 static int tmbr_client_hide(tmbr_client_t *c)
 {
-	return tmbr_client_move(c, c->desktop->screen->width, c->y, c->width, c->height, 0);
+	return tmbr_client_move(c, c->desktop->screen->w, c->y, c->w, c->h, 0);
 }
 
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, char fs)
@@ -477,8 +471,8 @@ static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 	if (tmbr_layout_tree(desktop->clients,
 			     desktop->screen->x,
 			     desktop->screen->y,
-			     desktop->screen->width,
-			     desktop->screen->height) < 0)
+			     desktop->screen->w,
+			     desktop->screen->h) < 0)
 		die("Unable to layout tree");
 
 	tmbr_discard_events(XCB_ENTER_NOTIFY);
@@ -508,11 +502,8 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
 {
 	if (fs)
-		tmbr_client_move(client,
-				 desktop->screen->x,
-				 desktop->screen->y,
-				 desktop->screen->width,
-				 desktop->screen->height, 0);
+		tmbr_client_move(client, desktop->screen->x, desktop->screen->y,
+				 desktop->screen->w, desktop->screen->h, 0);
 	else
 		tmbr_desktop_layout(desktop);
 
@@ -703,8 +694,8 @@ static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, uint
 
 	s->x = x;
 	s->y = y;
-	s->width = width;
-	s->height = height;
+	s->w = width;
+	s->h = height;
 
 	return tmbr_desktop_layout(s->focus);
 }
