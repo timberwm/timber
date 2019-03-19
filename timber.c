@@ -858,23 +858,20 @@ static int tmbr_handle_screen_change_notify(void)
 
 static int tmbr_handle_event(xcb_generic_event_t *ev)
 {
-	switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
-		case XCB_FOCUS_IN:
-			return tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
-		case XCB_ENTER_NOTIFY:
-			return tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
-		case XCB_MAP_REQUEST:
-			return tmbr_handle_map_request((xcb_map_request_event_t *) ev);
-		case XCB_DESTROY_NOTIFY:
-			return tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
-		case XCB_CLIENT_MESSAGE:
-			return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
-		default:
-			if (state.randr->present &&
-			    XCB_EVENT_RESPONSE_TYPE(ev) == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
-				return tmbr_handle_screen_change_notify();
-			return -1;
-	}
+	uint8_t type = XCB_EVENT_RESPONSE_TYPE(ev);
+	if (type == XCB_FOCUS_IN)
+		return tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
+	else if (type == XCB_ENTER_NOTIFY)
+		return tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
+	else if (type == XCB_MAP_REQUEST)
+		return tmbr_handle_map_request((xcb_map_request_event_t *) ev);
+	else if (type == XCB_DESTROY_NOTIFY)
+		return tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
+	else if (type == XCB_CLIENT_MESSAGE)
+		return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
+	else if (state.randr->present && type == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
+		return tmbr_handle_screen_change_notify();
+	return 0;
 }
 
 static void tmbr_discard_events(uint8_t type)
