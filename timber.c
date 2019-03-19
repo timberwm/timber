@@ -820,15 +820,13 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 
 static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
-	tmbr_desktop_t *desktop;
 	tmbr_client_t *client;
 
 	if (tmbr_client_find_by_window(&client, ev->window) < 0)
 		return 0;
-	desktop = client->desktop;
-
-	if (tmbr_desktop_remove_client(desktop, client, 1) < 0)
+	if (tmbr_desktop_remove_client(client->desktop, client, 1) < 0)
 		die("Unable to remove client from tree");
+
 	tmbr_client_free(client);
 	return 0;
 }
