@@ -31,6 +31,7 @@
 #include <xcb/xcb_aux.h>
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_ewmh.h>
+#include <xcb/xcb_icccm.h>
 #include <xcb/randr.h>
 #undef inline
 
@@ -326,6 +327,45 @@ static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
 static void tmbr_client_free(tmbr_client_t *client)
 {
 	free(client);
+}
+
+static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
+{
+	xcb_icccm_get_wm_protocols_reply_t protos;
+	xcb_client_message_event_t msg = { 0 };
+	size_t i;
+
+	if (xcb_icccm_get_wm_protocols_reply(state.conn,
+					     xcb_icccm_get_wm_protocols(state.conn,
+									client->window,
+									state.ewmh.WM_PROTOCOLS),
+									&protos, NULL) != 1)
+		return -1;
+	for (i = 0; i < protos.atoms_len; i++)
+		if (protos.atoms[i] == value)
+			break;
+	xcb_icccm_get_wm_protocols_reply_wipe(&protos);
+
+	if (i == protos.atoms_len)
+		return -1;
+
+	msg.response_type = XCB_CLIENT_MESSAGE;
+	msg.window = client->window;
+	msg.type = state.ewmh.WM_PROTOCOLS;
+	msg.format = 32;
+	msg.data.data32[0] = value;
+	msg.data.data32[1] = XCB_CURRENT_TIME;
+
+	xcb_send_event(state.conn, 0, client->window, XCB_EVENT_MASK_NO_EVENT, (char *) &msg);
+	xcb_flush(state.conn);
+
+	return 0;
+}
+
+static void tmbr_client_kill(tmbr_client_t *client)
+{
+	if (tmbr_client_send_message(client, state.atoms[TMBR_ATOM_WM_DELETE_WINDOW]) < 0)
+		xcb_kill_client(state.conn, client->window);
 }
 
 static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t border)
@@ -788,11 +828,6 @@ static void tmbr_discard_events(uint8_t type)
 			tmbr_handle_event(ev);
 		free(ev);
 	}
-}
-
-static void tmbr_client_kill(tmbr_client_t *client)
-{
-	xcb_kill_client(state.conn, client->window);
 }
 
 static void tmbr_cmd_client_kill(const tmbr_command_args_t *args)
