@@ -80,10 +80,7 @@ struct tmbr_client {
 	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
 	xcb_window_t window;
-	uint16_t x;
-	uint16_t y;
-	uint16_t width;
-	uint16_t height;
+	uint16_t x, y, w, h;
 };
 
 struct tmbr_command {
@@ -106,10 +103,7 @@ struct tmbr_screen {
 	tmbr_desktop_t *focus;
 	xcb_randr_output_t output;
 	xcb_window_t root;
-	uint16_t x;
-	uint16_t y;
-	uint16_t width;
-	uint16_t height;
+	uint16_t x, y, w, h;
 };
 
 struct tmbr_tree {
@@ -217,7 +211,7 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_se
 		if (!t->parent) {
 			/* We want to wrap to the leftmost node */
 			break;
-		} else if (t != (tmbr_tree_get_child(t->parent, upwards))) {
+		} else if (t != tmbr_tree_get_child(t->parent, upwards)) {
 			/* Go to the leftmost node of the right parent node */
 			t = tmbr_tree_get_child(t->parent, upwards);
 			break;
@@ -380,8 +374,8 @@ static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint1
 
 	values[0] = client->x = x;
 	values[1] = client->y = y;
-	values[2] = client->width = w - 2 * border;
-	values[3] = client->height = h - 2 * border;
+	values[2] = client->w = w - 2 * border;
+	values[3] = client->h = h - 2 * border;
 	values[4] = border;
 
 	xcb_configure_window(state.conn, client->window, mask, values);
@@ -390,7 +384,7 @@ static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint1
 
 static int tmbr_client_hide(tmbr_client_t *c)
 {
-	return tmbr_client_move(c, c->desktop->screen->width, c->y, c->width, c->height, 0);
+	return tmbr_client_move(c, c->desktop->screen->w, c->y, c->w, c->h, 0);
 }
 
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, char fs)
@@ -431,12 +425,8 @@ static int tmbr_layout_tree(tmbr_tree_t *tree, uint16_t x, uint16_t y, uint16_t 
 
 static int tmbr_desktop_new(tmbr_desktop_t **out)
 {
-	tmbr_desktop_t *d;
-
-	if ((d = calloc(1, sizeof(*d))) == NULL)
+	if ((*out = calloc(1, sizeof(**out))) == NULL)
 		die("Unable to allocate desktop");
-
-	*out = d;
 	return 0;
 }
 
@@ -477,8 +467,8 @@ static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 	if (tmbr_layout_tree(desktop->clients,
 			     desktop->screen->x,
 			     desktop->screen->y,
-			     desktop->screen->width,
-			     desktop->screen->height) < 0)
+			     desktop->screen->w,
+			     desktop->screen->h) < 0)
 		die("Unable to layout tree");
 
 	tmbr_discard_events(XCB_ENTER_NOTIFY);
@@ -508,11 +498,8 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
 {
 	if (fs)
-		tmbr_client_move(client,
-				 desktop->screen->x,
-				 desktop->screen->y,
-				 desktop->screen->width,
-				 desktop->screen->height, 0);
+		tmbr_client_move(client, desktop->screen->x, desktop->screen->y,
+				 desktop->screen->w, desktop->screen->h, 0);
 	else
 		tmbr_desktop_layout(desktop);
 
@@ -703,8 +690,8 @@ static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, uint
 
 	s->x = x;
 	s->y = y;
-	s->width = width;
-	s->height = height;
+	s->w = width;
+	s->h = height;
 
 	return tmbr_desktop_layout(s->focus);
 }
@@ -833,15 +820,13 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 
 static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
-	tmbr_desktop_t *desktop;
 	tmbr_client_t *client;
 
 	if (tmbr_client_find_by_window(&client, ev->window) < 0)
 		return 0;
-	desktop = client->desktop;
-
-	if (tmbr_desktop_remove_client(desktop, client, 1) < 0)
+	if (tmbr_desktop_remove_client(client->desktop, client, 1) < 0)
 		die("Unable to remove client from tree");
+
 	tmbr_client_free(client);
 	return 0;
 }
@@ -873,23 +858,20 @@ static int tmbr_handle_screen_change_notify(void)
 
 static int tmbr_handle_event(xcb_generic_event_t *ev)
 {
-	switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
-		case XCB_FOCUS_IN:
-			return tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
-		case XCB_ENTER_NOTIFY:
-			return tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
-		case XCB_MAP_REQUEST:
-			return tmbr_handle_map_request((xcb_map_request_event_t *) ev);
-		case XCB_DESTROY_NOTIFY:
-			return tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
-		case XCB_CLIENT_MESSAGE:
-			return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
-		default:
-			if (state.randr->present &&
-			    XCB_EVENT_RESPONSE_TYPE(ev) == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
-				return tmbr_handle_screen_change_notify();
-			return -1;
-	}
+	uint8_t type = XCB_EVENT_RESPONSE_TYPE(ev);
+	if (type == XCB_FOCUS_IN)
+		return tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
+	else if (type == XCB_ENTER_NOTIFY)
+		return tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
+	else if (type == XCB_MAP_REQUEST)
+		return tmbr_handle_map_request((xcb_map_request_event_t *) ev);
+	else if (type == XCB_DESTROY_NOTIFY)
+		return tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
+	else if (type == XCB_CLIENT_MESSAGE)
+		return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
+	else if (state.randr->present && type == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
+		return tmbr_handle_screen_change_notify();
+	return 0;
 }
 
 static void tmbr_discard_events(uint8_t type)
@@ -1143,17 +1125,11 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 
 	tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW");
 
-	if (tmbr_screens_update(screen) < 0)
-		die("Unable to update screens");
-
-	if (tmbr_screen_manage_windows(state.screens) < 0)
-		die("Unable to manage clients");
-
-	if (tmbr_screen_focus(state.screens) < 0)
-		die("Unable to focus screen");
-
-	if (tmbr_desktop_layout(state.screens->focus) < 0)
-		die("Unable to layout screen");
+	if (tmbr_screens_update(screen) < 0 ||
+	    tmbr_screen_manage_windows(state.screens) < 0 ||
+	    tmbr_screen_focus(state.screens) < 0 ||
+	    tmbr_desktop_layout(state.screens->focus) < 0)
+		die("Unable to set up initial screens");
 
 	return 0;
 }
