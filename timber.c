@@ -581,7 +581,7 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 							     NULL)) == NULL)
 			goto next;
 
-		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE)
+		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE || attrs->override_redirect)
 			goto next;
 
 		if (tmbr_client_new(&client, children[i]) < 0)
@@ -756,9 +756,15 @@ static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 
 static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 {
+	xcb_get_window_attributes_reply_t *attrs;
 	tmbr_client_t *client;
+	char override;
 
-	if (tmbr_client_find_by_window(&client, ev->window) == 0)
+	attrs = xcb_get_window_attributes_reply(state.conn, xcb_get_window_attributes(state.conn, ev->window), NULL);
+	override = attrs ? attrs->override_redirect : 0;
+	free(attrs);
+
+	if (override || tmbr_client_find_by_window(&client, ev->window) == 0)
 		return 0;
 
 	xcb_map_window(state.conn, ev->window);
