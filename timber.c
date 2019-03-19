@@ -48,6 +48,11 @@ typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
 
 typedef enum {
+	TMBR_ATOM_WM_DELETE_WINDOW,
+	TMBR_ATOM_LAST
+} tmbr_atom_t;
+
+typedef enum {
 	TMBR_DIR_NORTH,
 	TMBR_DIR_SOUTH,
 	TMBR_DIR_EAST,
@@ -135,8 +140,9 @@ static struct {
 	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
 	xcb_ewmh_connection_t ewmh;
+	xcb_atom_t atoms[TMBR_ATOM_LAST];
 	int fifofd;
-} state = { NULL, NULL, NULL, { 0 }, -1 };
+} state = { NULL, NULL, NULL, { 0 }, { 0 }, -1 };
 
 static void die(const char *fmt, ...)
 {
@@ -986,17 +992,26 @@ static void tmbr_cleanup(int signal)
 	xcb_disconnect(state.conn);
 }
 
-static int tmbr_setup_ewmh(xcb_connection_t *conn)
+void tmbr_setup_atom(xcb_atom_t *out, char *name)
 {
-	xcb_atom_t atoms[2];
+	xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(state.conn,
+							       xcb_intern_atom(state.conn, 0, strlen(name), name),
+							       NULL);
+	*out = reply ? reply->atom : XCB_NONE;
+	free(reply);
+}
+
+static int tmbr_setup_atoms(xcb_connection_t *conn)
+{
+	xcb_atom_t netatoms[2];
 
 	if (xcb_ewmh_init_atoms_replies(&state.ewmh, xcb_ewmh_init_atoms(conn, &state.ewmh), NULL) == 0)
 		die("Unable to initialize EWMH atoms");
+	netatoms[0] = state.ewmh._NET_WM_STATE;
+	netatoms[1] = state.ewmh._NET_WM_STATE_FULLSCREEN;
+	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(netatoms) / sizeof(*netatoms), netatoms);
 
-	atoms[0] = state.ewmh._NET_WM_STATE;
-	atoms[1] = state.ewmh._NET_WM_STATE_FULLSCREEN;
-
-	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(atoms) / sizeof(*atoms), atoms);
+	tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW");
 
 	return 0;
 }
@@ -1080,8 +1095,8 @@ static int tmbr_setup(void)
 	    xcb_connection_has_error(state.conn) != 0)
 		die("Unable to connect to X server");
 
-	if (tmbr_setup_ewmh(state.conn) < 0)
-		die("Unable to setup EWMH");
+	if (tmbr_setup_atoms(state.conn) < 0)
+		die("Unable to setup atoms");
 
 	if (tmbr_setup_display(state.conn) < 0)
 		die("Unable to setup display");
