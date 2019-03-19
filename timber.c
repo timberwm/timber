@@ -986,7 +986,7 @@ static void tmbr_cleanup(int signal)
 	xcb_disconnect(state.conn);
 }
 
-static int tmbr_ewmh_setup(xcb_connection_t *conn)
+static int tmbr_setup_ewmh(xcb_connection_t *conn)
 {
 	xcb_atom_t atoms[2];
 
@@ -1001,7 +1001,7 @@ static int tmbr_ewmh_setup(xcb_connection_t *conn)
 	return 0;
 }
 
-static int tmbr_display_setup(xcb_connection_t *conn)
+static int tmbr_setup_display(xcb_connection_t *conn)
 {
 	const uint32_t values[] = {
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
@@ -1080,10 +1080,10 @@ static int tmbr_setup(void)
 	    xcb_connection_has_error(state.conn) != 0)
 		die("Unable to connect to X server");
 
-	if (tmbr_ewmh_setup(state.conn) < 0)
+	if (tmbr_setup_ewmh(state.conn) < 0)
 		die("Unable to setup EWMH");
 
-	if (tmbr_display_setup(state.conn) < 0)
+	if (tmbr_setup_display(state.conn) < 0)
 		die("Unable to setup display");
 
 	signal(SIGINT, tmbr_cleanup);
