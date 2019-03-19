@@ -425,12 +425,8 @@ static int tmbr_layout_tree(tmbr_tree_t *tree, uint16_t x, uint16_t y, uint16_t 
 
 static int tmbr_desktop_new(tmbr_desktop_t **out)
 {
-	tmbr_desktop_t *d;
-
-	if ((d = calloc(1, sizeof(*d))) == NULL)
+	if ((*out = calloc(1, sizeof(**out))) == NULL)
 		die("Unable to allocate desktop");
-
-	*out = d;
 	return 0;
 }
 
