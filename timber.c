@@ -104,6 +104,7 @@ struct tmbr_screen {
 	tmbr_screen_t *next;
 	tmbr_desktop_t *desktops;
 	tmbr_desktop_t *focus;
+	xcb_randr_output_t output;
 	xcb_window_t root;
 	uint16_t x;
 	uint16_t y;
@@ -675,7 +676,7 @@ static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 	return 0;
 }
 
-static int tmbr_screen_manage(xcb_window_t root, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
+static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
 {
 	tmbr_desktop_t *d;
 	tmbr_screen_t *s;
@@ -685,6 +686,7 @@ static int tmbr_screen_manage(xcb_window_t root, uint16_t x, uint16_t y, uint16_
 	if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
 		die("Cannot set up desktop");
 
+	s->output = output;
 	s->root = root;
 	s->x = x;
 	s->y = y;
@@ -1107,7 +1109,7 @@ static int tmbr_setup_display(xcb_connection_t *conn)
 			if (crtc == NULL)
 				goto next;
 
-			tmbr_screen_manage(screen->root, crtc->x, crtc->y, crtc->width, crtc->height);
+			tmbr_screen_manage(outputs[i], screen->root, crtc->x, crtc->y, crtc->width, crtc->height);
 next:
 			free(output);
 			free(crtc);
@@ -1115,7 +1117,7 @@ next:
 
 		free(screens);
 	} else {
-		tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+		tmbr_screen_manage(0, screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
 	}
 
 	if (tmbr_screen_manage_windows(state.screens) < 0)
