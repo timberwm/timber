@@ -1125,17 +1125,11 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 
 	tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW");
 
-	if (tmbr_screens_update(screen) < 0)
-		die("Unable to update screens");
-
-	if (tmbr_screen_manage_windows(state.screens) < 0)
-		die("Unable to manage clients");
-
-	if (tmbr_screen_focus(state.screens) < 0)
-		die("Unable to focus screen");
-
-	if (tmbr_desktop_layout(state.screens->focus) < 0)
-		die("Unable to layout screen");
+	if (tmbr_screens_update(screen) < 0 ||
+	    tmbr_screen_manage_windows(state.screens) < 0 ||
+	    tmbr_screen_focus(state.screens) < 0 ||
+	    tmbr_desktop_layout(state.screens->focus) < 0)
+		die("Unable to set up initial screens");
 
 	return 0;
 }
