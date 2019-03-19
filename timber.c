@@ -104,6 +104,7 @@ struct tmbr_screen {
 	tmbr_screen_t *next;
 	tmbr_desktop_t *desktops;
 	tmbr_desktop_t *focus;
+	xcb_randr_output_t output;
 	xcb_window_t root;
 	uint16_t x;
 	uint16_t y;
@@ -140,10 +141,11 @@ static struct {
 	tmbr_screen_t *screens;
 	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
+	const xcb_query_extension_reply_t *randr;
 	xcb_ewmh_connection_t ewmh;
 	xcb_atom_t atoms[TMBR_ATOM_LAST];
 	int fifofd;
-} state = { NULL, NULL, NULL, { 0 }, { 0 }, -1 };
+} state = { NULL, NULL, NULL, NULL, { 0 }, { 0 }, -1 };
 
 static void die(const char *fmt, ...)
 {
@@ -561,40 +563,12 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 	return tmbr_desktop_layout(desktop);
 }
 
-static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
+static int tmbr_screen_find_by_output(tmbr_screen_t **out, xcb_randr_output_t output)
 {
-	xcb_query_tree_reply_t *tree;
-	xcb_window_t *children;
-	int i;
-
-	if ((tree = xcb_query_tree_reply(state.conn, xcb_query_tree(state.conn, screen->root), NULL)) == NULL)
-		die("Unable to query tree");
-
-	children = xcb_query_tree_children(tree);
-
-	for (i = 0; i < xcb_query_tree_children_length(tree); i++) {
-		xcb_get_window_attributes_reply_t *attrs = NULL;
-		tmbr_client_t *client;
-
-		if ((attrs = xcb_get_window_attributes_reply(state.conn,
-							     xcb_get_window_attributes(state.conn, children[i]),
-							     NULL)) == NULL)
-			goto next;
-
-		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE || attrs->override_redirect)
-			goto next;
-
-		if (tmbr_client_new(&client, children[i]) < 0)
-			die("Unable to create new client");
-		if (tmbr_desktop_add_client(screen->focus, client, 1) < 0)
-			die("Unable to add client to desktop");
-next:
-		free(attrs);
-	}
-
-	free(tree);
-
-	return 0;
+	for (*out = state.screens; *out; *out = (*out)->next)
+		if ((*out)->output == output)
+			return 0;
+	return -1;
 }
 
 static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, tmbr_select_t which)
@@ -675,25 +649,107 @@ static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 	return 0;
 }
 
-static int tmbr_screen_manage(xcb_window_t root, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
+static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
+{
+	xcb_query_tree_reply_t *tree;
+	xcb_window_t *children;
+	int i;
+
+	if ((tree = xcb_query_tree_reply(state.conn, xcb_query_tree(state.conn, screen->root), NULL)) == NULL)
+		die("Unable to query tree");
+
+	children = xcb_query_tree_children(tree);
+
+	for (i = 0; i < xcb_query_tree_children_length(tree); i++) {
+		xcb_get_window_attributes_reply_t *attrs = NULL;
+		tmbr_client_t *client;
+
+		if ((attrs = xcb_get_window_attributes_reply(state.conn,
+							     xcb_get_window_attributes(state.conn, children[i]),
+							     NULL)) == NULL)
+			goto next;
+
+		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE || attrs->override_redirect)
+			goto next;
+
+		if (tmbr_client_new(&client, children[i]) < 0)
+			die("Unable to create new client");
+		if (tmbr_desktop_add_client(screen->focus, client, 1) < 0)
+			die("Unable to add client to desktop");
+next:
+		free(attrs);
+	}
+
+	free(tree);
+
+	return 0;
+}
+
+static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
 {
 	tmbr_desktop_t *d;
 	tmbr_screen_t *s;
 
-	if ((s = calloc(1, sizeof(*s))) == NULL)
-		die("Cannot allocate screen");
-	if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
-		die("Cannot set up desktop");
+	if (tmbr_screen_find_by_output(&s, output) < 0) {
+		if ((s = calloc(1, sizeof(*s))) == NULL)
+			die("Cannot allocate screen");
+		if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
+			die("Cannot set up desktop");
+		s->output = output;
+		s->root = root;
+		s->next = state.screens;
+		state.screens = s;
+	}
 
-	s->root = root;
 	s->x = x;
 	s->y = y;
 	s->width = width;
 	s->height = height;
-	s->next = state.screens;
-	state.screens = s;
 
-	return 0;
+	return tmbr_desktop_layout(s->focus);
+}
+
+static int tmbr_screens_update(xcb_screen_t *screen)
+{
+	if (state.randr->present) {
+		xcb_randr_get_screen_resources_reply_t *screens;
+		xcb_randr_output_t *outputs;
+		int i;
+
+		if ((screens = xcb_randr_get_screen_resources_reply(state.conn,
+								    xcb_randr_get_screen_resources(state.conn, screen->root),
+								    NULL)) == NULL)
+			die("Unable to get screen resources");
+
+		outputs = xcb_randr_get_screen_resources_outputs(screens);
+
+		for (i = 0; i < xcb_randr_get_screen_resources_outputs_length(screens); i++) {
+			xcb_randr_get_output_info_reply_t *output = NULL;
+			xcb_randr_get_crtc_info_reply_t *crtc = NULL;
+
+			output = xcb_randr_get_output_info_reply(state.conn,
+								 xcb_randr_get_output_info(state.conn, outputs[i], XCB_CURRENT_TIME),
+								 NULL);
+			if (output == NULL || output->crtc == XCB_NONE)
+				goto next;
+
+			crtc = xcb_randr_get_crtc_info_reply(state.conn,
+							     xcb_randr_get_crtc_info(state.conn, output->crtc, XCB_CURRENT_TIME),
+							     NULL);
+			if (crtc == NULL)
+				goto next;
+
+			tmbr_screen_manage(outputs[i], screen->root, crtc->x, crtc->y, crtc->width, crtc->height);
+next:
+			free(output);
+			free(crtc);
+		}
+
+		free(screens);
+		return 0;
+	} else {
+		return tmbr_screen_manage(0, screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+	}
 }
 
 static void tmbr_screens_free(tmbr_screen_t *s)
@@ -807,6 +863,14 @@ static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
 	return 0;
 }
 
+static int tmbr_handle_screen_change_notify(void)
+{
+	xcb_screen_t *screen;
+	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(state.conn)).data) == NULL)
+		die("Unable to get root screen");
+	return tmbr_screens_update(screen);
+}
+
 static int tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
@@ -821,6 +885,9 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
 		case XCB_CLIENT_MESSAGE:
 			return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
 		default:
+			if (state.randr->present &&
+			    XCB_EVENT_RESPONSE_TYPE(ev) == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
+				return tmbr_handle_screen_change_notify();
 			return -1;
 	}
 }
@@ -1049,9 +1116,24 @@ void tmbr_setup_atom(xcb_atom_t *out, char *name)
 	free(reply);
 }
 
-static int tmbr_setup_atoms(xcb_connection_t *conn)
+static int tmbr_setup_x11(xcb_connection_t *conn)
 {
+	const uint32_t values[] = {
+		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
+		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
+	};
 	xcb_atom_t netatoms[2];
+	xcb_screen_t *screen;
+
+	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
+		die("Unable to get root screen");
+
+	if ((state.randr = xcb_get_extension_data(state.conn, &xcb_randr_id))->present)
+		xcb_randr_select_input(state.conn, screen->root, XCB_RANDR_NOTIFY_MASK_SCREEN_CHANGE);
+
+	if (xcb_request_check(conn, xcb_change_window_attributes_checked(conn, screen->root,
+									 XCB_CW_EVENT_MASK, values)) != NULL)
+		die("Another window manager is running already.");
 
 	if (xcb_ewmh_init_atoms_replies(&state.ewmh, xcb_ewmh_init_atoms(conn, &state.ewmh), NULL) == 0)
 		die("Unable to initialize EWMH atoms");
@@ -1061,62 +1143,8 @@ static int tmbr_setup_atoms(xcb_connection_t *conn)
 
 	tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW");
 
-	return 0;
-}
-
-static int tmbr_setup_display(xcb_connection_t *conn)
-{
-	const uint32_t values[] = {
-		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
-		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
-	};
-	xcb_screen_t *screen;
-
-	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
-		die("Unable to get root screen");
-
-	if (xcb_request_check(conn, xcb_change_window_attributes_checked(conn, screen->root,
-									 XCB_CW_EVENT_MASK, values)) != NULL)
-		die("Another window manager is running already.");
-
-	if (xcb_get_extension_data(conn, &xcb_randr_id)->present) {
-		xcb_randr_get_screen_resources_reply_t *screens;
-		xcb_randr_output_t *outputs;
-		int i;
-
-		if ((screens = xcb_randr_get_screen_resources_reply(conn,
-								    xcb_randr_get_screen_resources(conn, screen->root),
-								    NULL)) == NULL)
-			die("Unable to get screen resources");
-
-		outputs = xcb_randr_get_screen_resources_outputs(screens);
-
-		for (i = 0; i < xcb_randr_get_screen_resources_outputs_length(screens); i++) {
-			xcb_randr_get_output_info_reply_t *output = NULL;
-			xcb_randr_get_crtc_info_reply_t *crtc = NULL;
-
-			output = xcb_randr_get_output_info_reply(conn,
-								 xcb_randr_get_output_info(conn, outputs[i], XCB_CURRENT_TIME),
-								 NULL);
-			if (output == NULL || output->crtc == XCB_NONE)
-				goto next;
-
-			crtc = xcb_randr_get_crtc_info_reply(conn,
-							     xcb_randr_get_crtc_info(conn, output->crtc, XCB_CURRENT_TIME),
-							     NULL);
-			if (crtc == NULL)
-				goto next;
-
-			tmbr_screen_manage(screen->root, crtc->x, crtc->y, crtc->width, crtc->height);
-next:
-			free(output);
-			free(crtc);
-		}
-
-		free(screens);
-	} else {
-		tmbr_screen_manage(screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
-	}
+	if (tmbr_screens_update(screen) < 0)
+		die("Unable to update screens");
 
 	if (tmbr_screen_manage_windows(state.screens) < 0)
 		die("Unable to manage clients");
@@ -1143,11 +1171,8 @@ static int tmbr_setup(void)
 	    xcb_connection_has_error(state.conn) != 0)
 		die("Unable to connect to X server");
 
-	if (tmbr_setup_atoms(state.conn) < 0)
-		die("Unable to setup atoms");
-
-	if (tmbr_setup_display(state.conn) < 0)
-		die("Unable to setup display");
+	if (tmbr_setup_x11(state.conn) < 0)
+		die("Unable to setup X server");
 
 	signal(SIGINT, tmbr_cleanup);
 	signal(SIGHUP, tmbr_cleanup);
