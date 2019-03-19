@@ -698,6 +698,49 @@ static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, uint
 	return 0;
 }
 
+static int tmbr_screens_manage(xcb_screen_t *screen)
+{
+	if (xcb_get_extension_data(state.conn, &xcb_randr_id)->present) {
+		xcb_randr_get_screen_resources_reply_t *screens;
+		xcb_randr_output_t *outputs;
+		int i;
+
+		if ((screens = xcb_randr_get_screen_resources_reply(state.conn,
+								    xcb_randr_get_screen_resources(state.conn, screen->root),
+								    NULL)) == NULL)
+			die("Unable to get screen resources");
+
+		outputs = xcb_randr_get_screen_resources_outputs(screens);
+
+		for (i = 0; i < xcb_randr_get_screen_resources_outputs_length(screens); i++) {
+			xcb_randr_get_output_info_reply_t *output = NULL;
+			xcb_randr_get_crtc_info_reply_t *crtc = NULL;
+
+			output = xcb_randr_get_output_info_reply(state.conn,
+								 xcb_randr_get_output_info(state.conn, outputs[i], XCB_CURRENT_TIME),
+								 NULL);
+			if (output == NULL || output->crtc == XCB_NONE)
+				goto next;
+
+			crtc = xcb_randr_get_crtc_info_reply(state.conn,
+							     xcb_randr_get_crtc_info(state.conn, output->crtc, XCB_CURRENT_TIME),
+							     NULL);
+			if (crtc == NULL)
+				goto next;
+
+			tmbr_screen_manage(outputs[i], screen->root, crtc->x, crtc->y, crtc->width, crtc->height);
+next:
+			free(output);
+			free(crtc);
+		}
+
+		free(screens);
+		return 0;
+	} else {
+		return tmbr_screen_manage(0, screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+	}
+}
+
 static void tmbr_screens_free(tmbr_screen_t *s)
 {
 	tmbr_screen_t *n;
@@ -1081,44 +1124,8 @@ static int tmbr_setup_display(xcb_connection_t *conn)
 									 XCB_CW_EVENT_MASK, values)) != NULL)
 		die("Another window manager is running already.");
 
-	if (xcb_get_extension_data(conn, &xcb_randr_id)->present) {
-		xcb_randr_get_screen_resources_reply_t *screens;
-		xcb_randr_output_t *outputs;
-		int i;
-
-		if ((screens = xcb_randr_get_screen_resources_reply(conn,
-								    xcb_randr_get_screen_resources(conn, screen->root),
-								    NULL)) == NULL)
-			die("Unable to get screen resources");
-
-		outputs = xcb_randr_get_screen_resources_outputs(screens);
-
-		for (i = 0; i < xcb_randr_get_screen_resources_outputs_length(screens); i++) {
-			xcb_randr_get_output_info_reply_t *output = NULL;
-			xcb_randr_get_crtc_info_reply_t *crtc = NULL;
-
-			output = xcb_randr_get_output_info_reply(conn,
-								 xcb_randr_get_output_info(conn, outputs[i], XCB_CURRENT_TIME),
-								 NULL);
-			if (output == NULL || output->crtc == XCB_NONE)
-				goto next;
-
-			crtc = xcb_randr_get_crtc_info_reply(conn,
-							     xcb_randr_get_crtc_info(conn, output->crtc, XCB_CURRENT_TIME),
-							     NULL);
-			if (crtc == NULL)
-				goto next;
-
-			tmbr_screen_manage(outputs[i], screen->root, crtc->x, crtc->y, crtc->width, crtc->height);
-next:
-			free(output);
-			free(crtc);
-		}
-
-		free(screens);
-	} else {
-		tmbr_screen_manage(0, screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
-	}
+	if (tmbr_screens_manage(screen) < 0)
+		die("Unable to manage screens");
 
 	if (tmbr_screen_manage_windows(state.screens) < 0)
 		die("Unable to manage clients");
