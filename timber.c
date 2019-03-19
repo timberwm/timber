@@ -211,7 +211,7 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_se
 		if (!t->parent) {
 			/* We want to wrap to the leftmost node */
 			break;
-		} else if (t != (tmbr_tree_get_child(t->parent, upwards))) {
+		} else if (t != tmbr_tree_get_child(t->parent, upwards)) {
 			/* Go to the leftmost node of the right parent node */
 			t = tmbr_tree_get_child(t->parent, upwards);
 			break;
