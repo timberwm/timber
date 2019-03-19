@@ -562,42 +562,6 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 	return tmbr_desktop_layout(desktop);
 }
 
-static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
-{
-	xcb_query_tree_reply_t *tree;
-	xcb_window_t *children;
-	int i;
-
-	if ((tree = xcb_query_tree_reply(state.conn, xcb_query_tree(state.conn, screen->root), NULL)) == NULL)
-		die("Unable to query tree");
-
-	children = xcb_query_tree_children(tree);
-
-	for (i = 0; i < xcb_query_tree_children_length(tree); i++) {
-		xcb_get_window_attributes_reply_t *attrs = NULL;
-		tmbr_client_t *client;
-
-		if ((attrs = xcb_get_window_attributes_reply(state.conn,
-							     xcb_get_window_attributes(state.conn, children[i]),
-							     NULL)) == NULL)
-			goto next;
-
-		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE || attrs->override_redirect)
-			goto next;
-
-		if (tmbr_client_new(&client, children[i]) < 0)
-			die("Unable to create new client");
-		if (tmbr_desktop_add_client(screen->focus, client, 1) < 0)
-			die("Unable to add client to desktop");
-next:
-		free(attrs);
-	}
-
-	free(tree);
-
-	return 0;
-}
-
 static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, tmbr_select_t which)
 {
 	tmbr_screen_t *p;
@@ -672,6 +636,42 @@ static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 		screen->desktops = desktop->next;
 	if (screen->focus == desktop)
 		tmbr_screen_focus_desktop(screen, desktop->next ? desktop->next : desktop->prev);
+
+	return 0;
+}
+
+static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
+{
+	xcb_query_tree_reply_t *tree;
+	xcb_window_t *children;
+	int i;
+
+	if ((tree = xcb_query_tree_reply(state.conn, xcb_query_tree(state.conn, screen->root), NULL)) == NULL)
+		die("Unable to query tree");
+
+	children = xcb_query_tree_children(tree);
+
+	for (i = 0; i < xcb_query_tree_children_length(tree); i++) {
+		xcb_get_window_attributes_reply_t *attrs = NULL;
+		tmbr_client_t *client;
+
+		if ((attrs = xcb_get_window_attributes_reply(state.conn,
+							     xcb_get_window_attributes(state.conn, children[i]),
+							     NULL)) == NULL)
+			goto next;
+
+		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE || attrs->override_redirect)
+			goto next;
+
+		if (tmbr_client_new(&client, children[i]) < 0)
+			die("Unable to create new client");
+		if (tmbr_desktop_add_client(screen->focus, client, 1) < 0)
+			die("Unable to add client to desktop");
+next:
+		free(attrs);
+	}
+
+	free(tree);
 
 	return 0;
 }
