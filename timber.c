@@ -698,7 +698,7 @@ static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, uint
 	return 0;
 }
 
-static int tmbr_screens_manage(xcb_screen_t *screen)
+static int tmbr_screens_update(xcb_screen_t *screen)
 {
 	if (xcb_get_extension_data(state.conn, &xcb_randr_id)->present) {
 		xcb_randr_get_screen_resources_reply_t *screens;
@@ -1094,27 +1094,13 @@ void tmbr_setup_atom(xcb_atom_t *out, char *name)
 	free(reply);
 }
 
-static int tmbr_setup_atoms(xcb_connection_t *conn)
-{
-	xcb_atom_t netatoms[2];
-
-	if (xcb_ewmh_init_atoms_replies(&state.ewmh, xcb_ewmh_init_atoms(conn, &state.ewmh), NULL) == 0)
-		die("Unable to initialize EWMH atoms");
-	netatoms[0] = state.ewmh._NET_WM_STATE;
-	netatoms[1] = state.ewmh._NET_WM_STATE_FULLSCREEN;
-	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(netatoms) / sizeof(*netatoms), netatoms);
-
-	tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW");
-
-	return 0;
-}
-
-static int tmbr_setup_display(xcb_connection_t *conn)
+static int tmbr_setup_x11(xcb_connection_t *conn)
 {
 	const uint32_t values[] = {
 		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
 		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
 	};
+	xcb_atom_t netatoms[2];
 	xcb_screen_t *screen;
 
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
@@ -1124,8 +1110,16 @@ static int tmbr_setup_display(xcb_connection_t *conn)
 									 XCB_CW_EVENT_MASK, values)) != NULL)
 		die("Another window manager is running already.");
 
-	if (tmbr_screens_manage(screen) < 0)
-		die("Unable to manage screens");
+	if (xcb_ewmh_init_atoms_replies(&state.ewmh, xcb_ewmh_init_atoms(conn, &state.ewmh), NULL) == 0)
+		die("Unable to initialize EWMH atoms");
+	netatoms[0] = state.ewmh._NET_WM_STATE;
+	netatoms[1] = state.ewmh._NET_WM_STATE_FULLSCREEN;
+	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(netatoms) / sizeof(*netatoms), netatoms);
+
+	tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW");
+
+	if (tmbr_screens_update(screen) < 0)
+		die("Unable to update screens");
 
 	if (tmbr_screen_manage_windows(state.screens) < 0)
 		die("Unable to manage clients");
@@ -1152,11 +1146,8 @@ static int tmbr_setup(void)
 	    xcb_connection_has_error(state.conn) != 0)
 		die("Unable to connect to X server");
 
-	if (tmbr_setup_atoms(state.conn) < 0)
-		die("Unable to setup atoms");
-
-	if (tmbr_setup_display(state.conn) < 0)
-		die("Unable to setup display");
+	if (tmbr_setup_x11(state.conn) < 0)
+		die("Unable to setup X server");
 
 	signal(SIGINT, tmbr_cleanup);
 	signal(SIGHUP, tmbr_cleanup);
