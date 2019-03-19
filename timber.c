@@ -141,10 +141,11 @@ static struct {
 	tmbr_screen_t *screens;
 	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
+	const xcb_query_extension_reply_t *randr;
 	xcb_ewmh_connection_t ewmh;
 	xcb_atom_t atoms[TMBR_ATOM_LAST];
 	int fifofd;
-} state = { NULL, NULL, NULL, { 0 }, { 0 }, -1 };
+} state = { NULL, NULL, NULL, NULL, { 0 }, { 0 }, -1 };
 
 static void die(const char *fmt, ...)
 {
@@ -562,6 +563,14 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 	return tmbr_desktop_layout(desktop);
 }
 
+static int tmbr_screen_find_by_output(tmbr_screen_t **out, xcb_randr_output_t output)
+{
+	for (*out = state.screens; *out; *out = (*out)->next)
+		if ((*out)->output == output)
+			return 0;
+	return -1;
+}
+
 static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, tmbr_select_t which)
 {
 	tmbr_screen_t *p;
@@ -681,26 +690,28 @@ static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, uint
 	tmbr_desktop_t *d;
 	tmbr_screen_t *s;
 
-	if ((s = calloc(1, sizeof(*s))) == NULL)
-		die("Cannot allocate screen");
-	if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
-		die("Cannot set up desktop");
+	if (tmbr_screen_find_by_output(&s, output) < 0) {
+		if ((s = calloc(1, sizeof(*s))) == NULL)
+			die("Cannot allocate screen");
+		if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
+			die("Cannot set up desktop");
+		s->output = output;
+		s->root = root;
+		s->next = state.screens;
+		state.screens = s;
+	}
 
-	s->output = output;
-	s->root = root;
 	s->x = x;
 	s->y = y;
 	s->width = width;
 	s->height = height;
-	s->next = state.screens;
-	state.screens = s;
 
-	return 0;
+	return tmbr_desktop_layout(s->focus);
 }
 
 static int tmbr_screens_update(xcb_screen_t *screen)
 {
-	if (xcb_get_extension_data(state.conn, &xcb_randr_id)->present) {
+	if (state.randr->present) {
 		xcb_randr_get_screen_resources_reply_t *screens;
 		xcb_randr_output_t *outputs;
 		int i;
@@ -852,6 +863,14 @@ static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
 	return 0;
 }
 
+static int tmbr_handle_screen_change_notify(void)
+{
+	xcb_screen_t *screen;
+	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(state.conn)).data) == NULL)
+		die("Unable to get root screen");
+	return tmbr_screens_update(screen);
+}
+
 static int tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	switch (XCB_EVENT_RESPONSE_TYPE(ev)) {
@@ -866,6 +885,9 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
 		case XCB_CLIENT_MESSAGE:
 			return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
 		default:
+			if (state.randr->present &&
+			    XCB_EVENT_RESPONSE_TYPE(ev) == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
+				return tmbr_handle_screen_change_notify();
 			return -1;
 	}
 }
@@ -1105,6 +1127,9 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
 		die("Unable to get root screen");
+
+	if ((state.randr = xcb_get_extension_data(state.conn, &xcb_randr_id))->present)
+		xcb_randr_select_input(state.conn, screen->root, XCB_RANDR_NOTIFY_MASK_SCREEN_CHANGE);
 
 	if (xcb_request_check(conn, xcb_change_window_attributes_checked(conn, screen->root,
 									 XCB_CW_EVENT_MASK, values)) != NULL)
