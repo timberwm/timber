@@ -989,7 +989,6 @@ static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
 		return;
 
 	tmbr_desktop_layout(focus->desktop);
-	tmbr_desktop_focus_client(focus->desktop, next->client, 0);
 }
 
 static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args)
