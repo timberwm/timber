@@ -533,12 +533,12 @@ static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *clien
 	return tmbr_desktop_layout(desktop);
 }
 
-static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client, char inputfocus)
+static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (desktop->focus == client) {
 		tmbr_tree_t *sibling = NULL;
 		tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST);
-		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, inputfocus);
+		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, 1);
 	}
 
 	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
@@ -824,7 +824,7 @@ static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 
 	if (tmbr_client_find_by_window(&client, ev->window) < 0)
 		return 0;
-	if (tmbr_desktop_remove_client(client->desktop, client, 1) < 0)
+	if (tmbr_desktop_remove_client(client->desktop, client) < 0)
 		die("Unable to remove client from tree");
 
 	tmbr_client_free(client);
@@ -922,7 +922,7 @@ static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
 	if ((target = (args->i == TMBR_SELECT_PREV) ? focus->desktop->prev : focus->desktop->next) == NULL)
 		return;
 
-	tmbr_desktop_remove_client(focus->desktop, focus, 1);
+	tmbr_desktop_remove_client(focus->desktop, focus);
 	tmbr_client_hide(focus);
 	tmbr_desktop_add_client(target, focus, 0);
 }
@@ -974,7 +974,7 @@ static void tmbr_cmd_client_send(const tmbr_command_args_t *args)
 	    tmbr_screen_find_sibling(&screen, client->desktop->screen, args->i) < 0)
 		return;
 
-	tmbr_desktop_remove_client(client->desktop, client, 1);
+	tmbr_desktop_remove_client(client->desktop, client);
 	tmbr_desktop_add_client(screen->focus, client, 0);
 }
 
