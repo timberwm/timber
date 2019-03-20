@@ -521,15 +521,11 @@ static int tmbr_desktop_find_window(tmbr_client_t **out, tmbr_desktop_t *desktop
 	return -1;
 }
 
-static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client, char inputfocus)
+static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client) < 0)
 		die("Unable to insert client into tree");
-
-	if (tmbr_desktop_focus_client(desktop, client, inputfocus) < 0)
-		die("Unable to focus client");
 	client->desktop = desktop;
-
 	return tmbr_desktop_layout(desktop);
 }
 
@@ -659,10 +655,10 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE || attrs->override_redirect)
 			goto next;
 
-		if (tmbr_client_new(&client, children[i]) < 0)
-			die("Unable to create new client");
-		if (tmbr_desktop_add_client(screen->focus, client, 1) < 0)
-			die("Unable to add client to desktop");
+		if (tmbr_client_new(&client, children[i]) < 0 ||
+		    tmbr_desktop_add_client(screen->focus, client) < 0 ||
+		    tmbr_desktop_focus_client(screen->focus, client, 1) < 0)
+			die("Unable to adopt client");
 next:
 		free(attrs);
 	}
@@ -811,8 +807,8 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 		return 0;
 
 	if (tmbr_client_new(&client, ev->window) < 0 ||
-	    tmbr_desktop_add_client(state.screen->focus, client, 1) < 0)
-		die("Unable to create new client");
+	    tmbr_desktop_add_client(state.screen->focus, client) < 0)
+		die("Unable to manage client");
 
 	xcb_map_window(state.conn, ev->window);
 	return tmbr_desktop_focus_client(state.screen->focus, client, 1);
@@ -924,7 +920,8 @@ static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
 
 	tmbr_desktop_remove_client(focus->desktop, focus);
 	tmbr_client_hide(focus);
-	tmbr_desktop_add_client(target, focus, 0);
+	tmbr_desktop_add_client(target, focus);
+	tmbr_desktop_focus_client(target, focus, 0);
 }
 
 static void tmbr_cmd_client_resize(const tmbr_command_args_t *args)
@@ -975,7 +972,8 @@ static void tmbr_cmd_client_send(const tmbr_command_args_t *args)
 		return;
 
 	tmbr_desktop_remove_client(client->desktop, client);
-	tmbr_desktop_add_client(screen->focus, client, 0);
+	tmbr_desktop_add_client(screen->focus, client);
+	tmbr_desktop_focus_client(screen->focus, client, 0);
 }
 
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
