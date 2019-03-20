@@ -810,12 +810,12 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	if (override || tmbr_client_find_by_window(&client, ev->window) == 0)
 		return 0;
 
-	xcb_map_window(state.conn, ev->window);
-
-	if (tmbr_client_new(&client, ev->window) < 0)
+	if (tmbr_client_new(&client, ev->window) < 0 ||
+	    tmbr_desktop_add_client(state.screen->focus, client, 1) < 0)
 		die("Unable to create new client");
 
-	return tmbr_desktop_add_client(state.screen->focus, client, 1);
+	xcb_map_window(state.conn, ev->window);
+	return tmbr_desktop_focus_client(state.screen->focus, client, 1);
 }
 
 static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
