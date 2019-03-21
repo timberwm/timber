@@ -384,7 +384,7 @@ static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint1
 
 static int tmbr_client_hide(tmbr_client_t *c)
 {
-	return tmbr_client_move(c, c->desktop->screen->w, c->y, c->w, c->h, 0);
+	return tmbr_client_move(c, UINT16_MAX - c->w, c->y, c->w, c->h, 0);
 }
 
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, char fs)
