@@ -600,16 +600,18 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 
 static int tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
-	desktop->screen = screen;
+	tmbr_desktop_t *prev = screen->focus, *next = prev ? prev->next : NULL;
 
-	if (screen->focus) {
-		desktop->prev = screen->focus;
-		desktop->next = screen->focus->next;
-		screen->focus->next = desktop;
-	} else {
-		desktop->prev = desktop->next = NULL;
+	desktop->screen = screen;
+	desktop->prev = prev;
+	desktop->next = next;
+
+	if (prev)
+		prev->next = desktop;
+	if (next)
+		next->prev = desktop;
+	if (!screen->focus)
 		screen->desktops = screen->focus = desktop;
-	}
 
 	return 0;
 }
