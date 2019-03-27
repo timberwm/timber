@@ -450,16 +450,6 @@ static int tmbr_desktop_find_sibling(tmbr_desktop_t **out, tmbr_desktop_t *deskt
 	return 0;
 }
 
-static int tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
-{
-	if (inputfocus &&
-	    (tmbr_client_unfocus(desktop->focus) < 0 ||
-	     tmbr_client_focus(client) < 0))
-		return -1;
-	desktop->focus = client;
-	return 0;
-}
-
 static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 {
 	int error;
@@ -489,6 +479,21 @@ static int tmbr_desktop_hide(tmbr_desktop_t *d)
 	tmbr_tree_foreach_leaf(d->clients, it, t)
 		tmbr_client_hide(t->client);
 	return 0;
+}
+
+static int tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
+{
+	if (inputfocus && (tmbr_client_unfocus(desktop->focus) < 0 || tmbr_client_focus(client) < 0))
+		return -1;
+	if (desktop->focus == client)
+		return 0;
+
+	if (desktop->fullscreen)
+		tmbr_client_set_fullscreen(desktop->focus, 0);
+	desktop->fullscreen = 0;
+	desktop->focus = client;
+
+	return tmbr_desktop_layout(desktop);
 }
 
 static int tmbr_desktop_focus(tmbr_desktop_t *desktop)
