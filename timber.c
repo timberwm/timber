@@ -95,6 +95,7 @@ struct tmbr_desktop {
 	tmbr_screen_t *screen;
 	tmbr_tree_t *clients;
 	tmbr_client_t *focus;
+	char fullscreen;
 };
 
 struct tmbr_screen {
@@ -461,15 +462,22 @@ static int tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *cli
 
 static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 {
+	int error;
+
 	if (!desktop->clients || desktop->screen->focus != desktop)
 		return 0;
 
-	if (tmbr_layout_tree(desktop->clients,
-			     desktop->screen->x,
-			     desktop->screen->y,
-			     desktop->screen->w,
-			     desktop->screen->h) < 0)
-		die("Unable to layout tree");
+	if (desktop->fullscreen)
+		error = tmbr_client_move(desktop->focus,
+					 desktop->screen->x, desktop->screen->y,
+					 desktop->screen->w, desktop->screen->h, 0);
+	else
+		error = tmbr_layout_tree(desktop->clients,
+					 desktop->screen->x, desktop->screen->y,
+					 desktop->screen->w, desktop->screen->h);
+
+	if (error < 0)
+		die("Unable to layout desktop");
 
 	tmbr_discard_events(XCB_ENTER_NOTIFY);
 	return 0;
@@ -497,12 +505,8 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
 {
-	if (fs)
-		tmbr_client_move(client, desktop->screen->x, desktop->screen->y,
-				 desktop->screen->w, desktop->screen->h, 0);
-	else
-		tmbr_desktop_layout(desktop);
-
+	desktop->fullscreen = fs;
+	tmbr_desktop_layout(desktop);
 	return tmbr_client_set_fullscreen(client, fs);
 }
 
@@ -540,6 +544,7 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
 		die("Unable to remove client from tree");
 
+	desktop->fullscreen = 0;
 	client->desktop = NULL;
 	client->tree = NULL;
 
