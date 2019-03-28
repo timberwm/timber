@@ -95,7 +95,7 @@ struct tmbr_desktop {
 	tmbr_screen_t *screen;
 	tmbr_tree_t *clients;
 	tmbr_client_t *focus;
-	char fullscreen;
+	uint8_t fullscreen;
 };
 
 struct tmbr_screen {
@@ -388,7 +388,7 @@ static int tmbr_client_hide(tmbr_client_t *c)
 	return tmbr_client_move(c, UINT16_MAX - c->w, c->y, c->w, c->h, 0);
 }
 
-static int tmbr_client_set_fullscreen(tmbr_client_t *client, char fs)
+static int tmbr_client_set_fullscreen(tmbr_client_t *client, uint8_t fs)
 {
 	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
 	xcb_ewmh_set_wm_state(&state.ewmh, client->window, fs, &state.ewmh._NET_WM_STATE_FULLSCREEN);
@@ -508,7 +508,7 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 	return tmbr_client_unfocus(desktop->focus);
 }
 
-static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, char fs)
+static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, uint8_t fs)
 {
 	desktop->fullscreen = fs;
 	tmbr_desktop_layout(desktop);
