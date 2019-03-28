@@ -1099,7 +1099,7 @@ static void tmbr_cleanup(int signal)
 	xcb_disconnect(state.conn);
 }
 
-void tmbr_setup_atom(xcb_atom_t *out, char *name)
+static void tmbr_setup_atom(xcb_atom_t *out, char *name)
 {
 	xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(state.conn,
 							       xcb_intern_atom(state.conn, 0, strlen(name), name),
