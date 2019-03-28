@@ -811,7 +811,7 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 {
 	xcb_get_window_attributes_reply_t *attrs;
 	tmbr_client_t *client;
-	char override;
+	uint8_t override;
 
 	attrs = xcb_get_window_attributes_reply(state.conn, xcb_get_window_attributes(state.conn, ev->window), NULL);
 	override = attrs ? attrs->override_redirect : 0;
