@@ -541,8 +541,9 @@ static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *clien
 static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (desktop->focus == client) {
-		tmbr_tree_t *sibling = NULL;
-		tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST);
+		tmbr_tree_t *sibling;
+		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST) < 0)
+			sibling = NULL;
 		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, 1);
 	}
 
