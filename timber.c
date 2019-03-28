@@ -1208,8 +1208,6 @@ int main(int argc, const char *argv[])
 		if (fds[1].revents & POLLIN)
 			tmbr_handle_command(fds[1].fd);
 	}
-
-	return 0;
 }
 
 /* vim: set tabstop=8 noexpandtab : */
