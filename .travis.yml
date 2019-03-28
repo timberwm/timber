@@ -29,7 +29,7 @@ matrix:
           if: branch != coverity
 
 env:
-    - CFLAGS="-Wno-padded"
+    - CFLAGS="-Werror -Wno-padded"
 
 script:
     - mkdir -p build
