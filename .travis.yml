@@ -9,6 +9,14 @@ addons:
             - libxcb-randr0-dev
             - libxcb-util0-dev
             - meson
+    coverity_scan:
+        project:
+            name: timber
+            description: Tree-based window manager
+        notification_email: timber@pks.im
+        build_command_prepend: mkdir -p build-coverity && meson . build-coverity
+        build_command: ninja -C build-coverity
+        branch_pattern: coverity
 
 matrix:
     include:
@@ -18,13 +26,14 @@ matrix:
         - os: linux
           dist: xenial
           compiler: clang
+          if: branch != coverity
 
 script:
-    - mkdir build
-    - cd build
-    - meson --warnlevel=3 ..
-    - ninja
+    - mkdir -p build
+    - meson --warnlevel=3 . build
+    - ninja -C build
 
 branches:
     only:
         - master
+        - coverity
