@@ -1,3 +1,5 @@
+#define TMBR_VERSION "@version@"
+
 #define TMBR_CTRL_DIR "/run/timber"
 #define TMBR_CTRL_PATH TMBR_CTRL_DIR "/ctrl.s"
 
