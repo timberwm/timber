@@ -1,0 +1,30 @@
+language: c
+
+addons:
+    apt:
+        packages:
+            - libxcb1-dev
+            - libxcb-ewmh-dev
+            - libxcb-icccm4-dev
+            - libxcb-randr0-dev
+            - libxcb-util0-dev
+            - meson
+
+matrix:
+    include:
+        - os: linux
+          dist: xenial
+          compiler: gcc
+        - os: linux
+          dist: xenial
+          compiler: clang
+
+script:
+    - mkdir build
+    - cd build
+    - meson --warnlevel=3 ..
+    - ninja
+
+branches:
+    only:
+        - master
