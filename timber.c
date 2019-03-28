@@ -37,9 +37,9 @@
 
 #define TMBR_UNUSED(x) (void)(x)
 
-#define TMBR_ARG_NONE      { 0, 0 }
-#define TMBR_ARG_SEL(i)    { i, 0 }
-#define TMBR_ARG_DIR(d, i) { i, d }
+#define TMBR_ARG_NONE      { 0, 0, 0 }
+#define TMBR_ARG_SEL(s)    { s, 0, 0 }
+#define TMBR_ARG_DIR(d, i) { 0, d, i }
 
 typedef struct tmbr_client tmbr_client_t;
 typedef struct tmbr_command_args tmbr_command_args_t;
@@ -72,8 +72,9 @@ typedef enum {
 } tmbr_split_t;
 
 struct tmbr_command_args {
-	int i;
+	tmbr_select_t sel;
 	tmbr_dir_t dir;
+	int i;
 };
 
 struct tmbr_client {
@@ -914,7 +915,7 @@ static void tmbr_cmd_client_focus(const tmbr_command_args_t *args)
 	tmbr_tree_t *next;
 
 	if (tmbr_client_find_by_focus(&focus) < 0 ||
-	    tmbr_tree_find_sibling(&next, focus->tree, args->i) < 0)
+	    tmbr_tree_find_sibling(&next, focus->tree, args->sel) < 0)
 		return;
 
 	tmbr_desktop_focus_client(focus->desktop, next->client, 1);
@@ -928,7 +929,7 @@ static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
 	if (tmbr_client_find_by_focus(&focus) < 0)
 		return;
 
-	if ((target = (args->i == TMBR_SELECT_PREV) ? focus->desktop->prev : focus->desktop->next) == NULL)
+	if ((target = (args->sel == TMBR_SELECT_PREV) ? focus->desktop->prev : focus->desktop->next) == NULL)
 		return;
 
 	tmbr_desktop_remove_client(focus->desktop, focus);
@@ -981,7 +982,7 @@ static void tmbr_cmd_client_send(const tmbr_command_args_t *args)
 	tmbr_client_t *client;
 
 	if (tmbr_client_find_by_focus(&client) < 0 ||
-	    tmbr_screen_find_sibling(&screen, client->desktop->screen, args->i) < 0)
+	    tmbr_screen_find_sibling(&screen, client->desktop->screen, args->sel) < 0)
 		return;
 
 	tmbr_desktop_remove_client(client->desktop, client);
@@ -995,7 +996,7 @@ static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
 	tmbr_tree_t *next;
 
 	if (tmbr_client_find_by_focus(&focus) < 0 ||
-	    tmbr_tree_find_sibling(&next, focus->tree, args->i) < 0 ||
+	    tmbr_tree_find_sibling(&next, focus->tree, args->sel) < 0 ||
 	    tmbr_tree_swap(focus->tree, next) < 0)
 		return;
 
@@ -1031,7 +1032,7 @@ static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
 {
 	tmbr_desktop_t *sibling;
 
-	if (tmbr_desktop_find_sibling(&sibling, state.screen->focus, args->i) < 0)
+	if (tmbr_desktop_find_sibling(&sibling, state.screen->focus, args->sel) < 0)
 		return;
 
 	tmbr_screen_focus_desktop(state.screen, sibling);
@@ -1041,7 +1042,7 @@ static void tmbr_cmd_screen_focus(const tmbr_command_args_t *args)
 {
 	tmbr_screen_t *sibling;
 
-	if (tmbr_screen_find_sibling(&sibling, state.screen, args->i) < 0)
+	if (tmbr_screen_find_sibling(&sibling, state.screen, args->sel) < 0)
 		return;
 
 	tmbr_screen_focus(sibling);
