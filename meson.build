@@ -4,6 +4,9 @@ project(
   default_options: [ 'c_std=c89' ]
 )
 
+config = configuration_data()
+config.set('version', meson.project_version())
+
 executable(
   'timber',
   sources: [
@@ -11,7 +14,7 @@ executable(
     configure_file(
       input: 'config.h.in',
       output: 'config.h',
-      copy: true,
+      configuration: config
     ),
   ],
   dependencies: [
