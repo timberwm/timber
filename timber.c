@@ -81,7 +81,8 @@ struct tmbr_client {
 	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
 	xcb_window_t window;
-	uint16_t x, y, w, h;
+	uint16_t w, h;
+	int16_t x, y;
 };
 
 struct tmbr_command {
@@ -105,7 +106,8 @@ struct tmbr_screen {
 	tmbr_desktop_t *focus;
 	xcb_randr_output_t output;
 	xcb_window_t root;
-	uint16_t x, y, w, h;
+	uint16_t w, h;
+	int16_t x, y;
 };
 
 struct tmbr_tree {
@@ -366,7 +368,7 @@ static void tmbr_client_kill(tmbr_client_t *client)
 		xcb_kill_client(state.conn, client->window);
 }
 
-static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t border)
+static int tmbr_client_move(tmbr_client_t *client, int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t border)
 {
 	uint32_t values[5];
 	uint16_t mask =
@@ -374,8 +376,8 @@ static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint1
 		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
 		XCB_CONFIG_WINDOW_BORDER_WIDTH;
 
-	values[0] = client->x = x;
-	values[1] = client->y = y;
+	((int32_t *) values)[0] = client->x = x;
+	((int32_t *) values)[1] = client->y = y;
 	values[2] = client->w = w - 2 * border;
 	values[3] = client->h = h - 2 * border;
 	values[4] = border;
@@ -386,7 +388,7 @@ static int tmbr_client_move(tmbr_client_t *client, uint16_t x, uint16_t y, uint1
 
 static int tmbr_client_hide(tmbr_client_t *c)
 {
-	return tmbr_client_move(c, UINT16_MAX - c->w, c->y, c->w, c->h, 0);
+	return tmbr_client_move(c, c->w * -1, c->y, c->w, c->h, 0);
 }
 
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, uint8_t fs)
@@ -397,7 +399,7 @@ static int tmbr_client_set_fullscreen(tmbr_client_t *client, uint8_t fs)
 	return 0;
 }
 
-static int tmbr_layout_tree(tmbr_tree_t *tree, uint16_t x, uint16_t y, uint16_t w, uint16_t h)
+static int tmbr_layout_tree(tmbr_tree_t *tree, int16_t x, int16_t y, uint16_t w, uint16_t h)
 {
 	uint16_t xoff, yoff, lw, rw, lh, rh;
 
@@ -682,7 +684,7 @@ next:
 	return 0;
 }
 
-static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, uint16_t x, uint16_t y, uint16_t width, uint16_t height)
+static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, int16_t x, int16_t y, uint16_t width, uint16_t height)
 {
 	tmbr_desktop_t *d;
 	tmbr_screen_t *s;
