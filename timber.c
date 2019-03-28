@@ -142,7 +142,7 @@ static struct {
 	int fifofd;
 } state = { NULL, NULL, NULL, NULL, { 0 }, { 0 }, -1 };
 
-static void die(const char *fmt, ...)
+static void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
 	va_list ap;
 
