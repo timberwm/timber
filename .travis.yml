@@ -28,6 +28,9 @@ matrix:
           compiler: clang
           if: branch != coverity
 
+env:
+    - CFLAGS="-Wno-padded"
+
 script:
     - mkdir -p build
     - meson --warnlevel=3 . build
