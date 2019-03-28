@@ -407,13 +407,13 @@ static int tmbr_layout_tree(tmbr_tree_t *tree, int16_t x, int16_t y, uint16_t w,
 		return tmbr_client_move(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
 
 	if (tree->split == TMBR_SPLIT_VERTICAL) {
-		lw = w * (tree->ratio / 100.0);
+		lw = (uint16_t) (w * (tree->ratio / 100.0));
 		rw = w - lw;
 		lh = rh = h;
 		xoff = lw;
 		yoff = 0;
 	} else {
-		lh = h * (tree->ratio / 100.0);
+		lh = (uint16_t) (h * (tree->ratio / 100.0));
 		rh = h - lh;
 		lw = rw = w;
 		yoff = lh;
