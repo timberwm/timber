@@ -1099,13 +1099,18 @@ static void tmbr_cleanup(int signal)
 	xcb_disconnect(state.conn);
 }
 
-static void tmbr_setup_atom(xcb_atom_t *out, char *name)
+static int tmbr_setup_atom(xcb_atom_t *out, char *name)
 {
-	xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(state.conn,
-							       xcb_intern_atom(state.conn, 0, strlen(name), name),
-							       NULL);
-	*out = reply ? reply->atom : XCB_NONE;
+	xcb_intern_atom_cookie_t cookie;
+	xcb_intern_atom_reply_t *reply;
+
+	cookie = xcb_intern_atom(state.conn, 0, (uint16_t) strlen(name), name);
+	if ((reply = xcb_intern_atom_reply(state.conn, cookie, NULL)) == NULL)
+		return -1;
+
+	*out = reply->atom;
 	free(reply);
+	return 0;
 }
 
 static int tmbr_setup_x11(xcb_connection_t *conn)
@@ -1133,7 +1138,8 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 	netatoms[1] = state.ewmh._NET_WM_STATE_FULLSCREEN;
 	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(netatoms) / sizeof(*netatoms), netatoms);
 
-	tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW");
+	if (tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW") < 0)
+		die("Unable to setup 'WM_DELETE_WINDOW' atom");
 
 	if (tmbr_screens_update(screen) < 0 ||
 	    tmbr_screen_manage_windows(state.screens) < 0 ||
