@@ -926,10 +926,8 @@ static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
 	tmbr_desktop_t *target;
 	tmbr_client_t *focus;
 
-	if (tmbr_client_find_by_focus(&focus) < 0)
-		return;
-
-	if ((target = (args->sel == TMBR_SELECT_PREV) ? focus->desktop->prev : focus->desktop->next) == NULL)
+	if (tmbr_client_find_by_focus(&focus) < 0 ||
+	    tmbr_desktop_find_sibling(&target, focus->desktop, args->sel) < 0)
 		return;
 
 	tmbr_desktop_remove_client(focus->desktop, focus);
