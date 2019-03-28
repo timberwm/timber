@@ -628,7 +628,7 @@ static int tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *deskto
 
 static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
-	if (desktop->clients || (screen->desktops == desktop && !desktop->next))
+	if (desktop->clients || (!desktop->prev && !desktop->next))
 		return -1;
 
 	if (desktop->prev)
