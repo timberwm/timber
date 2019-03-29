@@ -357,7 +357,6 @@ static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
 	msg.data.data32[1] = XCB_CURRENT_TIME;
 
 	xcb_send_event(state.conn, 0, client->window, XCB_EVENT_MASK_NO_EVENT, (char *) &msg);
-	xcb_flush(state.conn);
 
 	return 0;
 }
