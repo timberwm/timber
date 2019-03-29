@@ -133,7 +133,7 @@ static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args);
 
 #include "config.h"
 
-static void tmbr_discard_events(uint8_t type);
+static void tmbr_handle_events(uint8_t ignored_events);
 
 static struct {
 	tmbr_screen_t *screens;
@@ -357,7 +357,6 @@ static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
 	msg.data.data32[1] = XCB_CURRENT_TIME;
 
 	xcb_send_event(state.conn, 0, client->window, XCB_EVENT_MASK_NO_EVENT, (char *) &msg);
-	xcb_flush(state.conn);
 
 	return 0;
 }
@@ -472,7 +471,8 @@ static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 	if (error < 0)
 		die("Unable to layout desktop");
 
-	tmbr_discard_events(XCB_ENTER_NOTIFY);
+	xcb_aux_sync(state.conn);
+	tmbr_handle_events(XCB_ENTER_NOTIFY);
 	return 0;
 }
 
@@ -783,33 +783,25 @@ static int tmbr_client_find_by_window(tmbr_client_t **out, xcb_window_t window)
 	return -1;
 }
 
-static int tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
+static void tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
 {
 	tmbr_client_t *client;
-
-	if (tmbr_client_find_by_focus(&client) < 0 ||
-	    client->window == ev->event)
-		return 0;
-
-	return tmbr_desktop_focus_client(client->desktop, client, 1);
+	if (tmbr_client_find_by_focus(&client) == 0 && client->window != ev->event)
+		tmbr_desktop_focus_client(client->desktop, client, 1);
 }
 
-static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
+static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 {
 	tmbr_client_t *client;
 
 	if (ev->mode != XCB_NOTIFY_MODE_NORMAL ||
-	    tmbr_client_find_by_window(&client, ev->event) < 0)
-		return 0;
-
-	if (tmbr_desktop_focus_client(client->desktop, client, 1) < 0 ||
+	    tmbr_client_find_by_window(&client, ev->event) < 0 ||
+	    tmbr_desktop_focus_client(client->desktop, client, 1) < 0 ||
 	    tmbr_screen_focus(client->desktop->screen) < 0)
-		return -1;
-
-	return 0;
+		return;
 }
 
-static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
+static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 {
 	xcb_get_window_attributes_reply_t *attrs;
 	tmbr_client_t *client;
@@ -820,80 +812,76 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	free(attrs);
 
 	if (override || tmbr_client_find_by_window(&client, ev->window) == 0)
-		return 0;
+		return;
 
 	if (tmbr_client_new(&client, ev->window) < 0 ||
 	    tmbr_desktop_add_client(state.screen->focus, client) < 0)
 		die("Unable to manage client");
 
 	xcb_map_window(state.conn, ev->window);
-	return tmbr_desktop_focus_client(state.screen->focus, client, 1);
+	tmbr_desktop_focus_client(state.screen->focus, client, 1);
 }
 
-static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
+static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
 	tmbr_client_t *client;
-
 	if (tmbr_client_find_by_window(&client, ev->window) < 0)
-		return 0;
+		return;
 	if (tmbr_desktop_remove_client(client->desktop, client) < 0)
 		die("Unable to remove client from tree");
-
 	tmbr_client_free(client);
-	return 0;
 }
 
-static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
+static void tmbr_handle_client_message(xcb_client_message_event_t * ev)
 {
-	xcb_atom_t request = ev->data.data32[1];
-	uint32_t action = ev->data.data32[0];
 	tmbr_client_t *client;
 
-	if (ev->type != state.ewmh._NET_WM_STATE ||
-	    tmbr_client_find_by_window(&client, ev->window) < 0)
-		return 0;
-
-	if (request == state.ewmh._NET_WM_STATE_FULLSCREEN &&
-	    tmbr_desktop_set_fullscreen(client->desktop, client, action == XCB_EWMH_WM_STATE_ADD) < 0)
-		return -1;
-
-	return 0;
+	if (ev->type != state.ewmh._NET_WM_STATE || tmbr_client_find_by_window(&client, ev->window) < 0)
+		return;
+	if (ev->data.data32[1] == state.ewmh._NET_WM_STATE_FULLSCREEN)
+		tmbr_desktop_set_fullscreen(client->desktop, client, ev->data.data32[0] == XCB_EWMH_WM_STATE_ADD);
 }
 
-static int tmbr_handle_screen_change_notify(void)
+static void tmbr_handle_error(xcb_request_error_t *ev)
+{
+	if (ev->error_code != 3 /* BAD_WINDOW */)
+		die("X11 error when handling request '%s': %s",
+		    xcb_event_get_request_label(ev->major_opcode),
+		    xcb_event_get_error_label(ev->error_code));
+}
+
+static void tmbr_handle_screen_change_notify(void)
 {
 	xcb_screen_t *screen;
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(state.conn)).data) == NULL)
 		die("Unable to get root screen");
-	return tmbr_screens_update(screen);
+	tmbr_screens_update(screen);
 }
 
-static int tmbr_handle_event(xcb_generic_event_t *ev)
+static void tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	uint8_t type = XCB_EVENT_RESPONSE_TYPE(ev);
 	if (type == XCB_FOCUS_IN)
-		return tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
+		tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
 	else if (type == XCB_ENTER_NOTIFY)
-		return tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
+		tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
 	else if (type == XCB_MAP_REQUEST)
-		return tmbr_handle_map_request((xcb_map_request_event_t *) ev);
+		tmbr_handle_map_request((xcb_map_request_event_t *) ev);
 	else if (type == XCB_DESTROY_NOTIFY)
-		return tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
+		tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
 	else if (type == XCB_CLIENT_MESSAGE)
-		return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
+		tmbr_handle_client_message((xcb_client_message_event_t *) ev);
 	else if (state.randr->present && type == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
-		return tmbr_handle_screen_change_notify();
-	return 0;
+		tmbr_handle_screen_change_notify();
+	else if (!type)
+		tmbr_handle_error((xcb_request_error_t *) ev);
 }
 
-static void tmbr_discard_events(uint8_t type)
+static void tmbr_handle_events(uint8_t ignored_events)
 {
 	xcb_generic_event_t *ev;
-
-	xcb_aux_sync(state.conn);
-
 	while ((ev = xcb_poll_for_event(state.conn)) != NULL) {
-		if (XCB_EVENT_RESPONSE_TYPE(ev) != type)
+		if (!ignored_events || XCB_EVENT_RESPONSE_TYPE(ev) != ignored_events)
 			tmbr_handle_event(ev);
 		free(ev);
 	}
@@ -1190,24 +1178,16 @@ int main(int argc, const char *argv[])
 	fds[1].fd = state.fifofd;
 	fds[1].events = POLLIN;
 
-	while (1) {
-		xcb_generic_event_t *ev;
-
-		xcb_flush(state.conn);
-
+	while (xcb_flush(state.conn) > 0) {
 		if (poll(fds, 2, -1) < 0)
 			die("timber: unable to poll for events");
-
-		if (fds[0].revents & POLLIN) {
-			while ((ev = xcb_poll_for_event(state.conn)) != NULL) {
-				tmbr_handle_event(ev);
-				free(ev);
-			}
-		}
-
+		if (fds[0].revents & POLLIN)
+			tmbr_handle_events(0);
 		if (fds[1].revents & POLLIN)
 			tmbr_handle_command(fds[1].fd);
 	}
+
+	return 0;
 }
 
 /* vim: set tabstop=8 noexpandtab : */
