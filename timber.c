@@ -859,6 +859,15 @@ static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
 	return 0;
 }
 
+static int tmbr_handle_error(xcb_request_error_t *ev)
+{
+	if (ev->error_code != 3 /* BAD_WINDOW */)
+		die("X11 error when handling request '%s': %s",
+		    xcb_event_get_request_label(ev->major_opcode),
+		    xcb_event_get_error_label(ev->error_code));
+	return 0;
+}
+
 static int tmbr_handle_screen_change_notify(void)
 {
 	xcb_screen_t *screen;
@@ -882,6 +891,8 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
 		return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
 	else if (state.randr->present && type == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
 		return tmbr_handle_screen_change_notify();
+	else if (!type)
+		return tmbr_handle_error((xcb_request_error_t *) ev);
 	return 0;
 }
 
