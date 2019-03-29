@@ -783,33 +783,25 @@ static int tmbr_client_find_by_window(tmbr_client_t **out, xcb_window_t window)
 	return -1;
 }
 
-static int tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
+static void tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
 {
 	tmbr_client_t *client;
-
-	if (tmbr_client_find_by_focus(&client) < 0 ||
-	    client->window == ev->event)
-		return 0;
-
-	return tmbr_desktop_focus_client(client->desktop, client, 1);
+	if (tmbr_client_find_by_focus(&client) == 0 && client->window != ev->event)
+		tmbr_desktop_focus_client(client->desktop, client, 1);
 }
 
-static int tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
+static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 {
 	tmbr_client_t *client;
 
 	if (ev->mode != XCB_NOTIFY_MODE_NORMAL ||
-	    tmbr_client_find_by_window(&client, ev->event) < 0)
-		return 0;
-
-	if (tmbr_desktop_focus_client(client->desktop, client, 1) < 0 ||
+	    tmbr_client_find_by_window(&client, ev->event) < 0 ||
+	    tmbr_desktop_focus_client(client->desktop, client, 1) < 0 ||
 	    tmbr_screen_focus(client->desktop->screen) < 0)
-		return -1;
-
-	return 0;
+		return;
 }
 
-static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
+static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 {
 	xcb_get_window_attributes_reply_t *attrs;
 	tmbr_client_t *client;
@@ -820,81 +812,69 @@ static int tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	free(attrs);
 
 	if (override || tmbr_client_find_by_window(&client, ev->window) == 0)
-		return 0;
+		return;
 
 	if (tmbr_client_new(&client, ev->window) < 0 ||
 	    tmbr_desktop_add_client(state.screen->focus, client) < 0)
 		die("Unable to manage client");
 
 	xcb_map_window(state.conn, ev->window);
-	return tmbr_desktop_focus_client(state.screen->focus, client, 1);
+	tmbr_desktop_focus_client(state.screen->focus, client, 1);
 }
 
-static int tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
+static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
 	tmbr_client_t *client;
-
 	if (tmbr_client_find_by_window(&client, ev->window) < 0)
-		return 0;
+		return;
 	if (tmbr_desktop_remove_client(client->desktop, client) < 0)
 		die("Unable to remove client from tree");
-
 	tmbr_client_free(client);
-	return 0;
 }
 
-static int tmbr_handle_client_message(xcb_client_message_event_t * ev)
+static void tmbr_handle_client_message(xcb_client_message_event_t * ev)
 {
-	xcb_atom_t request = ev->data.data32[1];
-	uint32_t action = ev->data.data32[0];
 	tmbr_client_t *client;
 
-	if (ev->type != state.ewmh._NET_WM_STATE ||
-	    tmbr_client_find_by_window(&client, ev->window) < 0)
-		return 0;
-
-	if (request == state.ewmh._NET_WM_STATE_FULLSCREEN &&
-	    tmbr_desktop_set_fullscreen(client->desktop, client, action == XCB_EWMH_WM_STATE_ADD) < 0)
-		return -1;
-
-	return 0;
+	if (ev->type != state.ewmh._NET_WM_STATE || tmbr_client_find_by_window(&client, ev->window) < 0)
+		return;
+	if (ev->data.data32[1] == state.ewmh._NET_WM_STATE_FULLSCREEN)
+		tmbr_desktop_set_fullscreen(client->desktop, client, ev->data.data32[0] == XCB_EWMH_WM_STATE_ADD);
 }
 
-static int tmbr_handle_error(xcb_request_error_t *ev)
+static void tmbr_handle_error(xcb_request_error_t *ev)
 {
 	if (ev->error_code != 3 /* BAD_WINDOW */)
 		die("X11 error when handling request '%s': %s",
 		    xcb_event_get_request_label(ev->major_opcode),
 		    xcb_event_get_error_label(ev->error_code));
-	return 0;
 }
 
-static int tmbr_handle_screen_change_notify(void)
+static void tmbr_handle_screen_change_notify(void)
 {
 	xcb_screen_t *screen;
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(state.conn)).data) == NULL)
 		die("Unable to get root screen");
-	return tmbr_screens_update(screen);
+	tmbr_screens_update(screen);
 }
 
-static int tmbr_handle_event(xcb_generic_event_t *ev)
+static void tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	uint8_t type = XCB_EVENT_RESPONSE_TYPE(ev);
 	if (type == XCB_FOCUS_IN)
-		return tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
+		tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
 	else if (type == XCB_ENTER_NOTIFY)
-		return tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
+		tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
 	else if (type == XCB_MAP_REQUEST)
-		return tmbr_handle_map_request((xcb_map_request_event_t *) ev);
+		tmbr_handle_map_request((xcb_map_request_event_t *) ev);
 	else if (type == XCB_DESTROY_NOTIFY)
-		return tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
+		tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
 	else if (type == XCB_CLIENT_MESSAGE)
-		return tmbr_handle_client_message((xcb_client_message_event_t *) ev);
+		tmbr_handle_client_message((xcb_client_message_event_t *) ev);
 	else if (state.randr->present && type == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
-		return tmbr_handle_screen_change_notify();
+		tmbr_handle_screen_change_notify();
 	else if (!type)
-		return tmbr_handle_error((xcb_request_error_t *) ev);
-	return 0;
+		tmbr_handle_error((xcb_request_error_t *) ev);
 }
 
 static void tmbr_handle_events(uint8_t ignored_events)
