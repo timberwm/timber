@@ -1058,18 +1058,14 @@ static void tmbr_handle_command(int fd)
 	size_t i;
 
 	if ((n = read(fd, cmd, sizeof(cmd) - 1)) <= 0) {
-		if (n == 0)
-			die("Control FIFO has been closed");
-		return;
+		if (errno == EAGAIN || errno == EINTR)
+			return;
+		die("Unable to read from control pipe: %s", strerror(errno));
 	}
-
-	if (cmd[n - 1] == '\n')
-		cmd[--n] = '\0';
-	else
-		cmd[n] = '\0';
+	n = (cmd[n - 1] == '\n') ? (n - 1) : n;
 
 	for (i = 0; i < sizeof(cmds) / sizeof(*cmds); i++) {
-		if (strcmp(cmds[i].cmd, cmd))
+		if (strncmp(cmds[i].cmd, cmd, (size_t) n))
 			continue;
 		cmds[i].fn(&cmds[i].args);
 	}
