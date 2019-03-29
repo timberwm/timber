@@ -1058,9 +1058,9 @@ static void tmbr_handle_command(int fd)
 	size_t i;
 
 	if ((n = read(fd, cmd, sizeof(cmd) - 1)) <= 0) {
-		if (n == 0)
-			die("Control FIFO has been closed");
-		return;
+		if (errno == EAGAIN || errno == EINTR)
+			return;
+		die("Unable to read from control pipe: %s", strerror(errno));
 	}
 
 	if (cmd[n - 1] == '\n')
