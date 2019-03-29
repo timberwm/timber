@@ -133,7 +133,7 @@ static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args);
 
 #include "config.h"
 
-static void tmbr_discard_events(uint8_t type);
+static void tmbr_handle_events(uint8_t ignored_events);
 
 static struct {
 	tmbr_screen_t *screens;
@@ -471,7 +471,8 @@ static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 	if (error < 0)
 		die("Unable to layout desktop");
 
-	tmbr_discard_events(XCB_ENTER_NOTIFY);
+	xcb_aux_sync(state.conn);
+	tmbr_handle_events(XCB_ENTER_NOTIFY);
 	return 0;
 }
 
@@ -896,14 +897,11 @@ static int tmbr_handle_event(xcb_generic_event_t *ev)
 	return 0;
 }
 
-static void tmbr_discard_events(uint8_t type)
+static void tmbr_handle_events(uint8_t ignored_events)
 {
 	xcb_generic_event_t *ev;
-
-	xcb_aux_sync(state.conn);
-
 	while ((ev = xcb_poll_for_event(state.conn)) != NULL) {
-		if (XCB_EVENT_RESPONSE_TYPE(ev) != type)
+		if (!ignored_events || XCB_EVENT_RESPONSE_TYPE(ev) != ignored_events)
 			tmbr_handle_event(ev);
 		free(ev);
 	}
@@ -1187,7 +1185,6 @@ static int tmbr_setup(void)
 
 int main(int argc, const char *argv[])
 {
-	xcb_generic_event_t *ev;
 	struct pollfd fds[2];
 
 	if (argc > 1)
@@ -1204,14 +1201,8 @@ int main(int argc, const char *argv[])
 	while (xcb_flush(state.conn) > 0) {
 		if (poll(fds, 2, -1) < 0)
 			die("timber: unable to poll for events");
-
-		if (fds[0].revents & POLLIN) {
-			while ((ev = xcb_poll_for_event(state.conn)) != NULL) {
-				tmbr_handle_event(ev);
-				free(ev);
-			}
-		}
-
+		if (fds[0].revents & POLLIN)
+			tmbr_handle_events(0);
 		if (fds[1].revents & POLLIN)
 			tmbr_handle_command(fds[1].fd);
 	}
