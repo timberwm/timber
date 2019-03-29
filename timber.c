@@ -1176,6 +1176,7 @@ static int tmbr_setup(void)
 
 int main(int argc, const char *argv[])
 {
+	xcb_generic_event_t *ev;
 	struct pollfd fds[2];
 
 	if (argc > 1)
@@ -1189,11 +1190,7 @@ int main(int argc, const char *argv[])
 	fds[1].fd = state.fifofd;
 	fds[1].events = POLLIN;
 
-	while (1) {
-		xcb_generic_event_t *ev;
-
-		xcb_flush(state.conn);
-
+	while (xcb_flush(state.conn) > 0) {
 		if (poll(fds, 2, -1) < 0)
 			die("timber: unable to poll for events");
 
@@ -1207,6 +1204,8 @@ int main(int argc, const char *argv[])
 		if (fds[1].revents & POLLIN)
 			tmbr_handle_command(fds[1].fd);
 	}
+
+	return 0;
 }
 
 /* vim: set tabstop=8 noexpandtab : */
