@@ -1100,10 +1100,7 @@ static int tmbr_setup_atom(xcb_atom_t *out, char *name)
 
 static int tmbr_setup_x11(xcb_connection_t *conn)
 {
-	const uint32_t values[] = {
-		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
-		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
-	};
+	uint32_t mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY;
 	xcb_atom_t netatoms[2];
 	xcb_screen_t *screen;
 
@@ -1114,7 +1111,7 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 		xcb_randr_select_input(state.conn, screen->root, XCB_RANDR_NOTIFY_MASK_SCREEN_CHANGE);
 
 	if (xcb_request_check(conn, xcb_change_window_attributes_checked(conn, screen->root,
-									 XCB_CW_EVENT_MASK, values)) != NULL)
+									 XCB_CW_EVENT_MASK, &mask)) != NULL)
 		die("Another window manager is running already.");
 
 	if (xcb_ewmh_init_atoms_replies(&state.ewmh, xcb_ewmh_init_atoms(conn, &state.ewmh), NULL) == 0)
