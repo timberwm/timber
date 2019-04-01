@@ -547,7 +547,8 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 		tmbr_tree_t *sibling;
 		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST) < 0)
 			sibling = NULL;
-		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, 1);
+		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL,
+					  desktop->screen == state.screen && desktop->screen->focus == desktop);
 	}
 
 	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
