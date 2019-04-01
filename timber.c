@@ -138,6 +138,9 @@ static struct {
 	xcb_ewmh_connection_t ewmh;
 	struct {
 		xcb_atom_t wm_delete_window;
+		xcb_atom_t wm_protocols;
+		xcb_atom_t net_wm_state;
+		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
 	int fifofd;
 } state = { NULL, NULL, NULL, NULL, { 0 }, { 0 }, -1 };
@@ -335,7 +338,7 @@ static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
 	if (xcb_icccm_get_wm_protocols_reply(state.conn,
 					     xcb_icccm_get_wm_protocols(state.conn,
 									client->window,
-									state.ewmh.WM_PROTOCOLS),
+									state.atoms.wm_protocols),
 									&protos, NULL) != 1)
 		return -1;
 	for (i = 0; i < protos.atoms_len; i++)
@@ -348,7 +351,7 @@ static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
 
 	msg.response_type = XCB_CLIENT_MESSAGE;
 	msg.window = client->window;
-	msg.type = state.ewmh.WM_PROTOCOLS;
+	msg.type = state.atoms.wm_protocols;
 	msg.format = 32;
 	msg.data.data32[0] = value;
 	msg.data.data32[1] = XCB_CURRENT_TIME;
@@ -390,7 +393,7 @@ static int tmbr_client_hide(tmbr_client_t *c)
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, uint8_t fs)
 {
 	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
-	xcb_ewmh_set_wm_state(&state.ewmh, client->window, fs, &state.ewmh._NET_WM_STATE_FULLSCREEN);
+	xcb_ewmh_set_wm_state(&state.ewmh, client->window, fs, &state.atoms.net_wm_state_fullscreen);
 	xcb_configure_window(state.conn, client->window, XCB_CONFIG_WINDOW_STACK_MODE, values);
 	return 0;
 }
@@ -834,9 +837,9 @@ static void tmbr_handle_client_message(xcb_client_message_event_t * ev)
 {
 	tmbr_client_t *client;
 
-	if (ev->type != state.ewmh._NET_WM_STATE || tmbr_client_find_by_window(&client, ev->window) < 0)
+	if (ev->type != state.atoms.net_wm_state || tmbr_client_find_by_window(&client, ev->window) < 0)
 		return;
-	if (ev->data.data32[1] == state.ewmh._NET_WM_STATE_FULLSCREEN)
+	if (ev->data.data32[1] == state.atoms.net_wm_state_fullscreen)
 		tmbr_desktop_set_fullscreen(client->desktop, client, ev->data.data32[0] == XCB_EWMH_WM_STATE_ADD);
 }
 
@@ -1102,14 +1105,17 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 									 XCB_CW_EVENT_MASK, &mask)) != NULL)
 		die("Another window manager is running already.");
 
+	if (tmbr_setup_atom(&state.atoms.wm_delete_window, "WM_DELETE_WINDOW") < 0 ||
+	    tmbr_setup_atom(&state.atoms.wm_protocols, "WM_PROTOCOLS") < 0 ||
+	    tmbr_setup_atom(&state.atoms.net_wm_state, "_NET_WM_STATE") < 0 ||
+	    tmbr_setup_atom(&state.atoms.net_wm_state_fullscreen, "_NET_WM_STATE_FULLSCREEN") < 0)
+		die("Unable to setup atoms");
+
 	if (xcb_ewmh_init_atoms_replies(&state.ewmh, xcb_ewmh_init_atoms(conn, &state.ewmh), NULL) == 0)
 		die("Unable to initialize EWMH atoms");
-	netatoms[0] = state.ewmh._NET_WM_STATE;
-	netatoms[1] = state.ewmh._NET_WM_STATE_FULLSCREEN;
+	netatoms[0] = state.atoms.net_wm_state;
+	netatoms[1] = state.atoms.net_wm_state_fullscreen;
 	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(netatoms) / sizeof(*netatoms), netatoms);
-
-	if (tmbr_setup_atom(&state.atoms.wm_delete_window, "WM_DELETE_WINDOW") < 0)
-		die("Unable to setup 'WM_DELETE_WINDOW' atom");
 
 	if (tmbr_screens_update(screen) < 0 ||
 	    tmbr_screen_manage_windows(state.screens) < 0 ||
