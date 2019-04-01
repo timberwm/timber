@@ -26,14 +26,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define inline
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
 #include <xcb/xcb_event.h>
-#include <xcb/xcb_ewmh.h>
 #include <xcb/xcb_icccm.h>
 #include <xcb/randr.h>
-#undef inline
 
 #define TMBR_UNUSED __attribute__((unused))
 
@@ -135,15 +132,15 @@ static struct {
 	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
 	const xcb_query_extension_reply_t *randr;
-	xcb_ewmh_connection_t ewmh;
 	struct {
 		xcb_atom_t wm_delete_window;
 		xcb_atom_t wm_protocols;
+		xcb_atom_t net_supported;
 		xcb_atom_t net_wm_state;
 		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
 	int fifofd;
-} state = { NULL, NULL, NULL, NULL, { 0 }, { 0 }, -1 };
+} state = { NULL, NULL, NULL, NULL, { 0 }, -1 };
 
 static void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
@@ -393,7 +390,9 @@ static int tmbr_client_hide(tmbr_client_t *c)
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, uint8_t fs)
 {
 	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
-	xcb_ewmh_set_wm_state(&state.ewmh, client->window, fs, &state.atoms.net_wm_state_fullscreen);
+	xcb_change_property(state.conn, XCB_PROP_MODE_REPLACE,
+			    client->window, state.atoms.net_wm_state, XCB_ATOM_ATOM, 32,
+                            fs, &state.atoms.net_wm_state_fullscreen);
 	xcb_configure_window(state.conn, client->window, XCB_CONFIG_WINDOW_STACK_MODE, values);
 	return 0;
 }
@@ -840,7 +839,7 @@ static void tmbr_handle_client_message(xcb_client_message_event_t * ev)
 	if (ev->type != state.atoms.net_wm_state || tmbr_client_find_by_window(&client, ev->window) < 0)
 		return;
 	if (ev->data.data32[1] == state.atoms.net_wm_state_fullscreen)
-		tmbr_desktop_set_fullscreen(client->desktop, client, ev->data.data32[0] == XCB_EWMH_WM_STATE_ADD);
+		tmbr_desktop_set_fullscreen(client->desktop, client, ev->data.data32[0] == 1);
 }
 
 static void tmbr_handle_error(xcb_request_error_t *ev)
@@ -1071,7 +1070,6 @@ static void tmbr_cleanup(TMBR_UNUSED int signal)
 	unlink(TMBR_CTRL_PATH);
 
 	tmbr_screens_free(state.screens);
-	xcb_ewmh_connection_wipe(&state.ewmh);
 	xcb_disconnect(state.conn);
 }
 
@@ -1092,7 +1090,6 @@ static int tmbr_setup_atom(xcb_atom_t *out, char *name)
 static int tmbr_setup_x11(xcb_connection_t *conn)
 {
 	uint32_t mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY;
-	xcb_atom_t netatoms[2];
 	xcb_screen_t *screen;
 
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
@@ -1107,15 +1104,13 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 
 	if (tmbr_setup_atom(&state.atoms.wm_delete_window, "WM_DELETE_WINDOW") < 0 ||
 	    tmbr_setup_atom(&state.atoms.wm_protocols, "WM_PROTOCOLS") < 0 ||
+	    tmbr_setup_atom(&state.atoms.net_supported, "_NET_SUPPORTED") < 0 ||
 	    tmbr_setup_atom(&state.atoms.net_wm_state, "_NET_WM_STATE") < 0 ||
 	    tmbr_setup_atom(&state.atoms.net_wm_state_fullscreen, "_NET_WM_STATE_FULLSCREEN") < 0)
 		die("Unable to setup atoms");
 
-	if (xcb_ewmh_init_atoms_replies(&state.ewmh, xcb_ewmh_init_atoms(conn, &state.ewmh), NULL) == 0)
-		die("Unable to initialize EWMH atoms");
-	netatoms[0] = state.atoms.net_wm_state;
-	netatoms[1] = state.atoms.net_wm_state_fullscreen;
-	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(netatoms) / sizeof(*netatoms), netatoms);
+	xcb_change_property(state.conn, XCB_PROP_MODE_REPLACE, screen->root, state.atoms.net_supported,
+			    XCB_ATOM_ATOM, 32, 2, &state.atoms.net_wm_state);
 
 	if (tmbr_screens_update(screen) < 0 ||
 	    tmbr_screen_manage_windows(state.screens) < 0 ||
