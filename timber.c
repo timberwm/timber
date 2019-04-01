@@ -49,11 +49,6 @@ typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
 
 typedef enum {
-	TMBR_ATOM_WM_DELETE_WINDOW,
-	TMBR_ATOM_LAST
-} tmbr_atom_t;
-
-typedef enum {
 	TMBR_DIR_NORTH,
 	TMBR_DIR_SOUTH,
 	TMBR_DIR_EAST,
@@ -141,7 +136,9 @@ static struct {
 	xcb_connection_t *conn;
 	const xcb_query_extension_reply_t *randr;
 	xcb_ewmh_connection_t ewmh;
-	xcb_atom_t atoms[TMBR_ATOM_LAST];
+	struct {
+		xcb_atom_t wm_delete_window;
+	} atoms;
 	int fifofd;
 } state = { NULL, NULL, NULL, NULL, { 0 }, { 0 }, -1 };
 
@@ -363,7 +360,7 @@ static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
 
 static void tmbr_client_kill(tmbr_client_t *client)
 {
-	if (tmbr_client_send_message(client, state.atoms[TMBR_ATOM_WM_DELETE_WINDOW]) < 0)
+	if (tmbr_client_send_message(client, state.atoms.wm_delete_window) < 0)
 		xcb_kill_client(state.conn, client->window);
 }
 
@@ -1111,7 +1108,7 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 	netatoms[1] = state.ewmh._NET_WM_STATE_FULLSCREEN;
 	xcb_ewmh_set_supported(&state.ewmh, 0, sizeof(netatoms) / sizeof(*netatoms), netatoms);
 
-	if (tmbr_setup_atom(&state.atoms[TMBR_ATOM_WM_DELETE_WINDOW], "WM_DELETE_WINDOW") < 0)
+	if (tmbr_setup_atom(&state.atoms.wm_delete_window, "WM_DELETE_WINDOW") < 0)
 		die("Unable to setup 'WM_DELETE_WINDOW' atom");
 
 	if (tmbr_screens_update(screen) < 0 ||
