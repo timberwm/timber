@@ -17,6 +17,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -29,7 +30,6 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
 #include <xcb/xcb_event.h>
-#include <xcb/xcb_icccm.h>
 #include <xcb/randr.h>
 
 #define TMBR_UNUSED __attribute__((unused))
@@ -328,34 +328,33 @@ static void tmbr_client_free(tmbr_client_t *client)
 
 static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
 {
-	xcb_icccm_get_wm_protocols_reply_t protos;
 	xcb_client_message_event_t msg = { 0 };
-	size_t i;
+	xcb_get_property_reply_t *prop;
+	xcb_atom_t *atoms;
+	size_t i, len;
 
-	if (xcb_icccm_get_wm_protocols_reply(state.conn,
-					     xcb_icccm_get_wm_protocols(state.conn,
-									client->window,
-									state.atoms.wm_protocols),
-									&protos, NULL) != 1)
+	if ((prop = xcb_get_property_reply(state.conn, xcb_get_property(state.conn, 0, client->window,
+									state.atoms.wm_protocols, XCB_ATOM_ATOM,
+									0, UINT_MAX), NULL)) == NULL)
 		return -1;
-	for (i = 0; i < protos.atoms_len; i++)
-		if (protos.atoms[i] == value)
-			break;
-	xcb_icccm_get_wm_protocols_reply_wipe(&protos);
+	atoms = (xcb_atom_t *) xcb_get_property_value(prop);
+	len = (unsigned) xcb_get_property_value_length(prop) / sizeof(*atoms);
 
-	if (i == protos.atoms_len)
-		return -1;
+	for (i = 0; i < len; i++) {
+		if (atoms[i] != value)
+			continue;
+		msg.response_type = XCB_CLIENT_MESSAGE;
+		msg.window = client->window;
+		msg.type = state.atoms.wm_protocols;
+		msg.format = 32;
+		msg.data.data32[0] = value;
+		msg.data.data32[1] = XCB_CURRENT_TIME;
+		xcb_send_event(state.conn, 0, client->window, XCB_EVENT_MASK_NO_EVENT, (char *) &msg);
+		break;
+	}
 
-	msg.response_type = XCB_CLIENT_MESSAGE;
-	msg.window = client->window;
-	msg.type = state.atoms.wm_protocols;
-	msg.format = 32;
-	msg.data.data32[0] = value;
-	msg.data.data32[1] = XCB_CURRENT_TIME;
-
-	xcb_send_event(state.conn, 0, client->window, XCB_EVENT_MASK_NO_EVENT, (char *) &msg);
-
-	return 0;
+	free(prop);
+	return (i == len) ? -1 : 0;
 }
 
 static void tmbr_client_kill(tmbr_client_t *client)

@@ -20,7 +20,6 @@ executable(
   dependencies: [
     dependency('xcb'),
     dependency('xcb-aux'),
-    dependency('xcb-icccm'),
     dependency('xcb-randr')
   ],
   install: true,

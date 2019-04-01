@@ -4,7 +4,6 @@ addons:
     apt:
         packages:
             - libxcb1-dev
-            - libxcb-icccm4-dev
             - libxcb-randr0-dev
             - libxcb-util0-dev
             - meson
