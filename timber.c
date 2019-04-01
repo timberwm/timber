@@ -35,7 +35,7 @@
 #include <xcb/randr.h>
 #undef inline
 
-#define TMBR_UNUSED(x) (void)(x)
+#define TMBR_UNUSED __attribute__((unused))
 
 #define TMBR_ARG_NONE      { 0, 0, 0 }
 #define TMBR_ARG_SEL(s)    { s, 0, 0 }
@@ -887,11 +887,9 @@ static void tmbr_handle_events(uint8_t ignored_events)
 	}
 }
 
-static void tmbr_cmd_client_kill(const tmbr_command_args_t *args)
+static void tmbr_cmd_client_kill(TMBR_UNUSED const tmbr_command_args_t *args)
 {
 	tmbr_client_t *focus;
-
-	TMBR_UNUSED(args);
 
 	if (tmbr_client_find_by_focus(&focus) < 0)
 		return;
@@ -991,11 +989,9 @@ static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
 	tmbr_desktop_layout(focus->desktop);
 }
 
-static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args)
+static void tmbr_cmd_desktop_new(TMBR_UNUSED const tmbr_command_args_t *args)
 {
 	tmbr_desktop_t *desktop;
-
-	TMBR_UNUSED(args);
 
 	if (tmbr_desktop_new(&desktop) < 0 ||
 	    tmbr_screen_add_desktop(state.screen, desktop) < 0)
@@ -1004,11 +1000,9 @@ static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args)
 	tmbr_screen_focus_desktop(state.screen, desktop);
 }
 
-static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args)
+static void tmbr_cmd_desktop_kill(TMBR_UNUSED const tmbr_command_args_t *args)
 {
 	tmbr_desktop_t *desktop;
-
-	TMBR_UNUSED(args);
 
 	desktop = state.screen->focus;
 	if (tmbr_screen_remove_desktop(state.screen, state.screen->focus) < 0)
@@ -1036,11 +1030,9 @@ static void tmbr_cmd_screen_focus(const tmbr_command_args_t *args)
 	tmbr_screen_focus(sibling);
 }
 
-static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args)
+static void tmbr_cmd_tree_rotate(TMBR_UNUSED const tmbr_command_args_t *args)
 {
 	tmbr_client_t *focus;
-
-	TMBR_UNUSED(args);
 
 	if (tmbr_client_find_by_focus(&focus) < 0 ||
 	    !focus->tree->parent)
@@ -1071,10 +1063,8 @@ static void tmbr_handle_command(int fd)
 	}
 }
 
-static void tmbr_cleanup(int signal)
+static void tmbr_cleanup(TMBR_UNUSED int signal)
 {
-	TMBR_UNUSED(signal);
-
 	if (state.fifofd >= 0)
 		close(state.fifofd);
 	unlink(TMBR_CTRL_PATH);
@@ -1100,10 +1090,7 @@ static int tmbr_setup_atom(xcb_atom_t *out, char *name)
 
 static int tmbr_setup_x11(xcb_connection_t *conn)
 {
-	const uint32_t values[] = {
-		XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
-		XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
-	};
+	uint32_t mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY;
 	xcb_atom_t netatoms[2];
 	xcb_screen_t *screen;
 
@@ -1114,7 +1101,7 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 		xcb_randr_select_input(state.conn, screen->root, XCB_RANDR_NOTIFY_MASK_SCREEN_CHANGE);
 
 	if (xcb_request_check(conn, xcb_change_window_attributes_checked(conn, screen->root,
-									 XCB_CW_EVENT_MASK, values)) != NULL)
+									 XCB_CW_EVENT_MASK, &mask)) != NULL)
 		die("Another window manager is running already.");
 
 	if (xcb_ewmh_init_atoms_replies(&state.ewmh, xcb_ewmh_init_atoms(conn, &state.ewmh), NULL) == 0)
