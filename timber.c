@@ -17,6 +17,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <libgen.h>
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
@@ -1122,7 +1123,12 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 
 static int tmbr_setup(void)
 {
-	if ((mkdir(TMBR_CTRL_DIR, 0700) < 0 && errno != EEXIST) ||
+	char *dir;
+
+	if ((dir = strdup(TMBR_CTRL_PATH)) == NULL || (dir = dirname(dir)) == NULL)
+		die("Unable to compute control directory name");
+
+	if ((mkdir(dir, 0700) < 0 && errno != EEXIST) ||
 	    (mkfifo(TMBR_CTRL_PATH, 0600) < 0 && errno != EEXIST))
 		die("Unable to create fifo");
 
@@ -1141,6 +1147,7 @@ static int tmbr_setup(void)
 	signal(SIGTERM, tmbr_cleanup);
 	signal(SIGCHLD, tmbr_cleanup);
 
+	free(dir);
 	return 0;
 }
 
