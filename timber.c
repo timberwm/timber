@@ -190,6 +190,8 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 	t->client = NULL;
 	t->left = l;
 	t->right = r;
+	t->ratio = 50;
+	t->split = (l->client->w < l->client->h) ? TMBR_SPLIT_HORIZONTAL : TMBR_SPLIT_VERTICAL;
 
 	return 0;
 }
