@@ -114,6 +114,7 @@ struct tmbr_tree {
 
 static void tmbr_cmd_client_kill(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_focus(const tmbr_command_args_t *args);
+static void tmbr_cmd_client_fullscreen(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_move(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_resize(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_send(const tmbr_command_args_t *args);
@@ -392,11 +393,12 @@ static int tmbr_client_hide(tmbr_client_t *c)
 
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, uint8_t fs)
 {
-	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
+	uint32_t stacking;
 	xcb_change_property(state.conn, XCB_PROP_MODE_REPLACE,
 			    client->window, state.atoms.net_wm_state, XCB_ATOM_ATOM, 32,
                             fs, &state.atoms.net_wm_state_fullscreen);
-	xcb_configure_window(state.conn, client->window, XCB_CONFIG_WINDOW_STACK_MODE, values);
+	stacking = fs ? XCB_STACK_MODE_ABOVE : XCB_STACK_MODE_BELOW;
+	xcb_configure_window(state.conn, client->window, XCB_CONFIG_WINDOW_STACK_MODE, &stacking);
 	return 0;
 }
 
@@ -910,6 +912,13 @@ static void tmbr_cmd_client_focus(const tmbr_command_args_t *args)
 		return;
 
 	tmbr_desktop_focus_client(focus->desktop, next->client, 1);
+}
+
+static void tmbr_cmd_client_fullscreen(TMBR_UNUSED const tmbr_command_args_t *args)
+{
+	tmbr_desktop_t *d = state.screen->focus;
+	if (d->focus)
+		tmbr_desktop_set_fullscreen(d, d->focus, !d->fullscreen);
 }
 
 static void tmbr_cmd_client_move(const tmbr_command_args_t *args)
