@@ -1133,6 +1133,7 @@ static int tmbr_setup(void)
 		die("Unable to compute control directory name");
 
 	if ((mkdir(dir, 0700) < 0 && errno != EEXIST) ||
+	    (unlink(state.ctrl_path) < 0 && errno != ENOENT) ||
 	    (mkfifo(state.ctrl_path, 0600) < 0 && errno != EEXIST))
 		die("Unable to create fifo");
 
