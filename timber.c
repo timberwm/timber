@@ -390,11 +390,12 @@ static int tmbr_client_hide(tmbr_client_t *c)
 
 static int tmbr_client_set_fullscreen(tmbr_client_t *client, uint8_t fs)
 {
-	uint32_t values[] = { XCB_STACK_MODE_ABOVE };
+	uint32_t stacking;
 	xcb_change_property(state.conn, XCB_PROP_MODE_REPLACE,
 			    client->window, state.atoms.net_wm_state, XCB_ATOM_ATOM, 32,
                             fs, &state.atoms.net_wm_state_fullscreen);
-	xcb_configure_window(state.conn, client->window, XCB_CONFIG_WINDOW_STACK_MODE, values);
+	stacking = fs ? XCB_STACK_MODE_ABOVE : XCB_STACK_MODE_BELOW;
+	xcb_configure_window(state.conn, client->window, XCB_CONFIG_WINDOW_STACK_MODE, &stacking);
 	return 0;
 }
 
