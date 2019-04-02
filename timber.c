@@ -133,6 +133,7 @@ static struct {
 	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
 	const xcb_query_extension_reply_t *randr;
+	const char *ctrl_path;
 	struct {
 		xcb_atom_t wm_delete_window;
 		xcb_atom_t wm_protocols;
@@ -141,7 +142,7 @@ static struct {
 		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
 	int fifofd;
-} state = { NULL, NULL, NULL, NULL, { 0 }, -1 };
+} state = { NULL, NULL, NULL, NULL, NULL, { 0 }, -1 };
 
 static void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
@@ -1067,7 +1068,7 @@ static void tmbr_cleanup(TMBR_UNUSED int signal)
 {
 	if (state.fifofd >= 0)
 		close(state.fifofd);
-	unlink(TMBR_CTRL_PATH);
+	unlink(state.ctrl_path);
 
 	tmbr_screens_free(state.screens);
 	xcb_disconnect(state.conn);
@@ -1125,14 +1126,17 @@ static int tmbr_setup(void)
 {
 	char *dir;
 
-	if ((dir = strdup(TMBR_CTRL_PATH)) == NULL || (dir = dirname(dir)) == NULL)
+	if ((state.ctrl_path = getenv("TMBR_CTRL_PATH")) == NULL)
+		state.ctrl_path = TMBR_CTRL_PATH;
+
+	if ((dir = strdup(state.ctrl_path)) == NULL || (dir = dirname(dir)) == NULL)
 		die("Unable to compute control directory name");
 
 	if ((mkdir(dir, 0700) < 0 && errno != EEXIST) ||
-	    (mkfifo(TMBR_CTRL_PATH, 0600) < 0 && errno != EEXIST))
+	    (mkfifo(state.ctrl_path, 0600) < 0 && errno != EEXIST))
 		die("Unable to create fifo");
 
-	if ((state.fifofd = open(TMBR_CTRL_PATH, O_RDWR|O_NONBLOCK)) < 0)
+	if ((state.fifofd = open(state.ctrl_path, O_RDWR|O_NONBLOCK)) < 0)
 		die("Unable to open fifo");
 
 	if ((state.conn = xcb_connect(NULL, NULL)) == NULL ||
