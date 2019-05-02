@@ -34,10 +34,9 @@
 #include <xcb/randr.h>
 
 #define TMBR_UNUSED __attribute__((unused))
-
-#define TMBR_ARG_NONE      { 0, 0, 0 }
-#define TMBR_ARG_SEL(s)    { s, 0, 0 }
-#define TMBR_ARG_DIR(d, i) { 0, d, i }
+#define TMBR_ARG_SEL (1 << 1)
+#define TMBR_ARG_DIR (1 << 2)
+#define TMBR_ARG_INT (1 << 3)
 
 typedef struct tmbr_client tmbr_client_t;
 typedef struct tmbr_command_args tmbr_command_args_t;
@@ -64,12 +63,6 @@ typedef enum {
 	TMBR_SPLIT_HORIZONTAL
 } tmbr_split_t;
 
-struct tmbr_command_args {
-	tmbr_select_t sel;
-	tmbr_dir_t dir;
-	int i;
-};
-
 struct tmbr_client {
 	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
@@ -81,7 +74,13 @@ struct tmbr_client {
 struct tmbr_command {
 	const char *cmd;
 	void (*fn)(const tmbr_command_args_t *);
-	tmbr_command_args_t args;
+	unsigned int args;
+};
+
+struct tmbr_command_args {
+	tmbr_select_t sel;
+	tmbr_dir_t dir;
+	int i;
 };
 
 struct tmbr_desktop {
@@ -1055,24 +1054,71 @@ static void tmbr_cmd_tree_rotate(TMBR_UNUSED const tmbr_command_args_t *args)
 	tmbr_desktop_layout(focus->desktop);
 }
 
+static void tmbr_cmd_dispatch(char *arg)
+{
+	tmbr_command_args_t args = { 0 };
+	const tmbr_command_t *cmd = NULL;
+	size_t i;
+
+	arg = strtok(arg, " ");
+	for (i = 0; i < sizeof(cmds) / sizeof(*cmds); i++) {
+		if (strcmp(cmds[i].cmd, arg))
+			continue;
+		cmd = &cmds[i];
+	}
+	if (!cmd)
+		return;
+
+	if (cmd->args & TMBR_ARG_SEL) {
+		if ((arg = strtok(NULL, " ")) == NULL)
+			return;
+		else if (!strcmp(arg, "prev"))
+			args.sel = TMBR_SELECT_PREV;
+		else if (!strcmp(arg, "next"))
+			args.sel = TMBR_SELECT_NEXT;
+		else
+			return;
+	}
+
+	if (cmd->args & TMBR_ARG_DIR) {
+		if ((arg = strtok(NULL, " ")) == NULL)
+			return;
+		else if (!strcmp(arg, "north"))
+			args.dir = TMBR_DIR_NORTH;
+		else if (!strcmp(arg, "south"))
+			args.dir = TMBR_DIR_SOUTH;
+		else if (!strcmp(arg, "east"))
+			args.dir = TMBR_DIR_EAST;
+		else if (!strcmp(arg, "west"))
+			args.dir = TMBR_DIR_WEST;
+		else
+			return;
+	}
+
+	if (cmd->args & TMBR_ARG_INT) {
+		if ((arg = strtok(NULL, " ")) == NULL)
+			return;
+		args.i = atoi(arg);
+	}
+
+	if (strtok(NULL, " ") != NULL)
+		return;
+
+	cmd->fn(&args);
+}
+
 static void tmbr_handle_command(int fd)
 {
 	char cmd[BUFSIZ];
 	ssize_t n;
-	size_t i;
 
 	if ((n = read(fd, cmd, sizeof(cmd) - 1)) <= 0) {
 		if (errno == EAGAIN || errno == EINTR)
 			return;
 		die("Unable to read from control pipe: %s", strerror(errno));
 	}
-	n = (cmd[n - 1] == '\n') ? (n - 1) : n;
-
-	for (i = 0; i < sizeof(cmds) / sizeof(*cmds); i++) {
-		if (strncmp(cmds[i].cmd, cmd, (size_t) n))
-			continue;
-		cmds[i].fn(&cmds[i].args);
-	}
+	cmd[(cmd[n - 1] == '\n') ? (n - 1) : n] = '\0';
+	tmbr_cmd_dispatch(cmd);
 }
 
 static void tmbr_cleanup(TMBR_UNUSED int signal)
