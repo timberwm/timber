@@ -123,6 +123,7 @@ static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args);
 static void tmbr_cmd_screen_focus(const tmbr_command_args_t *args);
 static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args);
+static void tmbr_cmd_tree_swap(const tmbr_command_args_t *args);
 
 #include "config.h"
 
@@ -1051,6 +1052,20 @@ static void tmbr_cmd_tree_rotate(TMBR_UNUSED const tmbr_command_args_t *args)
 
 	focus->tree->parent->split = !focus->tree->parent->split;
 
+	tmbr_desktop_layout(focus->desktop);
+}
+
+static void tmbr_cmd_tree_swap(TMBR_UNUSED const tmbr_command_args_t *args)
+{
+	tmbr_client_t *focus;
+	tmbr_tree_t *l;
+
+	if (tmbr_client_find_by_focus(&focus) < 0 || !focus->tree->parent)
+		return;
+
+	l = focus->tree->parent->left;
+	focus->tree->parent->left = focus->tree->parent->right;
+	focus->tree->parent->right = l;
 	tmbr_desktop_layout(focus->desktop);
 }
 
