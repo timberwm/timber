@@ -13,7 +13,7 @@ static const tmbr_command_t cmds[] = {
 	{ "client_resize",     tmbr_cmd_client_resize,     TMBR_ARG_DIR|TMBR_ARG_INT },
 	{ "client_swap",       tmbr_cmd_client_swap,       TMBR_ARG_SEL              },
 	{ "client_to_desktop", tmbr_cmd_client_to_desktop, TMBR_ARG_SEL              },
-	{ "client_to_monitor", tmbr_cmd_client_to_monitor, TMBR_ARG_SEL              },
+	{ "client_to_screen",  tmbr_cmd_client_to_screen,  TMBR_ARG_SEL              },
 	{ "desktop_focus",     tmbr_cmd_desktop_focus,     TMBR_ARG_SEL              },
 	{ "desktop_kill",      tmbr_cmd_desktop_kill,      0                         },
 	{ "desktop_new",       tmbr_cmd_desktop_new,       0                         },
