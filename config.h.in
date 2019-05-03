@@ -19,7 +19,6 @@ static const tmbr_command_t cmds[] = {
 	{ "desktop_new",       tmbr_cmd_desktop_new,       0                         },
 	{ "screen_focus",      tmbr_cmd_screen_focus,      TMBR_ARG_SEL              },
 	{ "tree_rotate",       tmbr_cmd_tree_rotate,       0                         },
-	{ "tree_swap",         tmbr_cmd_tree_swap,         0                         }
 };
 
 /* vim: set tabstop=8 noexpandtab : */
