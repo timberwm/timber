@@ -116,7 +116,7 @@ static void tmbr_cmd_client_focus(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_fullscreen(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_to_desktop(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_resize(const tmbr_command_args_t *args);
-static void tmbr_cmd_client_to_monitor(const tmbr_command_args_t *args);
+static void tmbr_cmd_client_to_screen(const tmbr_command_args_t *args);
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args);
 static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args);
@@ -973,7 +973,7 @@ static void tmbr_cmd_client_resize(const tmbr_command_args_t *args)
 	tmbr_desktop_layout(client->desktop);
 }
 
-static void tmbr_cmd_client_to_monitor(const tmbr_command_args_t *args)
+static void tmbr_cmd_client_to_screen(const tmbr_command_args_t *args)
 {
 	tmbr_screen_t *screen;
 	tmbr_client_t *client;
