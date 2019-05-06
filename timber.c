@@ -97,7 +97,6 @@ struct tmbr_screen {
 	tmbr_desktop_t *desktops;
 	tmbr_desktop_t *focus;
 	xcb_randr_output_t output;
-	xcb_window_t root;
 	uint16_t w, h;
 	int16_t x, y;
 };
@@ -132,6 +131,7 @@ static struct {
 	tmbr_screen_t *screens;
 	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
+	xcb_window_t root, meta;
 	const xcb_query_extension_reply_t *randr;
 	const char *ctrl_path;
 	struct {
@@ -142,7 +142,7 @@ static struct {
 		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
 	int fifofd;
-} state = { NULL, NULL, NULL, NULL, NULL, { 0 }, -1 };
+} state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1 };
 
 static void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
@@ -303,7 +303,7 @@ static int tmbr_client_unfocus(tmbr_client_t *client)
 	if (!client)
 		return 0;
 	tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
-	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, client->desktop->screen->root, XCB_CURRENT_TIME);
+	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, state.meta, XCB_CURRENT_TIME);
 	return 0;
 }
 
@@ -487,7 +487,7 @@ static int tmbr_desktop_hide(tmbr_desktop_t *d)
 	return 0;
 }
 
-static int tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
+static int tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
 {
 	if (inputfocus && (tmbr_client_unfocus(desktop->focus) < 0 || tmbr_client_focus(client) < 0))
 		return -1;
@@ -500,11 +500,6 @@ static int tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *cli
 	desktop->focus = client;
 
 	return tmbr_desktop_layout(desktop);
-}
-
-static int tmbr_desktop_focus(tmbr_desktop_t *desktop)
-{
-	return tmbr_desktop_focus_client(desktop, desktop->focus, 1);
 }
 
 static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
@@ -550,8 +545,8 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 		tmbr_tree_t *sibling;
 		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST) < 0)
 			sibling = NULL;
-		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL,
-					  desktop->screen == state.screen && desktop->screen->focus == desktop);
+		tmbr_desktop_focus(desktop, sibling ? sibling->client : NULL,
+				   desktop->screen == state.screen && desktop->screen->focus == desktop);
 	}
 
 	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
@@ -594,7 +589,7 @@ static int tmbr_screen_focus(tmbr_screen_t *screen)
 	if (state.screen == screen)
 		return 0;
 	if ((state.screen && tmbr_desktop_unfocus(state.screen->focus) < 0) ||
-	    tmbr_desktop_focus(screen->focus) < 0)
+	    tmbr_desktop_focus(screen->focus, screen->focus->focus, 1) < 0)
 		return -1;
 	state.screen = screen;
 	return 0;
@@ -609,7 +604,7 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 
 	if (tmbr_desktop_unfocus(screen->focus) < 0 ||
 	    tmbr_desktop_hide(screen->focus) < 0 ||
-	    tmbr_desktop_focus(desktop) < 0)
+	    tmbr_desktop_focus(desktop, desktop->focus, 1) < 0)
 		return -1;
 
 	screen->focus = desktop;
@@ -658,7 +653,7 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 	xcb_window_t *children;
 	int i;
 
-	if ((tree = xcb_query_tree_reply(state.conn, xcb_query_tree(state.conn, screen->root), NULL)) == NULL)
+	if ((tree = xcb_query_tree_reply(state.conn, xcb_query_tree(state.conn, state.root), NULL)) == NULL)
 		die("Unable to query tree");
 
 	children = xcb_query_tree_children(tree);
@@ -677,7 +672,7 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 
 		if (tmbr_client_new(&client, children[i]) < 0 ||
 		    tmbr_desktop_add_client(screen->focus, client) < 0 ||
-		    tmbr_desktop_focus_client(screen->focus, client, 1) < 0)
+		    tmbr_desktop_focus(screen->focus, client, 1) < 0)
 			die("Unable to adopt client");
 next:
 		free(attrs);
@@ -688,7 +683,7 @@ next:
 	return 0;
 }
 
-static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, int16_t x, int16_t y, uint16_t width, uint16_t height)
+static int tmbr_screen_manage(xcb_randr_output_t output, int16_t x, int16_t y, uint16_t width, uint16_t height)
 {
 	tmbr_desktop_t *d;
 	tmbr_screen_t *s;
@@ -699,7 +694,6 @@ static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, int1
 		if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
 			die("Cannot set up desktop");
 		s->output = output;
-		s->root = root;
 		s->next = state.screens;
 		state.screens = s;
 	}
@@ -742,7 +736,7 @@ static int tmbr_screens_update(xcb_screen_t *screen)
 			if (crtc == NULL)
 				goto next;
 
-			tmbr_screen_manage(outputs[i], screen->root, crtc->x, crtc->y, crtc->width, crtc->height);
+			tmbr_screen_manage(outputs[i], crtc->x, crtc->y, crtc->width, crtc->height);
 next:
 			free(output);
 			free(crtc);
@@ -751,7 +745,7 @@ next:
 		free(screens);
 		return 0;
 	} else {
-		return tmbr_screen_manage(0, screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+		return tmbr_screen_manage(0, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
 	}
 }
 
@@ -787,20 +781,13 @@ static int tmbr_client_find_by_window(tmbr_client_t **out, xcb_window_t window)
 	return -1;
 }
 
-static void tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
-{
-	tmbr_client_t *client;
-	if (tmbr_client_find_by_focus(&client) == 0 && client->window != ev->event)
-		tmbr_desktop_focus_client(client->desktop, client, 1);
-}
-
 static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 {
 	tmbr_client_t *client;
 
 	if (ev->mode != XCB_NOTIFY_MODE_NORMAL ||
 	    tmbr_client_find_by_window(&client, ev->event) < 0 ||
-	    tmbr_desktop_focus_client(client->desktop, client, 1) < 0 ||
+	    tmbr_desktop_focus(client->desktop, client, 1) < 0 ||
 	    tmbr_screen_focus(client->desktop->screen) < 0)
 		return;
 }
@@ -823,7 +810,7 @@ static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 		die("Unable to manage client");
 
 	xcb_map_window(state.conn, ev->window);
-	tmbr_desktop_focus_client(state.screen->focus, client, 1);
+	tmbr_desktop_focus(state.screen->focus, client, 1);
 }
 
 static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
@@ -865,9 +852,7 @@ static void tmbr_handle_screen_change_notify(void)
 static void tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	uint8_t type = XCB_EVENT_RESPONSE_TYPE(ev);
-	if (type == XCB_FOCUS_IN)
-		tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
-	else if (type == XCB_ENTER_NOTIFY)
+	if (type == XCB_ENTER_NOTIFY)
 		tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
 	else if (type == XCB_MAP_REQUEST)
 		tmbr_handle_map_request((xcb_map_request_event_t *) ev);
@@ -910,7 +895,7 @@ static void tmbr_cmd_client_focus(const tmbr_command_args_t *args)
 	    tmbr_tree_find_sibling(&next, focus->tree, args->sel) < 0)
 		return;
 
-	tmbr_desktop_focus_client(focus->desktop, next->client, 1);
+	tmbr_desktop_focus(focus->desktop, next->client, 1);
 }
 
 static void tmbr_cmd_client_fullscreen(TMBR_UNUSED const tmbr_command_args_t *args)
@@ -932,7 +917,7 @@ static void tmbr_cmd_client_to_desktop(const tmbr_command_args_t *args)
 	tmbr_desktop_remove_client(focus->desktop, focus);
 	tmbr_client_hide(focus);
 	tmbr_desktop_add_client(target, focus);
-	tmbr_desktop_focus_client(target, focus, 0);
+	tmbr_desktop_focus(target, focus, 0);
 }
 
 static void tmbr_cmd_client_resize(const tmbr_command_args_t *args)
@@ -984,7 +969,7 @@ static void tmbr_cmd_client_to_screen(const tmbr_command_args_t *args)
 
 	tmbr_desktop_remove_client(client->desktop, client);
 	tmbr_desktop_add_client(screen->focus, client);
-	tmbr_desktop_focus_client(screen->focus, client, 0);
+	tmbr_desktop_focus(screen->focus, client, 0);
 }
 
 static void tmbr_cmd_client_swap(const tmbr_command_args_t *args)
@@ -1134,6 +1119,7 @@ static void tmbr_cleanup(TMBR_UNUSED int signal)
 	unlink(state.ctrl_path);
 
 	tmbr_screens_free(state.screens);
+	xcb_destroy_window(state.conn, state.meta);
 	xcb_disconnect(state.conn);
 }
 
@@ -1154,10 +1140,18 @@ static int tmbr_setup_atom(xcb_atom_t *out, char *name)
 static int tmbr_setup_x11(xcb_connection_t *conn)
 {
 	uint32_t mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY;
+	uint32_t override_redirect = 1;
 	xcb_screen_t *screen;
 
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
 		die("Unable to get root screen");
+
+	state.root = screen->root;
+
+	state.meta = xcb_generate_id(conn);
+	xcb_create_window(conn, XCB_COPY_FROM_PARENT, state.meta, state.root, -1, -1, 1, 1, 0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, XCB_NONE, NULL);
+	xcb_change_window_attributes(conn, state.meta, XCB_CW_OVERRIDE_REDIRECT, &override_redirect);
+	xcb_map_window(conn, state.meta);
 
 	if ((state.randr = xcb_get_extension_data(state.conn, &xcb_randr_id))->present)
 		xcb_randr_select_input(state.conn, screen->root, XCB_RANDR_NOTIFY_MASK_SCREEN_CHANGE);
