@@ -781,13 +781,6 @@ static int tmbr_client_find_by_window(tmbr_client_t **out, xcb_window_t window)
 	return -1;
 }
 
-static void tmbr_handle_focus_in(xcb_focus_in_event_t *ev)
-{
-	tmbr_client_t *client;
-	if (tmbr_client_find_by_focus(&client) == 0 && client->window != ev->event)
-		tmbr_desktop_focus(client->desktop, client, 1);
-}
-
 static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 {
 	tmbr_client_t *client;
@@ -859,9 +852,7 @@ static void tmbr_handle_screen_change_notify(void)
 static void tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	uint8_t type = XCB_EVENT_RESPONSE_TYPE(ev);
-	if (type == XCB_FOCUS_IN)
-		tmbr_handle_focus_in((xcb_focus_in_event_t *) ev);
-	else if (type == XCB_ENTER_NOTIFY)
+	if (type == XCB_ENTER_NOTIFY)
 		tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
 	else if (type == XCB_MAP_REQUEST)
 		tmbr_handle_map_request((xcb_map_request_event_t *) ev);
