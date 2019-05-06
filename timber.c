@@ -97,7 +97,6 @@ struct tmbr_screen {
 	tmbr_desktop_t *desktops;
 	tmbr_desktop_t *focus;
 	xcb_randr_output_t output;
-	xcb_window_t root;
 	uint16_t w, h;
 	int16_t x, y;
 };
@@ -132,6 +131,7 @@ static struct {
 	tmbr_screen_t *screens;
 	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
+	xcb_window_t root;
 	const xcb_query_extension_reply_t *randr;
 	const char *ctrl_path;
 	struct {
@@ -142,7 +142,7 @@ static struct {
 		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
 	int fifofd;
-} state = { NULL, NULL, NULL, NULL, NULL, { 0 }, -1 };
+} state = { NULL, NULL, NULL, 0, NULL, NULL, { 0 }, -1 };
 
 static void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
@@ -303,7 +303,7 @@ static int tmbr_client_unfocus(tmbr_client_t *client)
 	if (!client)
 		return 0;
 	tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
-	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, client->desktop->screen->root, XCB_CURRENT_TIME);
+	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, state.root, XCB_CURRENT_TIME);
 	return 0;
 }
 
@@ -653,7 +653,7 @@ static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
 	xcb_window_t *children;
 	int i;
 
-	if ((tree = xcb_query_tree_reply(state.conn, xcb_query_tree(state.conn, screen->root), NULL)) == NULL)
+	if ((tree = xcb_query_tree_reply(state.conn, xcb_query_tree(state.conn, state.root), NULL)) == NULL)
 		die("Unable to query tree");
 
 	children = xcb_query_tree_children(tree);
@@ -683,7 +683,7 @@ next:
 	return 0;
 }
 
-static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, int16_t x, int16_t y, uint16_t width, uint16_t height)
+static int tmbr_screen_manage(xcb_randr_output_t output, int16_t x, int16_t y, uint16_t width, uint16_t height)
 {
 	tmbr_desktop_t *d;
 	tmbr_screen_t *s;
@@ -694,7 +694,6 @@ static int tmbr_screen_manage(xcb_randr_output_t output, xcb_window_t root, int1
 		if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
 			die("Cannot set up desktop");
 		s->output = output;
-		s->root = root;
 		s->next = state.screens;
 		state.screens = s;
 	}
@@ -737,7 +736,7 @@ static int tmbr_screens_update(xcb_screen_t *screen)
 			if (crtc == NULL)
 				goto next;
 
-			tmbr_screen_manage(outputs[i], screen->root, crtc->x, crtc->y, crtc->width, crtc->height);
+			tmbr_screen_manage(outputs[i], crtc->x, crtc->y, crtc->width, crtc->height);
 next:
 			free(output);
 			free(crtc);
@@ -746,7 +745,7 @@ next:
 		free(screens);
 		return 0;
 	} else {
-		return tmbr_screen_manage(0, screen->root, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
+		return tmbr_screen_manage(0, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
 	}
 }
 
@@ -1153,6 +1152,8 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
 		die("Unable to get root screen");
+
+	state.root = screen->root;
 
 	if ((state.randr = xcb_get_extension_data(state.conn, &xcb_randr_id))->present)
 		xcb_randr_select_input(state.conn, screen->root, XCB_RANDR_NOTIFY_MASK_SCREEN_CHANGE);
