@@ -131,7 +131,7 @@ static struct {
 	tmbr_screen_t *screens;
 	tmbr_screen_t *screen;
 	xcb_connection_t *conn;
-	xcb_window_t root;
+	xcb_window_t root, meta;
 	const xcb_query_extension_reply_t *randr;
 	const char *ctrl_path;
 	struct {
@@ -142,7 +142,7 @@ static struct {
 		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
 	int fifofd;
-} state = { NULL, NULL, NULL, 0, NULL, NULL, { 0 }, -1 };
+} state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1 };
 
 static void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
@@ -303,7 +303,7 @@ static int tmbr_client_unfocus(tmbr_client_t *client)
 	if (!client)
 		return 0;
 	tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
-	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, state.root, XCB_CURRENT_TIME);
+	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, state.meta, XCB_CURRENT_TIME);
 	return 0;
 }
 
@@ -1119,6 +1119,7 @@ static void tmbr_cleanup(TMBR_UNUSED int signal)
 	unlink(state.ctrl_path);
 
 	tmbr_screens_free(state.screens);
+	xcb_destroy_window(state.conn, state.meta);
 	xcb_disconnect(state.conn);
 }
 
@@ -1139,12 +1140,18 @@ static int tmbr_setup_atom(xcb_atom_t *out, char *name)
 static int tmbr_setup_x11(xcb_connection_t *conn)
 {
 	uint32_t mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY;
+	uint32_t override_redirect = 1;
 	xcb_screen_t *screen;
 
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
 		die("Unable to get root screen");
 
 	state.root = screen->root;
+
+	state.meta = xcb_generate_id(conn);
+	xcb_create_window(conn, XCB_COPY_FROM_PARENT, state.meta, state.root, -1, -1, 1, 1, 0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, XCB_NONE, NULL);
+	xcb_change_window_attributes(conn, state.meta, XCB_CW_OVERRIDE_REDIRECT, &override_redirect);
+	xcb_map_window(conn, state.meta);
 
 	if ((state.randr = xcb_get_extension_data(state.conn, &xcb_randr_id))->present)
 		xcb_randr_select_input(state.conn, screen->root, XCB_RANDR_NOTIFY_MASK_SCREEN_CHANGE);
