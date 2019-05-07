@@ -1,6 +1,6 @@
 project(
   'timber', 'c',
-  version: '0.1',
+  version: '0.6',
   default_options: [ 'c_std=c89' ]
 )
 
