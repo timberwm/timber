@@ -1214,7 +1214,7 @@ int main(int argc, const char *argv[])
 	struct pollfd fds[2];
 
 	if (argc > 1)
-		die("USAGE: %s\n", argv[0]);
+		die("USAGE: %s", argv[0]);
 
 	if (tmbr_setup() < 0)
 		die("Unable to setup timber");
