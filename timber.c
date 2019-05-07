@@ -125,8 +125,6 @@ static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args);
 
 #include "config.h"
 
-static void tmbr_handle_events(uint8_t ignored_events);
-
 static struct {
 	tmbr_screen_t *screens;
 	tmbr_screen_t *screen;
@@ -142,7 +140,8 @@ static struct {
 		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
 	int fifofd;
-} state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1 };
+	uint8_t ignored_events;
+} state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1, 0 };
 
 static void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
@@ -475,7 +474,7 @@ static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
 		die("Unable to layout desktop");
 
 	xcb_aux_sync(state.conn);
-	tmbr_handle_events(XCB_ENTER_NOTIFY);
+	state.ignored_events = XCB_ENTER_NOTIFY;
 	return 0;
 }
 
@@ -866,14 +865,15 @@ static void tmbr_handle_event(xcb_generic_event_t *ev)
 		tmbr_handle_error((xcb_request_error_t *) ev);
 }
 
-static void tmbr_handle_events(uint8_t ignored_events)
+static void tmbr_handle_events(void)
 {
 	xcb_generic_event_t *ev;
 	while ((ev = xcb_poll_for_event(state.conn)) != NULL) {
-		if (!ignored_events || XCB_EVENT_RESPONSE_TYPE(ev) != ignored_events)
+		if (!state.ignored_events || XCB_EVENT_RESPONSE_TYPE(ev) != state.ignored_events)
 			tmbr_handle_event(ev);
 		free(ev);
 	}
+	state.ignored_events = 0;
 }
 
 static void tmbr_cmd_client_kill(TMBR_UNUSED const tmbr_command_args_t *args)
@@ -1232,7 +1232,7 @@ int main(int argc, const char *argv[])
 		if (poll(fds, 2, -1) < 0)
 			die("timber: unable to poll for events");
 		if (fds[0].revents & POLLIN)
-			tmbr_handle_events(0);
+			tmbr_handle_events();
 		if (fds[1].revents & POLLIN)
 			tmbr_handle_command(fds[1].fd);
 	}
