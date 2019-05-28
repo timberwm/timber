@@ -804,13 +804,13 @@ static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	if (override || tmbr_client_find_by_window(&client, ev->window) == 0)
 		return;
 
-	if (tmbr_client_new(&client, ev->window) < 0)
-	    die("Unable to create new client");
+	if (tmbr_client_new(&client, ev->window) < 0 ||
+	    tmbr_desktop_add_client(state.screen->focus, client) < 0)
+		die("Unable to manage client");
 
 	xcb_map_window(state.conn, ev->window);
 
-	if (tmbr_desktop_add_client(state.screen->focus, client) < 0 ||
-	    tmbr_desktop_focus(state.screen->focus, client, 1) < 0)
+	if (tmbr_desktop_focus(state.screen->focus, client, 1) < 0)
 		die("Unable to focus new client");
 }
 
