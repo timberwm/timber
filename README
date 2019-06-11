@@ -48,7 +48,7 @@ the DISPLAY variable:
 When timber is running, you can execute commands by writing them
 into its control named pipe:
 
-    $ echo -n "client_focus next >/tmp/timber.s"
+    $ echo -n "client_focus next >/run/timber/ctrl.s"
 
 Usually, you would configure a hotkey manager like sxhkd to bind
 these commands to hotkeys.
