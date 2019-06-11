@@ -12,7 +12,7 @@ Requirements
 ------------
 
 In order to build timber you need to have the xcb, xcb-aux and
-xcb-ewmh header and library files installed. Furthermore, meson
+xcb-ewmh header and library files installed. Furthermore, timber
 makes use of the meson build system.
 
 Installation
