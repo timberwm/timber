@@ -1061,11 +1061,16 @@ static int tmbr_setup_atom(xcb_atom_t *out, char *name)
 	return 0;
 }
 
-static int tmbr_setup_x11(xcb_connection_t *conn)
+static int tmbr_setup_x11(void)
 {
 	uint32_t mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY;
 	uint32_t override_redirect = 1;
+	xcb_connection_t *conn;
 	xcb_screen_t *screen;
+
+	if ((state.conn = conn = xcb_connect(NULL, NULL)) == NULL ||
+	    xcb_connection_has_error(conn) != 0)
+		die("Unable to connect to X server");
 
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
 		die("Unable to get root screen");
@@ -1106,10 +1111,6 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 static int tmbr_setup(void)
 {
 	char *dir;
-
-	if ((state.conn = xcb_connect(NULL, NULL)) == NULL ||
-	    xcb_connection_has_error(state.conn) != 0)
-		die("Unable to connect to X server");
 
 	if (tmbr_setup_x11(state.conn) < 0)
 		die("Unable to setup X server");
