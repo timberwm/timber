@@ -1044,7 +1044,7 @@ static void tmbr_cmd_dispatch(char *arg)
 	size_t i;
 
 	arg = strtok(arg, " ");
-	for (i = 0; i < sizeof(cmds) / sizeof(*cmds); i++) {
+	for (i = 0; i < ARRAY_SIZE(cmds); i++) {
 		if (strcmp(cmds[i].cmd, arg))
 			continue;
 		cmd = &cmds[i];

@@ -15,6 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#define TMBR_UNUSED __attribute__((unused))
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
+
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);
 void __attribute__((noreturn)) usage(const char *executable);
 
