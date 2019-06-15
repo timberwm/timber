@@ -1185,6 +1185,13 @@ static int tmbr_setup(void)
 {
 	char *dir;
 
+	if ((state.conn = xcb_connect(NULL, NULL)) == NULL ||
+	    xcb_connection_has_error(state.conn) != 0)
+		die("Unable to connect to X server");
+
+	if (tmbr_setup_x11(state.conn) < 0)
+		die("Unable to setup X server");
+
 	if ((state.ctrl_path = getenv("TMBR_CTRL_PATH")) == NULL)
 		state.ctrl_path = TMBR_CTRL_PATH;
 
@@ -1198,13 +1205,6 @@ static int tmbr_setup(void)
 
 	if ((state.fifofd = open(state.ctrl_path, O_RDWR|O_NONBLOCK)) < 0)
 		die("Unable to open fifo");
-
-	if ((state.conn = xcb_connect(NULL, NULL)) == NULL ||
-	    xcb_connection_has_error(state.conn) != 0)
-		die("Unable to connect to X server");
-
-	if (tmbr_setup_x11(state.conn) < 0)
-		die("Unable to setup X server");
 
 	signal(SIGINT, tmbr_cleanup);
 	signal(SIGHUP, tmbr_cleanup);
