@@ -54,7 +54,15 @@ void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 
 void __attribute__((noreturn)) usage(const char *executable)
 {
+	size_t i;
 	printf("USAGE: %s\n", executable);
+
+	for (i = 0; i < ARRAY_SIZE(commands); i++)
+		printf("   or: %s %s%s%s%s\n", executable, commands[i].command,
+			commands[i].args & TMBR_ARG_SEL ? " (next|prev)" : "",
+			commands[i].args & TMBR_ARG_DIR ? " (north|south|east|west)" : "",
+			commands[i].args & TMBR_ARG_INT ? " <NUMBER>" : "");
+
 	exit(-1);
 }
 

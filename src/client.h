@@ -15,17 +15,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "common.h"
-
-#include "client.h"
-#include "wm.h"
-
-int main(int argc, const char *argv[])
-{
-	if (argc == 1)
-		tmbr_wm();
-
-	return tmbr_client(argc, argv);
-}
+int tmbr_client(int argc, const char *argv[]);
 
 /* vim: set tabstop=8 noexpandtab : */
