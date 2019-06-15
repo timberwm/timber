@@ -45,13 +45,14 @@ the DISPLAY variable:
 
     $ DISPLAY=:1 exec timber
 
-When timber is running, you can execute commands by writing them
-into its control named pipe:
+When timber is running, you can control it by using the commands
+provided by timber:
 
-    $ echo -n "client_focus next >/run/timber/ctrl.s"
+    $ timber client_focus next
 
-Usually, you would configure a hotkey manager like sxhkd to bind
-these commands to hotkeys.
+You can execute `timber -h` to get usage information. Usually,
+you would configure a hotkey manager like sxhkd to bind these
+commands to hotkeys.
 
 
 [1]: https://dwm.suckless.org
