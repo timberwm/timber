@@ -44,7 +44,7 @@ static int tmbr_dispatch_command(tmbr_command_t cmd, const tmbr_command_args_t *
 	if (commands[cmd].args & TMBR_ARG_INT)
 		snprintf(params[2], sizeof(params[2]), " %i", args->i);
 
-	dprintf(fd, "%s%s%s%s\n", commands[cmd].command, params[0], params[1], params[2]);
+	dprintf(fd, "%s %s%s%s%s\n", commands[cmd].cmd, commands[cmd].subcmd, params[0], params[1], params[2]);
 
 	return 0;
 }
