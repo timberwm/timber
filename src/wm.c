@@ -33,32 +33,15 @@
 #include <xcb/randr.h>
 
 #include "common.h"
+#include "config.h"
 #include "wm.h"
 
 #define TMBR_UNUSED __attribute__((unused))
-#define TMBR_ARG_SEL (1 << 1)
-#define TMBR_ARG_DIR (1 << 2)
-#define TMBR_ARG_INT (1 << 3)
 
 typedef struct tmbr_client tmbr_client_t;
-typedef struct tmbr_command_args tmbr_command_args_t;
-typedef struct tmbr_command tmbr_command_t;
 typedef struct tmbr_desktop tmbr_desktop_t;
 typedef struct tmbr_screen tmbr_screen_t;
 typedef struct tmbr_tree tmbr_tree_t;
-
-typedef enum {
-	TMBR_DIR_NORTH,
-	TMBR_DIR_SOUTH,
-	TMBR_DIR_EAST,
-	TMBR_DIR_WEST
-} tmbr_dir_t;
-
-typedef enum {
-	TMBR_SELECT_PREV,
-	TMBR_SELECT_NEXT,
-	TMBR_SELECT_NEAREST
-} tmbr_select_t;
 
 typedef enum {
 	TMBR_SPLIT_VERTICAL,
@@ -71,18 +54,6 @@ struct tmbr_client {
 	xcb_window_t window;
 	uint16_t w, h;
 	int16_t x, y;
-};
-
-struct tmbr_command {
-	const char *cmd;
-	void (*fn)(const tmbr_command_args_t *);
-	unsigned int args;
-};
-
-struct tmbr_command_args {
-	tmbr_select_t sel;
-	tmbr_dir_t dir;
-	int i;
 };
 
 struct tmbr_desktop {
@@ -111,21 +82,6 @@ struct tmbr_tree {
 	tmbr_split_t split;
 	uint8_t ratio;
 };
-
-static void tmbr_cmd_client_kill(const tmbr_command_args_t *args);
-static void tmbr_cmd_client_focus(const tmbr_command_args_t *args);
-static void tmbr_cmd_client_fullscreen(const tmbr_command_args_t *args);
-static void tmbr_cmd_client_to_desktop(const tmbr_command_args_t *args);
-static void tmbr_cmd_client_resize(const tmbr_command_args_t *args);
-static void tmbr_cmd_client_to_screen(const tmbr_command_args_t *args);
-static void tmbr_cmd_client_swap(const tmbr_command_args_t *args);
-static void tmbr_cmd_desktop_new(const tmbr_command_args_t *args);
-static void tmbr_cmd_desktop_kill(const tmbr_command_args_t *args);
-static void tmbr_cmd_desktop_focus(const tmbr_command_args_t *args);
-static void tmbr_cmd_screen_focus(const tmbr_command_args_t *args);
-static void tmbr_cmd_tree_rotate(const tmbr_command_args_t *args);
-
-#include "config.h"
 
 static struct {
 	tmbr_screen_t *screens;
@@ -1037,71 +993,47 @@ static void tmbr_cmd_tree_rotate(TMBR_UNUSED const tmbr_command_args_t *args)
 	tmbr_desktop_layout(focus->desktop);
 }
 
-static void tmbr_cmd_dispatch(char *arg)
-{
-	tmbr_command_args_t args = { 0 };
-	const tmbr_command_t *cmd = NULL;
-	size_t i;
-
-	arg = strtok(arg, " ");
-	for (i = 0; i < ARRAY_SIZE(cmds); i++) {
-		if (strcmp(cmds[i].cmd, arg))
-			continue;
-		cmd = &cmds[i];
-	}
-	if (!cmd)
-		return;
-
-	if (cmd->args & TMBR_ARG_SEL) {
-		if ((arg = strtok(NULL, " ")) == NULL)
-			return;
-		else if (!strcmp(arg, "prev"))
-			args.sel = TMBR_SELECT_PREV;
-		else if (!strcmp(arg, "next"))
-			args.sel = TMBR_SELECT_NEXT;
-		else
-			return;
-	}
-
-	if (cmd->args & TMBR_ARG_DIR) {
-		if ((arg = strtok(NULL, " ")) == NULL)
-			return;
-		else if (!strcmp(arg, "north"))
-			args.dir = TMBR_DIR_NORTH;
-		else if (!strcmp(arg, "south"))
-			args.dir = TMBR_DIR_SOUTH;
-		else if (!strcmp(arg, "east"))
-			args.dir = TMBR_DIR_EAST;
-		else if (!strcmp(arg, "west"))
-			args.dir = TMBR_DIR_WEST;
-		else
-			return;
-	}
-
-	if (cmd->args & TMBR_ARG_INT) {
-		if ((arg = strtok(NULL, " ")) == NULL)
-			return;
-		args.i = atoi(arg);
-	}
-
-	if (strtok(NULL, " ") != NULL)
-		return;
-
-	cmd->fn(&args);
-}
-
 static void tmbr_handle_command(int fd)
 {
-	char cmd[BUFSIZ];
+	tmbr_command_args_t args;
+	tmbr_command_t command;
+	const char *argv[10];
+	char buf[BUFSIZ];
 	ssize_t n;
+	int argc;
 
-	if ((n = read(fd, cmd, sizeof(cmd) - 1)) <= 0) {
+	if ((n = read(fd, buf, sizeof(buf) - 1)) <= 0) {
 		if (errno == EAGAIN || errno == EINTR)
 			return;
 		die("Unable to read from control pipe: %s", strerror(errno));
 	}
-	cmd[(cmd[n - 1] == '\n') ? (n - 1) : n] = '\0';
-	tmbr_cmd_dispatch(cmd);
+	buf[(buf[n - 1] == '\n') ? (n - 1) : n] = '\0';
+
+	if ((argv[0] = strtok(buf, " ")) == NULL)
+		return;
+	for (argc = 1; argc < (int) ARRAY_SIZE(argv); argc++)
+		if ((argv[argc] = strtok(NULL, " ")) == NULL)
+			break;
+	if (argc == (int) ARRAY_SIZE(argv))
+		return;
+
+	if (tmbr_command_parse(&command, &args, argc, argv) < 0)
+		return;
+
+	switch (command) {
+		case TMBR_COMMAND_CLIENT_FOCUS: tmbr_cmd_client_focus(&args); break;
+		case TMBR_COMMAND_CLIENT_FULLSCREEN: tmbr_cmd_client_fullscreen(&args); break;
+		case TMBR_COMMAND_CLIENT_KILL: tmbr_cmd_client_kill(&args); break;
+		case TMBR_COMMAND_CLIENT_RESIZE: tmbr_cmd_client_resize(&args); break;
+		case TMBR_COMMAND_CLIENT_SWAP: tmbr_cmd_client_swap(&args); break;
+		case TMBR_COMMAND_CLIENT_TO_DESKTOP: tmbr_cmd_client_to_desktop(&args); break;
+		case TMBR_COMMAND_CLIENT_TO_SCREEN: tmbr_cmd_client_to_screen(&args); break;
+		case TMBR_COMMAND_DESKTOP_FOCUS: tmbr_cmd_desktop_focus(&args); break;
+		case TMBR_COMMAND_DESKTOP_KILL: tmbr_cmd_desktop_kill(&args); break;
+		case TMBR_COMMAND_DESKTOP_NEW: tmbr_cmd_desktop_new(&args); break;
+		case TMBR_COMMAND_SCREEN_FOCUS: tmbr_cmd_screen_focus(&args); break;
+		case TMBR_COMMAND_TREE_ROTATE: tmbr_cmd_tree_rotate(&args); break;
+	}
 }
 
 static void tmbr_cleanup(TMBR_UNUSED int signal)

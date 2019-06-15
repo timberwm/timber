@@ -6,19 +6,4 @@
 #define TMBR_COLOR_ACTIVE 0xFF005577
 #define TMBR_COLOR_INACTIVE 0xFF222222
 
-static const tmbr_command_t cmds[] = {
-	{ "client_focus",      tmbr_cmd_client_focus,      TMBR_ARG_SEL              },
-	{ "client_fullscreen", tmbr_cmd_client_fullscreen, 0                         },
-	{ "client_kill",       tmbr_cmd_client_kill,       0                         },
-	{ "client_resize",     tmbr_cmd_client_resize,     TMBR_ARG_DIR|TMBR_ARG_INT },
-	{ "client_swap",       tmbr_cmd_client_swap,       TMBR_ARG_SEL              },
-	{ "client_to_desktop", tmbr_cmd_client_to_desktop, TMBR_ARG_SEL              },
-	{ "client_to_screen",  tmbr_cmd_client_to_screen,  TMBR_ARG_SEL              },
-	{ "desktop_focus",     tmbr_cmd_desktop_focus,     TMBR_ARG_SEL              },
-	{ "desktop_kill",      tmbr_cmd_desktop_kill,      0                         },
-	{ "desktop_new",       tmbr_cmd_desktop_new,       0                         },
-	{ "screen_focus",      tmbr_cmd_screen_focus,      TMBR_ARG_SEL              },
-	{ "tree_rotate",       tmbr_cmd_tree_rotate,       0                         },
-};
-
 /* vim: set tabstop=8 noexpandtab : */

@@ -18,8 +18,27 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "common.h"
+
+const tmbr_commands_t commands[] = {
+	{ "client_focus",      TMBR_ARG_SEL              },
+	{ "client_fullscreen", 0                         },
+	{ "client_kill",       0                         },
+	{ "client_resize",     TMBR_ARG_DIR|TMBR_ARG_INT },
+	{ "client_swap",       TMBR_ARG_SEL              },
+	{ "client_to_desktop", TMBR_ARG_SEL              },
+	{ "client_to_screen",  TMBR_ARG_SEL              },
+	{ "desktop_focus",     TMBR_ARG_SEL              },
+	{ "desktop_kill",      0                         },
+	{ "desktop_new",       0                         },
+	{ "screen_focus",      TMBR_ARG_SEL              },
+	{ "tree_rotate",       0                         }
+};
+
+const char *directions[] = { "north", "south", "east", "west" };
+const char *selections[] = { "prev", "next" };
 
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
@@ -37,6 +56,59 @@ void __attribute__((noreturn)) usage(const char *executable)
 {
 	printf("USAGE: %s\n", executable);
 	exit(-1);
+}
+
+int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc, const char **argv)
+{
+	ssize_t c, i;
+
+	if (!argc)
+		return -1;
+
+	ARRAY_FIND(commands, c, strcmp(commands[c].command, argv[0]));
+	if (c < 0)
+		return -1;
+	*cmd = (tmbr_command_t) c;
+
+	argc--;
+	argv++;
+
+	if (commands[c].args & TMBR_ARG_SEL) {
+		if (!argc)
+			return -1;
+
+		ARRAY_FIND(commands, i, strcmp(argv[0], selections[i]));
+		if (i < 0)
+			return -1;
+		args->sel = (tmbr_select_t) i;
+		argc--;
+		argv++;
+	}
+
+	if (commands[c].args & TMBR_ARG_DIR) {
+		if (!argc)
+			return -1;
+
+		ARRAY_FIND(commands, i, strcmp(argv[0], directions[i]));
+		if (i < 0)
+			return -1;
+		args->dir = (tmbr_dir_t) i;
+		argc--;
+		argv++;
+	}
+
+	if (commands[c].args & TMBR_ARG_INT) {
+		if (!argc)
+			return -1;
+		args->i = atoi(argv[0]);
+		argc--;
+		argv++;
+	}
+
+	if (argc)
+		return -1;
+
+	return 0;
 }
 
 /* vim: set tabstop=8 noexpandtab : */
