@@ -16,5 +16,6 @@
  */
 
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);
+void __attribute__((noreturn)) usage(const char *executable);
 
 /* vim: set tabstop=8 noexpandtab : */

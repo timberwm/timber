@@ -23,7 +23,7 @@ int main(int argc, const char *argv[])
 {
 	if (argc == 1)
 		return tmbr_wm();
-	die("USAGE: %s", argv[0]);
+	usage(argv[0]);
 }
 
 /* vim: set tabstop=8 noexpandtab : */

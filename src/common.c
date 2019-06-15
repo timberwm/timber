@@ -33,4 +33,10 @@ void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 	exit(-1);
 }
 
+void __attribute__((noreturn)) usage(const char *executable)
+{
+	printf("USAGE: %s\n", executable);
+	exit(-1);
+}
+
 /* vim: set tabstop=8 noexpandtab : */
