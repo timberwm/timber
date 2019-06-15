@@ -20,7 +20,7 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 #define ARRAY_FIND(array, i, cmp) \
 	for (i = 0; i < (ssize_t)ARRAY_SIZE(array); i++) \
-		if (!cmp) \
+		if (cmp) \
 			break; \
 	if (i == ARRAY_SIZE(array)) \
 		i = -1;
@@ -64,7 +64,8 @@ typedef struct {
 } tmbr_command_args_t;
 
 typedef struct {
-	const char *command;
+	const char *cmd;
+	const char *subcmd;
 	int args;
 } tmbr_commands_t;
 
