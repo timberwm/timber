@@ -24,7 +24,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include <xcb/xcb.h>
@@ -97,7 +99,7 @@ static struct {
 		xcb_atom_t net_wm_state;
 		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
-	int fifofd;
+	int ctrlfd;
 	uint8_t ignored_events;
 } state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1, 0 };
 
@@ -1038,8 +1040,8 @@ static void tmbr_handle_command(int fd)
 
 static void tmbr_cleanup(TMBR_UNUSED int signal)
 {
-	if (state.fifofd >= 0)
-		close(state.fifofd);
+	if (state.ctrlfd >= 0)
+		close(state.ctrlfd);
 	unlink(state.ctrl_path);
 
 	tmbr_screens_free(state.screens);
@@ -1061,11 +1063,16 @@ static int tmbr_setup_atom(xcb_atom_t *out, char *name)
 	return 0;
 }
 
-static int tmbr_setup_x11(xcb_connection_t *conn)
+static int tmbr_setup_x11(void)
 {
 	uint32_t mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY;
 	uint32_t override_redirect = 1;
+	xcb_connection_t *conn;
 	xcb_screen_t *screen;
+
+	if ((state.conn = conn = xcb_connect(NULL, NULL)) == NULL ||
+	    xcb_connection_has_error(conn) != 0)
+		die("Unable to connect to X server");
 
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
 		die("Unable to get root screen");
@@ -1103,16 +1110,10 @@ static int tmbr_setup_x11(xcb_connection_t *conn)
 	return 0;
 }
 
-static int tmbr_setup(void)
+static int tmbr_setup_socket(void)
 {
+	struct sockaddr_un addr;
 	char *dir;
-
-	if ((state.conn = xcb_connect(NULL, NULL)) == NULL ||
-	    xcb_connection_has_error(state.conn) != 0)
-		die("Unable to connect to X server");
-
-	if (tmbr_setup_x11(state.conn) < 0)
-		die("Unable to setup X server");
 
 	if ((state.ctrl_path = getenv("TMBR_CTRL_PATH")) == NULL)
 		state.ctrl_path = TMBR_CTRL_PATH;
@@ -1121,19 +1122,34 @@ static int tmbr_setup(void)
 		die("Unable to compute control directory name");
 
 	if ((mkdir(dir, 0700) < 0 && errno != EEXIST) ||
-	    (unlink(state.ctrl_path) < 0 && errno != ENOENT) ||
-	    (mkfifo(state.ctrl_path, 0600) < 0 && errno != EEXIST))
-		die("Unable to create fifo");
+	    (unlink(state.ctrl_path) < 0 && errno != ENOENT))
+		die("Unable to prepare control socket directory: %s", strerror(errno));
 
-	if ((state.fifofd = open(state.ctrl_path, O_RDWR|O_NONBLOCK)) < 0)
-		die("Unable to open fifo");
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = AF_UNIX;
+	strncpy(addr.sun_path, state.ctrl_path, sizeof(addr.sun_path) - 1);
+
+	if ((state.ctrlfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0 ||
+	    bind(state.ctrlfd, (struct sockaddr *) &addr, sizeof(addr)) < 0 ||
+	    listen(state.ctrlfd, 10) < 0)
+		die("Unable to set up control socket: %s", strerror(errno));
+
+	free(dir);
+	return 0;
+}
+
+static int tmbr_setup(void)
+{
+	if (tmbr_setup_x11() < 0)
+		die("Unable to setup X server");
+	if (tmbr_setup_socket() < 0)
+		die("Unable to setup control socket");
 
 	signal(SIGINT, tmbr_cleanup);
 	signal(SIGHUP, tmbr_cleanup);
 	signal(SIGTERM, tmbr_cleanup);
 	signal(SIGCHLD, tmbr_cleanup);
 
-	free(dir);
 	return 0;
 }
 
@@ -1146,16 +1162,23 @@ int tmbr_wm(void)
 
 	fds[0].fd = xcb_get_file_descriptor(state.conn);
 	fds[0].events = POLLIN;
-	fds[1].fd = state.fifofd;
+	fds[1].fd = state.ctrlfd;
 	fds[1].events = POLLIN;
 
 	while (xcb_flush(state.conn) > 0) {
 		if (poll(fds, 2, -1) < 0)
 			die("timber: unable to poll for events");
+
 		if (fds[0].revents & POLLIN)
 			tmbr_handle_events();
-		if (fds[1].revents & POLLIN)
-			tmbr_handle_command(fds[1].fd);
+
+		if (fds[1].revents & POLLIN) {
+			int cfd = accept(fds[1].fd, NULL, NULL);
+			if (cfd < 0)
+				continue;
+			tmbr_handle_command(cfd);
+			close(cfd);
+		}
 	}
 
 	return 0;
