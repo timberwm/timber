@@ -97,7 +97,7 @@ static struct {
 		xcb_atom_t net_wm_state;
 		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
-	int fifofd;
+	int ctrlfd;
 	uint8_t ignored_events;
 } state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1, 0 };
 
@@ -1038,8 +1038,8 @@ static void tmbr_handle_command(int fd)
 
 static void tmbr_cleanup(TMBR_UNUSED int signal)
 {
-	if (state.fifofd >= 0)
-		close(state.fifofd);
+	if (state.ctrlfd >= 0)
+		close(state.ctrlfd);
 	unlink(state.ctrl_path);
 
 	tmbr_screens_free(state.screens);
@@ -1123,7 +1123,7 @@ static int tmbr_setup_socket(void)
 	    (mkfifo(state.ctrl_path, 0600) < 0 && errno != EEXIST))
 		die("Unable to create fifo");
 
-	if ((state.fifofd = open(state.ctrl_path, O_RDWR|O_NONBLOCK)) < 0)
+	if ((state.ctrlfd = open(state.ctrl_path, O_RDWR|O_NONBLOCK)) < 0)
 		die("Unable to open fifo");
 
 	free(dir);
@@ -1154,7 +1154,7 @@ int tmbr_wm(void)
 
 	fds[0].fd = xcb_get_file_descriptor(state.conn);
 	fds[0].events = POLLIN;
-	fds[1].fd = state.fifofd;
+	fds[1].fd = state.ctrlfd;
 	fds[1].events = POLLIN;
 
 	while (xcb_flush(state.conn) > 0) {
