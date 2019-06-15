@@ -15,16 +15,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-
-#include "wm.h"
-
-int main(int argc, const char *argv[])
-{
-	if (argc == 1)
-		return tmbr_wm();
-	printf("USAGE: %s", argv[0]);
-	return -1;
-}
+int tmbr_wm(void);
 
 /* vim: set tabstop=8 noexpandtab : */

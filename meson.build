@@ -12,7 +12,11 @@ config_header = configure_file(input: 'src/config.h.in', output: 'config.h', con
 
 executable(
   'timber',
-  sources: [ 'src/timber.c', config_header ],
+  sources: [
+      'src/timber.c',
+      'src/wm.c',
+      config_header
+  ],
   dependencies: [
     dependency('xcb'),
     dependency('xcb-aux'),
