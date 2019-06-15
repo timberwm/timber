@@ -15,10 +15,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <errno.h>
 #include <fcntl.h>
-#include <sys/stat.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include "client.h"
@@ -29,7 +32,17 @@ typedef int (*tmbr_cmd_t)(int argc, const char *argv[]);
 
 static int tmbr_ctrl_connect(const char *path)
 {
-	int fd = open(path, O_WRONLY);
+	struct sockaddr_un addr;
+	int fd;
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = AF_UNIX;
+	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+
+	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0 ||
+	    connect(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0)
+		die("Unable to connect to control socket: %s", strerror(errno));
+
 	return fd;
 }
 

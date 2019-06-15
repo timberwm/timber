@@ -24,7 +24,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include <xcb/xcb.h>
@@ -1110,6 +1112,7 @@ static int tmbr_setup_x11(void)
 
 static int tmbr_setup_socket(void)
 {
+	struct sockaddr_un addr;
 	char *dir;
 
 	if ((state.ctrl_path = getenv("TMBR_CTRL_PATH")) == NULL)
@@ -1119,12 +1122,17 @@ static int tmbr_setup_socket(void)
 		die("Unable to compute control directory name");
 
 	if ((mkdir(dir, 0700) < 0 && errno != EEXIST) ||
-	    (unlink(state.ctrl_path) < 0 && errno != ENOENT) ||
-	    (mkfifo(state.ctrl_path, 0600) < 0 && errno != EEXIST))
-		die("Unable to create fifo");
+	    (unlink(state.ctrl_path) < 0 && errno != ENOENT))
+		die("Unable to prepare control socket directory: %s", strerror(errno));
 
-	if ((state.ctrlfd = open(state.ctrl_path, O_RDWR|O_NONBLOCK)) < 0)
-		die("Unable to open fifo");
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = AF_UNIX;
+	strncpy(addr.sun_path, state.ctrl_path, sizeof(addr.sun_path) - 1);
+
+	if ((state.ctrlfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0 ||
+	    bind(state.ctrlfd, (struct sockaddr *) &addr, sizeof(addr)) < 0 ||
+	    listen(state.ctrlfd, 10) < 0)
+		die("Unable to set up control socket: %s", strerror(errno));
 
 	free(dir);
 	return 0;
@@ -1132,7 +1140,7 @@ static int tmbr_setup_socket(void)
 
 static int tmbr_setup(void)
 {
-	if (tmbr_setup_x11(state.conn) < 0)
+	if (tmbr_setup_x11() < 0)
 		die("Unable to setup X server");
 	if (tmbr_setup_socket() < 0)
 		die("Unable to setup control socket");
@@ -1160,10 +1168,17 @@ int tmbr_wm(void)
 	while (xcb_flush(state.conn) > 0) {
 		if (poll(fds, 2, -1) < 0)
 			die("timber: unable to poll for events");
+
 		if (fds[0].revents & POLLIN)
 			tmbr_handle_events();
-		if (fds[1].revents & POLLIN)
-			tmbr_handle_command(fds[1].fd);
+
+		if (fds[1].revents & POLLIN) {
+			int cfd = accept(fds[1].fd, NULL, NULL);
+			if (cfd < 0)
+				continue;
+			tmbr_handle_command(cfd);
+			close(cfd);
+		}
 	}
 
 	return 0;
