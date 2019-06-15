@@ -1,0 +1,9 @@
+#define TMBR_VERSION "@version@"
+
+#define TMBR_CTRL_PATH "/run/timber/ctrl.s"
+
+#define TMBR_BORDER_WIDTH 3
+#define TMBR_COLOR_ACTIVE 0xFF005577
+#define TMBR_COLOR_INACTIVE 0xFF222222
+
+/* vim: set tabstop=8 noexpandtab : */
