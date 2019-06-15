@@ -13,6 +13,7 @@ config_header = configure_file(input: 'src/config.h.in', output: 'config.h', con
 executable(
   'timber',
   sources: [
+      'src/common.c',
       'src/timber.c',
       'src/wm.c',
       config_header

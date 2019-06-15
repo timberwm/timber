@@ -15,15 +15,22 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "common.h"
 
-#include "wm.h"
-
-int main(int argc, const char *argv[])
+void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
-	if (argc == 1)
-		return tmbr_wm();
-	die("USAGE: %s", argv[0]);
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	fputc('\n', stderr);
+
+	exit(-1);
 }
 
 /* vim: set tabstop=8 noexpandtab : */

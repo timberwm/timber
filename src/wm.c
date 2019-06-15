@@ -21,7 +21,6 @@
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +32,7 @@
 #include <xcb/xcb_event.h>
 #include <xcb/randr.h>
 
+#include "common.h"
 #include "wm.h"
 
 #define TMBR_UNUSED __attribute__((unused))
@@ -144,18 +144,6 @@ static struct {
 	int fifofd;
 	uint8_t ignored_events;
 } state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1, 0 };
-
-static void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
-{
-       va_list ap;
-
-       va_start(ap, fmt);
-       vfprintf(stderr, fmt, ap);
-       va_end(ap);
-       fputc('\n', stderr);
-
-       exit(-1);
-}
 
 static int tmbr_tree_new(tmbr_tree_t **out, tmbr_client_t *client)
 {
