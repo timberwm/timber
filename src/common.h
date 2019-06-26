@@ -15,6 +15,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <sys/types.h>
+
 #define TMBR_UNUSED __attribute__((unused))
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -24,6 +26,8 @@
 			break; \
 	if (i == ARRAY_SIZE(array)) \
 		i = -1;
+
+#define TMBR_CTRL_BUFSIZE 1024
 
 #define TMBR_ARG_SEL (1 << 1)
 #define TMBR_ARG_DIR (1 << 2)
@@ -77,5 +81,9 @@ void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);
 void __attribute__((noreturn)) usage(const char *executable);
 
 int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc, const char *argv[]);
+
+ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize);
+ssize_t tmbr_ctrl_write(int fd, const char *buf, size_t bufsize);
+ssize_t __attribute__((format(printf, 2, 3))) tmbr_ctrl_writef(int fd, const char *fmt, ...);
 
 /* vim: set tabstop=8 noexpandtab : */

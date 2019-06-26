@@ -16,12 +16,10 @@
  */
 
 #include <errno.h>
-#include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -1005,19 +1003,14 @@ static void tmbr_cmd_tree_rotate(TMBR_UNUSED const tmbr_command_args_t *args)
 
 static void tmbr_handle_command(int fd)
 {
+	char buf[TMBR_CTRL_BUFSIZE];
 	tmbr_command_args_t args;
 	tmbr_command_t command;
 	const char *argv[10];
-	char buf[BUFSIZ];
-	ssize_t n;
 	int argc;
 
-	if ((n = read(fd, buf, sizeof(buf) - 1)) <= 0) {
-		if (errno == EAGAIN || errno == EINTR)
-			return;
+	if (tmbr_ctrl_read(fd, buf, sizeof(buf)) < 0)
 		die("Unable to read from control pipe: %s", strerror(errno));
-	}
-	buf[(buf[n - 1] == '\n') ? (n - 1) : n] = '\0';
 
 	if ((argv[0] = strtok(buf, " ")) == NULL)
 		return;
