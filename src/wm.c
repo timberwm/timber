@@ -762,6 +762,12 @@ static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 		die("Unable to focus new client");
 }
 
+static void tmbr_handle_unmap_notify(TMBR_UNUSED xcb_unmap_notify_event_t *ev)
+{
+	xcb_aux_sync(state.conn);
+	state.ignored_events = XCB_ENTER_NOTIFY;
+}
+
 static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 {
 	tmbr_client_t *client;
@@ -805,6 +811,8 @@ static void tmbr_handle_event(xcb_generic_event_t *ev)
 		tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
 	else if (type == XCB_MAP_REQUEST)
 		tmbr_handle_map_request((xcb_map_request_event_t *) ev);
+	else if (type == XCB_UNMAP_NOTIFY)
+		tmbr_handle_unmap_notify((xcb_unmap_notify_event_t *) ev);
 	else if (type == XCB_DESTROY_NOTIFY)
 		tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
 	else if (type == XCB_CLIENT_MESSAGE)
