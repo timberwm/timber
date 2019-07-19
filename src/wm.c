@@ -1027,7 +1027,7 @@ static void tmbr_handle_command(int fd)
 	tmbr_command_args_t args;
 	tmbr_command_t command;
 	const char *argv[10];
-	int argc;
+	int error, argc;
 
 	if (tmbr_ctrl_read(fd, buf, sizeof(buf)) < 0)
 		return;
@@ -1044,19 +1044,21 @@ static void tmbr_handle_command(int fd)
 		return;
 
 	switch (command) {
-		case TMBR_COMMAND_CLIENT_FOCUS: tmbr_cmd_client_focus(&args); break;
-		case TMBR_COMMAND_CLIENT_FULLSCREEN: tmbr_cmd_client_fullscreen(&args); break;
-		case TMBR_COMMAND_CLIENT_KILL: tmbr_cmd_client_kill(&args); break;
-		case TMBR_COMMAND_CLIENT_RESIZE: tmbr_cmd_client_resize(&args); break;
-		case TMBR_COMMAND_CLIENT_SWAP: tmbr_cmd_client_swap(&args); break;
-		case TMBR_COMMAND_CLIENT_TO_DESKTOP: tmbr_cmd_client_to_desktop(&args); break;
-		case TMBR_COMMAND_CLIENT_TO_SCREEN: tmbr_cmd_client_to_screen(&args); break;
-		case TMBR_COMMAND_DESKTOP_FOCUS: tmbr_cmd_desktop_focus(&args); break;
-		case TMBR_COMMAND_DESKTOP_KILL: tmbr_cmd_desktop_kill(&args); break;
-		case TMBR_COMMAND_DESKTOP_NEW: tmbr_cmd_desktop_new(&args); break;
-		case TMBR_COMMAND_SCREEN_FOCUS: tmbr_cmd_screen_focus(&args); break;
-		case TMBR_COMMAND_TREE_ROTATE: tmbr_cmd_tree_rotate(&args); break;
+		case TMBR_COMMAND_CLIENT_FOCUS: error = tmbr_cmd_client_focus(&args); break;
+		case TMBR_COMMAND_CLIENT_FULLSCREEN: error = tmbr_cmd_client_fullscreen(&args); break;
+		case TMBR_COMMAND_CLIENT_KILL: error = tmbr_cmd_client_kill(&args); break;
+		case TMBR_COMMAND_CLIENT_RESIZE: error = tmbr_cmd_client_resize(&args); break;
+		case TMBR_COMMAND_CLIENT_SWAP: error = tmbr_cmd_client_swap(&args); break;
+		case TMBR_COMMAND_CLIENT_TO_DESKTOP: error = tmbr_cmd_client_to_desktop(&args); break;
+		case TMBR_COMMAND_CLIENT_TO_SCREEN: error = tmbr_cmd_client_to_screen(&args); break;
+		case TMBR_COMMAND_DESKTOP_FOCUS: error = tmbr_cmd_desktop_focus(&args); break;
+		case TMBR_COMMAND_DESKTOP_KILL: error = tmbr_cmd_desktop_kill(&args); break;
+		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(&args); break;
+		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(&args); break;
+		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(&args); break;
 	}
+
+	tmbr_ctrl_writef(fd, "%d", error);
 }
 
 static void tmbr_cleanup(TMBR_UNUSED int signal)
