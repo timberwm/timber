@@ -1,0 +1,131 @@
+.TH TIMBER "1" "" "timber @version@" "timber manual"
+.SH NAME
+timber \- tree-based window manager
+.SH SYNOPSIS
+.sp
+.nf
+\fItimber\fR
+\fItimber\fR client focus (next|prev)
+\fItimber\fR client fullscreen
+\fItimber\fR client kill
+\fItimber\fR client resize (north|south|east|west) <NUMBER>
+\fItimber\fR client swap (next|prev)
+\fItimber\fR client to_desktop (next|prev)
+\fItimber\fR client to_screen (next|prev)
+\fItimber\fR desktop focus (next|prev)
+\fItimber\fR desktop kill
+\fItimber\fR desktop new
+\fItimber\fR screen focus (next|prev)
+\fItimber\fR tree rotate
+.fi
+.SH DESCRIPTION
+.sp
+\fBtimber\fR is a tree-based window manager for X11 inspired by bspwm.
+.SH TERMS
+.SS Client
+.sp
+A client can be thought of as a window which can be displayed and which can receive input events.
+Examples are terminals, browsers or music players.
+Some windows are created in such a way that they are ignored by the window manager, for example popups or status bars.
+These windows are not considered to be a client.
+.SS Tree
+.sp
+All clients are managed in a binary tree.
+Each node of that tree may have a parent node and either zero or two children.
+In case where a node doesn't have any children, it is called a leaf node and will hold a client.
+In case where a node has two children, it may not hold a client but each of its children may again either be an edge node or another splitting node.
+.PP
+The tree's nodes determine how clients shall be layed out on the screen and thus hold an orientation as well as a weight.
+If a node has horizontal orientation, its children will be displayed stacked above each other.
+If a node has vertical orientation, its children will be displayed stacked next to each other.
+How much space is being allocated to both children is determined by the weight, which is a value in the range \[0, 100\].
+If the value is smaller than 50, then the first client will be displayed smaller than the second client.
+.SS Desktop
+.sp
+A desktop is a virtual entity that may contain an arbitrary amount of clients.
+Each desktop will manage its clients independently of other desktops and layout them accordingly.
+Each screen will have at least one desktop and exactly one desktop can be selected on each screen.
+Switching between desktops on a screen will cause it to only display clients from the desktop that is being switched to.
+.SS Screen
+.sp
+A screen represents a monitor attached to your graphics card.
+Each monitor has its own screen that may hold one or more desktops.
+.SH COMMANDS
+.SS Window manager
+.sp
+$ timber
+.sp
+With no arguments, \fBtimber\fR will start as the window manager.
+By default, it will try to connect to the primary X11 display on :0.
+This can be changed by setting the environment variable \fBDISPLAY\fR.
+If another
+.SS Client: focus neighbouring client
+.sp
+$ timber client focus (next|prev)
+.sp
+Selects the client relative to the currently focussed client and makes it the new focussed node.
+.SS Client: toggle fullscreen mode
+.sp
+$ timber client fullscreen
+.sp
+Toggles the fullscreen state of the currently focussed client.
+.SS Client: kill focussed client
+.sp
+$ timber client kill
+.sp
+Kills the currently focussed client.
+Sends it a message to signal that it shall close itself, but will not forcefully close its window.
+.SS Client: adjust size
+.sp
+$ timber client resize (north|south|east|west) <NUMBER>
+.sp
+Adjust size of the currently focussed client.
+Resizes the given edge of the client by the amount passed.
+The amount shall be a number from \[-100, +100\] and signal a percentage.
+Negative values will shrink the client's size, positive values will grow the client's size.
+.SS Client: swap with neighbouring client
+.sp
+$ timber client swap (next|prev)
+.sp
+Swaps the currently focussed client with the selected neighbouring client.
+The current and selected client's windows will be swapped with each other.
+.SS Client: move to neighbouring desktop
+.sp
+$ timber client to_desktop (next|prev)
+.sp
+Sends the currently focussed client to the selected neighbouring desktop.
+.SS Client: Move to neighbouring screen
+.sp
+$ timber client to_screen (next|prev)
+.sp
+Sends the currently focussed client to the selected neighbouring screen.
+.SS Desktop: focus neighbouring desktop
+.sp
+$ timber desktop focus (next|prev)
+.sp
+Selects the desktop relative to the currently focussed desktop and makes it the new focussed one.
+.SS Desktop: kill focussed desktop
+.sp
+$ timber desktop kill
+.sp
+Removes the currently focussed desktop if the desktop has no clients attached to it.
+.SS Desktop: create new desktop
+.sp
+$ timber desktop new
+.sp
+Creates a new desktop.
+The newly created desktop will automatically be focussed and not own any clients yet.
+.SS Screen: focus neighbouring screen
+.sp
+$ timber screen focus (next|prev)
+.sp
+Selects the screen relative to the currently focussed screen and makes it the new focussed one.
+.SS Tree: rotate current node
+.sp
+$ timber tree rotate
+.sp
+Rotates the tree node that holds the currently selected client.
+If the previous orientation was a vertical split of the two clients contained by the current node, it will set it to horizontal instead and vice versa.
+.SH AUTHOR
+.sp
+Patrick Steinhardt <ps at pks.im>
