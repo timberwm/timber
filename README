@@ -18,13 +18,13 @@ makes use of the meson build system.
 Installation
 ------------
 
-Edit the configuration header file config.def.h to adjust timber
-to your own needs. Besides configuration like border width and
-color, it also contains the list of commands that may be written
-into timber's control named pipe.
+If you desire, you can modify the file "src/config.h.in" to match
+your own needs. Besides the path where the control socket shall
+be created, it also contains options to modify the border width
+and color.
 
-Aferwards, you can install timber by executing the following
-commands:
+To build and install timber, you can execute the following
+commands in the timber directory:
 
     $ meson build .
     $ ninja -C build install
