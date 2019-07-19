@@ -5,3 +5,4 @@ project(
 )
 
 subdir('src')
+subdir('docs')
