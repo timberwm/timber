@@ -1010,7 +1010,7 @@ static void tmbr_handle_command(int fd)
 	int argc;
 
 	if (tmbr_ctrl_read(fd, buf, sizeof(buf)) < 0)
-		die("Unable to read from control pipe: %s", strerror(errno));
+		return;
 
 	if ((argv[0] = strtok(buf, " ")) == NULL)
 		return;
