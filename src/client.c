@@ -16,8 +16,8 @@
  */
 
 #include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -46,9 +46,11 @@ static int tmbr_ctrl_connect(const char *path)
 	return fd;
 }
 
-static int tmbr_dispatch_command(tmbr_command_t cmd, const tmbr_command_args_t *args, int fd)
+static int tmbr_execute(tmbr_command_t cmd, const tmbr_command_args_t *args, int fd)
 {
 	char params[3][32] = { "", "", "" };
+	char buf[TMBR_CTRL_BUFSIZE];
+	int error;
 
 	if (commands[cmd].args & TMBR_ARG_SEL)
 		snprintf(params[0], sizeof(params[0]), " %s", selections[args->sel]);
@@ -57,16 +59,22 @@ static int tmbr_dispatch_command(tmbr_command_t cmd, const tmbr_command_args_t *
 	if (commands[cmd].args & TMBR_ARG_INT)
 		snprintf(params[2], sizeof(params[2]), " %i", args->i);
 
-	dprintf(fd, "%s %s%s%s%s\n", commands[cmd].cmd, commands[cmd].subcmd, params[0], params[1], params[2]);
+	if (tmbr_ctrl_writef(fd, "%s %s%s%s%s", commands[cmd].cmd,
+			     commands[cmd].subcmd, params[0], params[1], params[2]) < 0 ||
+	    tmbr_ctrl_read(fd, buf, sizeof(buf)) < 0)
+		return -1;
 
-	return 0;
+	if ((error = atoi(buf)) != 0)
+		printf("Error executing command: %s\n", strerror(error));
+
+	return error;
 }
 
 int tmbr_client(int argc, const char *argv[])
 {
 	tmbr_command_args_t args;
 	tmbr_command_t cmd;
-	int fd;
+	int error, fd;
 
 	if ((tmbr_command_parse(&cmd, &args, argc - 1, argv + 1)) < 0)
 		usage(argv[0]);
@@ -74,12 +82,12 @@ int tmbr_client(int argc, const char *argv[])
 	if ((fd = tmbr_ctrl_connect(TMBR_CTRL_PATH)) < 0)
 		die("Unable to connect to control socket");
 
-	if (tmbr_dispatch_command(cmd, &args, fd) < 0)
-		printf("Failed to dispatch command\n");
+	if ((error = tmbr_execute(cmd, &args, fd)) < 0)
+		die("Failed to dispatch command\n");
 
 	close(fd);
 
-	return 0;
+	return error;
 }
 
 /* vim: set tabstop=8 noexpandtab : */

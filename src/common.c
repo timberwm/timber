@@ -15,10 +15,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "common.h"
 
@@ -117,6 +119,56 @@ int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc,
 		return -1;
 
 	return 0;
+}
+
+ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize)
+{
+	size_t n = 0;
+	while (n < bufsize) {
+		ssize_t bytes = read(fd, buf + n, 1);
+		if (bytes <= 0) {
+			if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
+				continue;
+			return -1;
+		}
+		n += (size_t) bytes;
+		if (buf[n-1] == '\0')
+			break;
+	}
+	if (n == bufsize)
+		return -1;
+	return (ssize_t) n;
+}
+
+ssize_t tmbr_ctrl_write(int fd, const char *buf, size_t bufsize)
+{
+	size_t n = 0;
+	while (n < bufsize) {
+		ssize_t bytes = write(fd, buf + n, bufsize - n);
+		if (bytes <= 0) {
+			if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
+				continue;
+			return -1;
+		}
+		n += (size_t) bytes;
+	}
+	return (ssize_t) n;
+}
+
+ssize_t tmbr_ctrl_writef(int fd, const char *fmt, ...)
+{
+	char buf[TMBR_CTRL_BUFSIZE];
+	va_list ap;
+	int n;
+
+	va_start(ap, fmt);
+	n = vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	if (n < 0)
+		return -1;
+
+	return tmbr_ctrl_write(fd, buf, (size_t)(n + 1));
 }
 
 /* vim: set tabstop=8 noexpandtab : */
