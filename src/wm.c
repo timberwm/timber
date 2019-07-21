@@ -455,10 +455,16 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, uint8_t fs)
 {
-	tmbr_desktop_focus(desktop, client, 1);
+	if (tmbr_desktop_focus(desktop, client, 1) < 0)
+		return -1;
+
 	desktop->fullscreen = fs;
-	tmbr_desktop_layout(desktop);
-	return tmbr_client_set_fullscreen(client, fs);
+
+	if (tmbr_desktop_layout(desktop) < 0 ||
+	    tmbr_client_set_fullscreen(client, fs) < 0)
+		return -1;
+
+	return 0;
 }
 
 static int tmbr_desktop_find_window(tmbr_client_t **out, tmbr_desktop_t *desktop,
