@@ -123,16 +123,17 @@ int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc,
 
 ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize)
 {
+	ssize_t bytes;
 	size_t n = 0;
+	char c;
+
 	while (n < bufsize) {
-		ssize_t bytes = read(fd, buf + n, 1);
-		if (bytes <= 0) {
+		if ((bytes = read(fd, &c, 1)) <= 0) {
 			if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
 				continue;
 			return -1;
 		}
-		n += (size_t) bytes;
-		if (buf[n-1] == '\0')
+		if ((buf[n++] = c) == '\0')
 			break;
 	}
 	if (n == bufsize)

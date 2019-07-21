@@ -441,7 +441,6 @@ static int tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, in
 
 	if (desktop->fullscreen)
 		tmbr_client_set_fullscreen(desktop->focus, 0);
-	desktop->fullscreen = 0;
 	desktop->focus = client;
 
 	return tmbr_desktop_layout(desktop);
@@ -456,10 +455,16 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, uint8_t fs)
 {
-	tmbr_desktop_focus(desktop, client, 1);
+	if (tmbr_desktop_focus(desktop, client, 1) < 0)
+		return -1;
+
 	desktop->fullscreen = fs;
-	tmbr_desktop_layout(desktop);
-	return tmbr_client_set_fullscreen(client, fs);
+
+	if (tmbr_desktop_layout(desktop) < 0 ||
+	    tmbr_client_set_fullscreen(client, fs) < 0)
+		return -1;
+
+	return 0;
 }
 
 static int tmbr_desktop_find_window(tmbr_client_t **out, tmbr_desktop_t *desktop,
@@ -488,11 +493,12 @@ static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *clien
 static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (desktop->focus == client) {
-		tmbr_tree_t *sibling;
-		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST) < 0)
-			sibling = NULL;
-		tmbr_desktop_focus(desktop, sibling ? sibling->client : NULL,
-				   desktop->screen == state.screen && desktop->screen->focus == desktop);
+		int setfocus = (desktop->screen == state.screen && desktop->screen->focus == desktop);
+		tmbr_tree_t *sibling = NULL;
+
+		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST) < 0 ||
+		    tmbr_desktop_focus(desktop, sibling ? sibling->client : NULL, setfocus) < 0)
+			return -1;
 	}
 
 	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
