@@ -752,7 +752,8 @@ static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 		return;
 
 	if (tmbr_client_new(&client, ev->window) < 0 ||
-	    tmbr_desktop_add_client(state.screen->focus, client) < 0)
+	    tmbr_desktop_add_client(state.screen->focus, client) < 0 ||
+	    tmbr_desktop_layout(state.screen->focus) < 0)
 		die("Unable to manage client");
 
 	xcb_map_window(state.conn, ev->window);
