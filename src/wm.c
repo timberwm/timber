@@ -103,17 +103,10 @@ static struct {
 
 static int tmbr_tree_new(tmbr_tree_t **out, tmbr_client_t *client)
 {
-	tmbr_tree_t *t;
-
-	if ((t = calloc(1, sizeof(*t))) == NULL)
+	if (((*out) = calloc(1, sizeof(**out))) == NULL)
 		return -1;
-	t->ratio = 50;
-	t->split = TMBR_SPLIT_VERTICAL;
-	t->client = client;
-	if (client)
-		client->tree = t;
-
-	*out = t;
+	if (((*out)->client = client) != NULL)
+		client->tree = *out;
 	return 0;
 }
 
