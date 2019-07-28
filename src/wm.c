@@ -196,19 +196,16 @@ static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
-	tmbr_tree_t *parent = node->parent, *uplift;
-
-	if (node == *tree) {
-		free(node);
+	if (node != *tree) {
+		tmbr_tree_t *uplift = (node->parent->left == node) ?
+					node->parent->right : node->parent->left;
+		if (tmbr_tree_swap(uplift, node->parent) < 0)
+			return -1;
+		free(uplift);
+	} else {
 		*tree = NULL;
-		return 0;
 	}
 
-	uplift = (parent->left == node) ? parent->right : parent->left;
-
-	tmbr_tree_swap(uplift, node->parent);
-
-	free(uplift);
 	free(node);
 	return 0;
 }
