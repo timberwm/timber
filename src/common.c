@@ -35,6 +35,7 @@ const tmbr_commands_t commands[] = {
 	{ "desktop", "focus",     TMBR_ARG_SEL              },
 	{ "desktop", "kill",      0                         },
 	{ "desktop", "new",       0                         },
+	{ "desktop", "swap",      TMBR_ARG_SEL              },
 	{ "screen", "focus",      TMBR_ARG_SEL              },
 	{ "tree", "rotate",       0                         }
 };
