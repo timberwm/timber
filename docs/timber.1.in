@@ -15,6 +15,7 @@ timber \- tree-based window manager
 \fItimber\fR desktop focus (next|prev)
 \fItimber\fR desktop kill
 \fItimber\fR desktop new
+\fItimber\fR desktop swap (next|prev)
 \fItimber\fR screen focus (next|prev)
 \fItimber\fR tree rotate
 .fi
@@ -115,6 +116,12 @@ $ timber desktop new
 .sp
 Creates a new desktop.
 The newly created desktop will automatically be focussed and not own any clients yet.
+.SS Desktop: swap with neighbouring desktop
+.sp
+$ timber desktop swap (next|prev)
+.sp
+Swaps the currently focussed desktop with the selected neighbouring desktop.
+The current desktop will stay focussed, but the order of those two desktops will be swapped.
 .SS Screen: focus neighbouring screen
 .sp
 $ timber screen focus (next|prev)
