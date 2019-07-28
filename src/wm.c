@@ -101,42 +101,31 @@ static struct {
 	uint8_t ignored_events;
 } state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1, 0 };
 
-static int tmbr_tree_new(tmbr_tree_t **out, tmbr_client_t *client)
-{
-	tmbr_tree_t *t;
-
-	if ((t = calloc(1, sizeof(*t))) == NULL)
-		return -1;
-	t->ratio = 50;
-	t->split = TMBR_SPLIT_VERTICAL;
-	t->client = client;
-	if (client)
-		client->tree = t;
-
-	*out = t;
-	return 0;
-}
-
 static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 {
-	tmbr_tree_t *l, *r, *t = *tree;
+	tmbr_tree_t *l, *r, *p = *tree;
 
-	if (!t)
-		return tmbr_tree_new(tree, client);
+	r = tmbr_alloc(sizeof(*r), "Unable to allocate right tree node");
+	r->client = client;
+	r->client->tree = r;
+	r->parent = p;
 
-	if (tmbr_tree_new(&l, t->client) < 0 || tmbr_tree_new(&r, client) < 0)
-		die("Unable to allocate right tree");
+	if (p) {
+		l = tmbr_alloc(sizeof(*l), "Unable to allocate left tree node");
+		l->client = p->client;
+		l->client->tree = l;
+		l->left = p->left;
+		l->right = p->right;
+		l->parent = p;
 
-	l->left = t->left;
-	l->right = t->right;
-	l->parent = t;
-	r->parent = t;
-
-	t->client = NULL;
-	t->left = l;
-	t->right = r;
-	t->ratio = 50;
-	t->split = (l->client->w < l->client->h) ? TMBR_SPLIT_HORIZONTAL : TMBR_SPLIT_VERTICAL;
+		p->client = NULL;
+		p->left = l;
+		p->right = r;
+		p->ratio = 50;
+		p->split = (l->client->w < l->client->h) ? TMBR_SPLIT_HORIZONTAL : TMBR_SPLIT_VERTICAL;
+	} else {
+		*tree = r;
+	}
 
 	return 0;
 }
@@ -153,22 +142,17 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_se
 
 	if (which == TMBR_SELECT_NEAREST)
 		which = (t && t->parent && t->parent->left == t) ? TMBR_SELECT_NEXT : TMBR_SELECT_PREV;
-
 	upwards = which;
 	downwards = !which;
 
-	while (t) {
-		if (!t->parent) {
-			/* We want to wrap to the leftmost node */
-			break;
-		} else if (t != tmbr_tree_get_child(t->parent, upwards)) {
+	while (t && t->parent) {
+		if (t != tmbr_tree_get_child(t->parent, upwards)) {
 			/* Go to the leftmost node of the right parent node */
 			t = tmbr_tree_get_child(t->parent, upwards);
 			break;
 		}
 		t = t->parent;
 	}
-
 	if (!t)
 		return -1;
 
@@ -179,7 +163,6 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_se
 		return -1;
 
 	*node = t;
-
 	return 0;
 }
 
@@ -211,19 +194,16 @@ static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
-	tmbr_tree_t *parent = node->parent, *uplift;
-
-	if (node == *tree) {
-		free(node);
+	if (node != *tree) {
+		tmbr_tree_t *uplift = (node->parent->left == node) ?
+					node->parent->right : node->parent->left;
+		if (tmbr_tree_swap(uplift, node->parent) < 0)
+			return -1;
+		free(uplift);
+	} else {
 		*tree = NULL;
-		return 0;
 	}
 
-	uplift = (parent->left == node) ? parent->right : parent->left;
-
-	tmbr_tree_swap(uplift, node->parent);
-
-	free(uplift);
 	free(node);
 	return 0;
 }
@@ -258,8 +238,7 @@ static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
 	xcb_void_cookie_t cookie;
 	tmbr_client_t *client;
 
-	if ((client = calloc(1, sizeof(*client))) == NULL)
-		die("Unable to allocate client");
+	client = tmbr_alloc(sizeof(*client), "Unable to allocate client");
 	client->window = window;
 
 	cookie = xcb_change_window_attributes_checked(state.conn, window, XCB_CW_EVENT_MASK, values);
@@ -376,8 +355,7 @@ static int tmbr_layout_tree(tmbr_tree_t *tree, int16_t x, int16_t y, uint16_t w,
 
 static int tmbr_desktop_new(tmbr_desktop_t **out)
 {
-	if ((*out = calloc(1, sizeof(**out))) == NULL)
-		die("Unable to allocate desktop");
+	*out = tmbr_alloc(sizeof(**out), "Unable to allocate desktop");
 	return 0;
 }
 
@@ -643,8 +621,7 @@ static int tmbr_screen_manage(xcb_randr_output_t output, int16_t x, int16_t y, u
 	tmbr_screen_t *s;
 
 	if (tmbr_screen_find_by_output(&s, output) < 0) {
-		if ((s = calloc(1, sizeof(*s))) == NULL)
-			die("Cannot allocate screen");
+		s = tmbr_alloc(sizeof(*s), "Unable to allocate screen");
 		if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
 			die("Cannot set up desktop");
 		s->output = output;
