@@ -105,15 +105,13 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 {
 	tmbr_tree_t *l, *r, *p = *tree;
 
-	if ((r = calloc(1, sizeof(*r))) == NULL)
-		die("Unable to allocate right tree node");
+	r = tmbr_alloc(sizeof(*r), "Unable to allocate right tree node");
 	r->client = client;
 	r->client->tree = r;
 	r->parent = p;
 
 	if (p) {
-		if ((l = calloc(1, sizeof(*l))) == NULL)
-			die("Unable to allocate left tree node");
+		l = tmbr_alloc(sizeof(*l), "Unable to allocate left tree node");
 		l->client = p->client;
 		l->client->tree = l;
 		l->left = p->left;
@@ -240,8 +238,7 @@ static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
 	xcb_void_cookie_t cookie;
 	tmbr_client_t *client;
 
-	if ((client = calloc(1, sizeof(*client))) == NULL)
-		die("Unable to allocate client");
+	client = tmbr_alloc(sizeof(*client), "Unable to allocate client");
 	client->window = window;
 
 	cookie = xcb_change_window_attributes_checked(state.conn, window, XCB_CW_EVENT_MASK, values);
@@ -358,8 +355,7 @@ static int tmbr_layout_tree(tmbr_tree_t *tree, int16_t x, int16_t y, uint16_t w,
 
 static int tmbr_desktop_new(tmbr_desktop_t **out)
 {
-	if ((*out = calloc(1, sizeof(**out))) == NULL)
-		die("Unable to allocate desktop");
+	*out = tmbr_alloc(sizeof(**out), "Unable to allocate desktop");
 	return 0;
 }
 
@@ -625,8 +621,7 @@ static int tmbr_screen_manage(xcb_randr_output_t output, int16_t x, int16_t y, u
 	tmbr_screen_t *s;
 
 	if (tmbr_screen_find_by_output(&s, output) < 0) {
-		if ((s = calloc(1, sizeof(*s))) == NULL)
-			die("Cannot allocate screen");
+		s = tmbr_alloc(sizeof(*s), "Unable to allocate screen");
 		if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
 			die("Cannot set up desktop");
 		s->output = output;

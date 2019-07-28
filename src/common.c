@@ -68,6 +68,14 @@ void __attribute__((noreturn)) usage(const char *executable)
 	exit(-1);
 }
 
+void *tmbr_alloc(size_t bytes, const char *msg)
+{
+	void *ptr;
+	if ((ptr = calloc(1, bytes)) == NULL)
+		die("%s", msg);
+	return ptr;
+}
+
 int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc, const char **argv)
 {
 	ssize_t c, i;

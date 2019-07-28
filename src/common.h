@@ -80,6 +80,8 @@ extern const char *selections[];
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);
 void __attribute__((noreturn)) usage(const char *executable);
 
+void *tmbr_alloc(size_t bytes, const char *msg);
+
 int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc, const char *argv[]);
 
 ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize);
