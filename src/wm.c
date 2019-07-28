@@ -101,35 +101,33 @@ static struct {
 	uint8_t ignored_events;
 } state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1, 0 };
 
-static int tmbr_tree_new(tmbr_tree_t **out, tmbr_client_t *client)
-{
-	if (((*out) = calloc(1, sizeof(**out))) == NULL)
-		return -1;
-	if (((*out)->client = client) != NULL)
-		client->tree = *out;
-	return 0;
-}
-
 static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 {
-	tmbr_tree_t *l, *r, *t = *tree;
+	tmbr_tree_t *l, *r, *p = *tree;
 
-	if (!t)
-		return tmbr_tree_new(tree, client);
+	if ((r = calloc(1, sizeof(*r))) == NULL)
+		die("Unable to allocate right tree node");
+	r->client = client;
+	r->client->tree = r;
+	r->parent = p;
 
-	if (tmbr_tree_new(&l, t->client) < 0 || tmbr_tree_new(&r, client) < 0)
-		die("Unable to allocate right tree");
+	if (p) {
+		if ((l = calloc(1, sizeof(*l))) == NULL)
+			die("Unable to allocate left tree node");
+		l->client = p->client;
+		l->client->tree = l;
+		l->left = p->left;
+		l->right = p->right;
+		l->parent = p;
 
-	l->left = t->left;
-	l->right = t->right;
-	l->parent = t;
-	r->parent = t;
-
-	t->client = NULL;
-	t->left = l;
-	t->right = r;
-	t->ratio = 50;
-	t->split = (l->client->w < l->client->h) ? TMBR_SPLIT_HORIZONTAL : TMBR_SPLIT_VERTICAL;
+		p->client = NULL;
+		p->left = l;
+		p->right = r;
+		p->ratio = 50;
+		p->split = (l->client->w < l->client->h) ? TMBR_SPLIT_HORIZONTAL : TMBR_SPLIT_VERTICAL;
+	} else {
+		*tree = r;
+	}
 
 	return 0;
 }
