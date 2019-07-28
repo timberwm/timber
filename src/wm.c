@@ -144,22 +144,17 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_se
 
 	if (which == TMBR_SELECT_NEAREST)
 		which = (t && t->parent && t->parent->left == t) ? TMBR_SELECT_NEXT : TMBR_SELECT_PREV;
-
 	upwards = which;
 	downwards = !which;
 
-	while (t) {
-		if (!t->parent) {
-			/* We want to wrap to the leftmost node */
-			break;
-		} else if (t != tmbr_tree_get_child(t->parent, upwards)) {
+	while (t && t->parent) {
+		if (t != tmbr_tree_get_child(t->parent, upwards)) {
 			/* Go to the leftmost node of the right parent node */
 			t = tmbr_tree_get_child(t->parent, upwards);
 			break;
 		}
 		t = t->parent;
 	}
-
 	if (!t)
 		return -1;
 
@@ -170,7 +165,6 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_se
 		return -1;
 
 	*node = t;
-
 	return 0;
 }
 
