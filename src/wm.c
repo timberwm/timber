@@ -432,6 +432,28 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 	return tmbr_client_unfocus(desktop->focus);
 }
 
+static int tmbr_desktop_swap(tmbr_desktop_t *a, tmbr_desktop_t *b)
+{
+	tmbr_desktop_t tmp = *a;
+
+	if (a->screen != b->screen)
+		return -1;
+
+	a->clients = b->clients;
+	a->focus = b->focus;
+	a->fullscreen = b->fullscreen;
+	b->clients = tmp.clients;
+	b->focus = tmp.focus;
+	b->fullscreen = tmp.fullscreen;
+
+	if (a->screen->focus == a)
+		a->screen->focus = b;
+	else if (a->screen->focus == b)
+		a->screen->focus = a;
+
+	return tmbr_desktop_layout(a->screen->focus);
+}
+
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, uint8_t fs)
 {
 	if (tmbr_desktop_focus(desktop, client, 1) < 0)
@@ -976,6 +998,16 @@ static int tmbr_cmd_desktop_focus(const tmbr_command_args_t *args)
 	return 0;
 }
 
+static int tmbr_cmd_desktop_swap(const tmbr_command_args_t *args)
+{
+	tmbr_desktop_t *sibling;
+	if (tmbr_desktop_find_sibling(&sibling, state.screen->focus, args->sel) < 0)
+		return ENOENT;
+	if (tmbr_desktop_swap(state.screen->focus, sibling) < 0)
+		return EIO;
+	return 0;
+}
+
 static int tmbr_cmd_screen_focus(const tmbr_command_args_t *args)
 {
 	tmbr_screen_t *sibling;
@@ -1041,6 +1073,7 @@ static void tmbr_handle_command(int fd)
 		case TMBR_COMMAND_DESKTOP_FOCUS: error = tmbr_cmd_desktop_focus(&args); break;
 		case TMBR_COMMAND_DESKTOP_KILL: error = tmbr_cmd_desktop_kill(&args); break;
 		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(&args); break;
+		case TMBR_COMMAND_DESKTOP_SWAP: error = tmbr_cmd_desktop_swap(&args); break;
 		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(&args); break;
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(&args); break;
 	}
