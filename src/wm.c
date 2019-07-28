@@ -434,24 +434,27 @@ static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
 
 static int tmbr_desktop_swap(tmbr_desktop_t *a, tmbr_desktop_t *b)
 {
-	tmbr_desktop_t tmp = *a;
+	tmbr_desktop_t *tmp;
 
 	if (a->screen != b->screen)
 		return -1;
 
-	a->clients = b->clients;
-	a->focus = b->focus;
-	a->fullscreen = b->fullscreen;
-	b->clients = tmp.clients;
-	b->focus = tmp.focus;
-	b->fullscreen = tmp.fullscreen;
+	tmp = a->next;
+	a->next = b->next;
+	b->next = tmp;
+	if (a->next) a->next->prev = a;
+	if (b->next) b->next->prev = b;
 
-	if (a->screen->focus == a)
-		a->screen->focus = b;
-	else if (a->screen->focus == b)
-		a->screen->focus = a;
+	tmp = a->prev;
+	a->prev = b->prev;
+	b->prev = tmp;
+	if (a->prev) a->prev->next = a;
+	if (b->prev) b->prev->next = b;
 
-	return tmbr_desktop_layout(a->screen->focus);
+	if (!a->prev) a->screen->desktops = a;
+	if (!b->prev) b->screen->desktops = b;
+
+	return 0;
 }
 
 static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, uint8_t fs)
