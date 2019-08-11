@@ -48,6 +48,11 @@ typedef enum {
 	TMBR_SPLIT_HORIZONTAL
 } tmbr_split_t;
 
+typedef enum {
+	TMBR_WM_STATE_WITHDRAWN = 0,
+	TMBR_WM_STATE_NORMAL = 1
+} tmbr_wm_state_t;
+
 struct tmbr_client {
 	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
@@ -93,6 +98,7 @@ static struct {
 	struct {
 		xcb_atom_t wm_delete_window;
 		xcb_atom_t wm_protocols;
+		xcb_atom_t wm_state;
 		xcb_atom_t net_supported;
 		xcb_atom_t net_wm_state;
 		xcb_atom_t net_wm_state_fullscreen;
@@ -232,6 +238,15 @@ static int tmbr_client_unfocus(tmbr_client_t *client)
 	return 0;
 }
 
+static int tmbr_client_set_wm_state(tmbr_client_t *client, tmbr_wm_state_t wmstate)
+{
+	uint32_t data[2] = { 0, XCB_NONE };
+	data[0] = wmstate;
+	xcb_change_property(state.conn, XCB_PROP_MODE_REPLACE, client->window,
+			    state.atoms.wm_state, state.atoms.wm_state, 32, 2, data);
+	return 0;
+}
+
 static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
 {
 	const uint32_t values[] = { XCB_EVENT_MASK_ENTER_WINDOW };
@@ -244,6 +259,9 @@ static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
 	cookie = xcb_change_window_attributes_checked(state.conn, window, XCB_CW_EVENT_MASK, values);
 	if ((xcb_request_check(state.conn, cookie)) != NULL)
 		die("Could not subscribe to window events");
+
+	if (tmbr_client_set_wm_state(client, TMBR_WM_STATE_NORMAL) < 0)
+		die("Unable to set WM state to 'normal'");
 
 	*out = client;
 	return 0;
@@ -319,7 +337,7 @@ static int tmbr_client_set_fullscreen(tmbr_client_t *client, uint8_t fs)
 	uint32_t stacking;
 	xcb_change_property(state.conn, XCB_PROP_MODE_REPLACE,
 			    client->window, state.atoms.net_wm_state, XCB_ATOM_ATOM, 32,
-                            fs, &state.atoms.net_wm_state_fullscreen);
+			    fs, &state.atoms.net_wm_state_fullscreen);
 	stacking = fs ? XCB_STACK_MODE_ABOVE : XCB_STACK_MODE_BELOW;
 	xcb_configure_window(state.conn, client->window, XCB_CONFIG_WINDOW_STACK_MODE, &stacking);
 	return 0;
@@ -769,8 +787,13 @@ static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 		die("Unable to focus new client");
 }
 
-static void tmbr_handle_unmap_notify(TMBR_UNUSED xcb_unmap_notify_event_t *ev)
+static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
 {
+	tmbr_client_t *client;
+	if (tmbr_client_find_by_window(&client, ev->window) < 0)
+		return;
+	if (tmbr_client_set_wm_state(client, TMBR_WM_STATE_WITHDRAWN) < 0)
+		die("Unable to set WM state to 'withdrawn'");
 	xcb_aux_sync(state.conn);
 	state.ignored_events = XCB_ENTER_NOTIFY;
 }
@@ -1136,6 +1159,7 @@ static int tmbr_setup_x11(void)
 
 	if (tmbr_setup_atom(&state.atoms.wm_delete_window, "WM_DELETE_WINDOW") < 0 ||
 	    tmbr_setup_atom(&state.atoms.wm_protocols, "WM_PROTOCOLS") < 0 ||
+	    tmbr_setup_atom(&state.atoms.wm_state, "WM_STATE") < 0 ||
 	    tmbr_setup_atom(&state.atoms.net_supported, "_NET_SUPPORTED") < 0 ||
 	    tmbr_setup_atom(&state.atoms.net_wm_state, "_NET_WM_STATE") < 0 ||
 	    tmbr_setup_atom(&state.atoms.net_wm_state_fullscreen, "_NET_WM_STATE_FULLSCREEN") < 0)
