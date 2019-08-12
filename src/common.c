@@ -180,5 +180,3 @@ ssize_t tmbr_ctrl_writef(int fd, const char *fmt, ...)
 
 	return tmbr_ctrl_write(fd, buf, (size_t)(n + 1));
 }
-
-/* vim: set tabstop=8 noexpandtab : */

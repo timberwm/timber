@@ -16,5 +16,3 @@
  */
 
 int tmbr_client(int argc, const char *argv[]);
-
-/* vim: set tabstop=8 noexpandtab : */
