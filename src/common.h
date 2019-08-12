@@ -88,5 +88,3 @@ int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc,
 ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize);
 ssize_t tmbr_ctrl_write(int fd, const char *buf, size_t bufsize);
 ssize_t __attribute__((format(printf, 2, 3))) tmbr_ctrl_writef(int fd, const char *fmt, ...);
-
-/* vim: set tabstop=8 noexpandtab : */

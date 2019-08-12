@@ -89,5 +89,3 @@ int tmbr_client(int argc, const char *argv[])
 
 	return error;
 }
-
-/* vim: set tabstop=8 noexpandtab : */

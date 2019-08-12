@@ -1229,5 +1229,3 @@ int tmbr_wm(void)
 
 	return 0;
 }
-
-/* vim: set tabstop=8 noexpandtab : */

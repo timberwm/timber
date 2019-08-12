@@ -27,5 +27,3 @@ int main(int argc, const char *argv[])
 
 	return tmbr_client(argc, argv);
 }
-
-/* vim: set tabstop=8 noexpandtab : */
