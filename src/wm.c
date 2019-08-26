@@ -220,24 +220,6 @@ static int tmbr_client_draw_border(tmbr_client_t *client, uint32_t color)
 	return 0;
 }
 
-static int tmbr_client_focus(tmbr_client_t *client)
-{
-	if (!client)
-		return 0;
-	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
-	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
-	return 0;
-}
-
-static int tmbr_client_unfocus(tmbr_client_t *client)
-{
-	if (!client)
-		return 0;
-	tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
-	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, state.meta, XCB_CURRENT_TIME);
-	return 0;
-}
-
 static int tmbr_client_set_wm_state(tmbr_client_t *client, tmbr_wm_state_t wmstate)
 {
 	uint32_t data[2] = { 0, XCB_NONE };
@@ -301,6 +283,24 @@ static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
 
 	free(prop);
 	return (i == len) ? -1 : 0;
+}
+
+static int tmbr_client_focus(tmbr_client_t *client)
+{
+	if (!client)
+		return 0;
+	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
+	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
+	return 0;
+}
+
+static int tmbr_client_unfocus(tmbr_client_t *client)
+{
+	if (!client)
+		return 0;
+	tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
+	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, state.meta, XCB_CURRENT_TIME);
+	return 0;
 }
 
 static void tmbr_client_kill(tmbr_client_t *client)
