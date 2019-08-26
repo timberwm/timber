@@ -866,7 +866,6 @@ static void tmbr_handle_events(void)
 			tmbr_handle_event(ev);
 		free(ev);
 	}
-	state.ignored_events = 0;
 }
 
 static int tmbr_cmd_client_kill(TMBR_UNUSED const tmbr_command_args_t *args)
@@ -1242,9 +1241,6 @@ int tmbr_wm(void)
 		if (poll(fds, 2, -1) < 0)
 			die("timber: unable to poll for events");
 
-		if (fds[0].revents & POLLIN)
-			tmbr_handle_events();
-
 		if (fds[1].revents & POLLIN) {
 			int cfd = accept(fds[1].fd, NULL, NULL);
 			if (cfd < 0)
@@ -1252,6 +1248,11 @@ int tmbr_wm(void)
 			tmbr_handle_command(cfd);
 			close(cfd);
 		}
+
+		if (fds[0].revents & POLLIN)
+			tmbr_handle_events();
+
+		state.ignored_events = 0;
 	}
 
 	return 0;
