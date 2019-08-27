@@ -842,6 +842,7 @@ static void tmbr_handle_screen_change_notify(void)
 static void tmbr_handle_event(xcb_generic_event_t *ev)
 {
 	uint8_t type = XCB_EVENT_RESPONSE_TYPE(ev);
+
 	if (type == XCB_ENTER_NOTIFY)
 		tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
 	else if (type == XCB_MAP_REQUEST)
@@ -856,16 +857,6 @@ static void tmbr_handle_event(xcb_generic_event_t *ev)
 		tmbr_handle_screen_change_notify();
 	else if (!type)
 		tmbr_handle_error((xcb_request_error_t *) ev);
-}
-
-static void tmbr_handle_events(void)
-{
-	xcb_generic_event_t *ev;
-	while ((ev = xcb_poll_for_event(state.conn)) != NULL) {
-		if (!state.ignored_events || XCB_EVENT_RESPONSE_TYPE(ev) != state.ignored_events)
-			tmbr_handle_event(ev);
-		free(ev);
-	}
 }
 
 static int tmbr_cmd_client_kill(TMBR_UNUSED const tmbr_command_args_t *args)
@@ -1227,6 +1218,7 @@ static int tmbr_setup(void)
 
 int tmbr_wm(void)
 {
+	xcb_generic_event_t *ev;
 	struct pollfd fds[2];
 
 	if (tmbr_setup() < 0)
@@ -1249,8 +1241,12 @@ int tmbr_wm(void)
 			close(cfd);
 		}
 
-		if (fds[0].revents & POLLIN)
-			tmbr_handle_events();
+		while ((ev = xcb_poll_for_event(state.conn)) != NULL) {
+			if (!state.ignored_events ||
+			    XCB_EVENT_RESPONSE_TYPE(ev) != state.ignored_events)
+				tmbr_handle_event(ev);
+			free(ev);
+		}
 
 		state.ignored_events = 0;
 	}
