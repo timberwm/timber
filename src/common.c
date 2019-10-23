@@ -141,7 +141,7 @@ int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc,
 
 int tmbr_ctrl_connect(const char **out_path, char create)
 {
-	static char path[PATH_MAX];
+	static char path[PATH_MAX] = { 0 };
 	struct sockaddr_un addr;
 	char *host = NULL, *env;
 	int fd, display;
@@ -151,7 +151,7 @@ int tmbr_ctrl_connect(const char **out_path, char create)
 	free(host);
 
 	if ((env = getenv("TMBR_CTRL_PATH")) != NULL)
-		strncpy(path, env, sizeof(path));
+		strncpy(path, env, sizeof(path) - 1);
 	else
 		snprintf(path, sizeof(path), TMBR_CTRL_PATH, display);
 
