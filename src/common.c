@@ -17,6 +17,7 @@
 
 #include <errno.h>
 #include <libgen.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,8 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+
+#include <xcb/xcb.h>
 
 #include "common.h"
 #include "config.h"
@@ -138,12 +141,19 @@ int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc,
 
 int tmbr_ctrl_connect(const char **out_path, char create)
 {
+	static char path[PATH_MAX];
 	struct sockaddr_un addr;
-	const char *path;
-	int fd;
+	char *host = NULL, *env;
+	int fd, display;
 
-	if ((path = getenv("TMBR_CTRL_PATH")) == NULL)
-		path = TMBR_CTRL_PATH;
+	if (!xcb_parse_display(NULL, &host, &display, NULL))
+		display = 0;
+	free(host);
+
+	if ((env = getenv("TMBR_CTRL_PATH")) != NULL)
+		strncpy(path, env, sizeof(path));
+	else
+		snprintf(path, sizeof(path), TMBR_CTRL_PATH, display);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
