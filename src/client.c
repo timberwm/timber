@@ -19,9 +19,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
 #include <unistd.h>
 
 #include "client.h"
@@ -29,22 +26,6 @@
 #include "config.h"
 
 typedef int (*tmbr_cmd_t)(int argc, const char *argv[]);
-
-static int tmbr_ctrl_connect(const char *path)
-{
-	struct sockaddr_un addr;
-	int fd;
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-
-	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0 ||
-	    connect(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0)
-		die("Unable to connect to control socket: %s", strerror(errno));
-
-	return fd;
-}
 
 static int tmbr_execute(tmbr_command_t cmd, const tmbr_command_args_t *args, int fd)
 {
@@ -79,7 +60,7 @@ int tmbr_client(int argc, const char *argv[])
 	if ((tmbr_command_parse(&cmd, &args, argc - 1, argv + 1)) < 0)
 		usage(argv[0]);
 
-	if ((fd = tmbr_ctrl_connect(TMBR_CTRL_PATH)) < 0)
+	if ((fd = tmbr_ctrl_connect(NULL, 0)) < 0)
 		die("Unable to connect to control socket");
 
 	if ((error = tmbr_execute(cmd, &args, fd)) < 0)

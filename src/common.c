@@ -16,13 +16,22 @@
  */
 
 #include <errno.h>
+#include <libgen.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+
+#include <xcb/xcb.h>
+
 #include "common.h"
+#include "config.h"
 
 const tmbr_commands_t commands[] = {
 	{ "client", "focus",      TMBR_ARG_SEL              },
@@ -128,6 +137,52 @@ int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc,
 		return -1;
 
 	return 0;
+}
+
+int tmbr_ctrl_connect(const char **out_path, char create)
+{
+	static char path[PATH_MAX];
+	struct sockaddr_un addr;
+	char *host = NULL, *env;
+	int fd, display;
+
+	if (!xcb_parse_display(NULL, &host, &display, NULL))
+		display = 0;
+	free(host);
+
+	if ((env = getenv("TMBR_CTRL_PATH")) != NULL)
+		strncpy(path, env, sizeof(path));
+	else
+		snprintf(path, sizeof(path), TMBR_CTRL_PATH, display);
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = AF_UNIX;
+	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+
+	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0)
+		die("Unable to create control socket");
+
+	if (create) {
+		char *dir;
+
+		if ((dir = strdup(path)) == NULL || (dir = dirname(dir)) == NULL)
+			die("Unable to compute control directory name");
+
+		if ((mkdir(dir, 0700) < 0 && errno != EEXIST) ||
+		    (unlink(path) < 0 && errno != ENOENT))
+			die("Unable to prepare control socket directory: %s", strerror(errno));
+
+		if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0 || listen(fd, 10) < 0)
+			die("Unable to set up control socket: %s", strerror(errno));
+
+		free(dir);
+	} else if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+		die("Unable to connect to control socket: %s", strerror(errno));
+	}
+
+	if (out_path)
+		*out_path = path;
+	return fd;
 }
 
 ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize)
