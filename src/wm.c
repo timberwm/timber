@@ -795,9 +795,8 @@ static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
 {
 	tmbr_client_t *client;
-	if (tmbr_client_find_by_window(&client, ev->window) < 0)
-		return;
-	if (tmbr_client_set_wm_state(client, TMBR_WM_STATE_WITHDRAWN) < 0)
+	if (tmbr_client_find_by_window(&client, ev->window) == 0 &&
+	    tmbr_client_set_wm_state(client, TMBR_WM_STATE_WITHDRAWN) < 0)
 		die("Unable to set WM state to 'withdrawn'");
 	xcb_aux_sync(state.conn);
 	state.ignored_events = XCB_ENTER_NOTIFY;
