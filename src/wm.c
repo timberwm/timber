@@ -16,16 +16,14 @@
  */
 
 #include <errno.h>
-#include <libgen.h>
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
 #include <unistd.h>
+
+#include <sys/socket.h>
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
@@ -1172,39 +1170,11 @@ static int tmbr_setup_x11(void)
 	return 0;
 }
 
-static int tmbr_setup_socket(void)
-{
-	struct sockaddr_un addr;
-	char *dir;
-
-	if ((state.ctrl_path = getenv("TMBR_CTRL_PATH")) == NULL)
-		state.ctrl_path = TMBR_CTRL_PATH;
-
-	if ((dir = strdup(state.ctrl_path)) == NULL || (dir = dirname(dir)) == NULL)
-		die("Unable to compute control directory name");
-
-	if ((mkdir(dir, 0700) < 0 && errno != EEXIST) ||
-	    (unlink(state.ctrl_path) < 0 && errno != ENOENT))
-		die("Unable to prepare control socket directory: %s", strerror(errno));
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, state.ctrl_path, sizeof(addr.sun_path) - 1);
-
-	if ((state.ctrlfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0 ||
-	    bind(state.ctrlfd, (struct sockaddr *) &addr, sizeof(addr)) < 0 ||
-	    listen(state.ctrlfd, 10) < 0)
-		die("Unable to set up control socket: %s", strerror(errno));
-
-	free(dir);
-	return 0;
-}
-
 static int tmbr_setup(void)
 {
 	if (tmbr_setup_x11() < 0)
 		die("Unable to setup X server");
-	if (tmbr_setup_socket() < 0)
+	if ((state.ctrlfd = tmbr_ctrl_connect(&state.ctrl_path, 1)) < 0)
 		die("Unable to setup control socket");
 
 	signal(SIGINT, tmbr_cleanup);

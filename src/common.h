@@ -85,6 +85,7 @@ void *tmbr_alloc(size_t bytes, const char *msg);
 
 int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc, const char *argv[]);
 
+int tmbr_ctrl_connect(const char **out_path, char create);
 ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize);
 ssize_t tmbr_ctrl_write(int fd, const char *buf, size_t bufsize);
 ssize_t __attribute__((format(printf, 2, 3))) tmbr_ctrl_writef(int fd, const char *fmt, ...);
