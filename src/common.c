@@ -185,53 +185,69 @@ int tmbr_ctrl_connect(const char **out_path, char create)
 	return fd;
 }
 
-ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize)
+static int read_bytes(int fd, char *buf, size_t bufsize)
 {
-	ssize_t bytes;
-	size_t n = 0;
-	char c;
-
-	while (n < bufsize) {
-		if ((bytes = read(fd, &c, 1)) <= 0) {
-			if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
-				continue;
+	size_t total = 0;
+	while (total < bufsize) {
+		ssize_t bytes = read(fd, buf + total, bufsize - total);
+		if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
+			continue;
+		if (bytes <= 0)
 			return -1;
-		}
-		if ((buf[n++] = c) == '\0')
-			break;
+		total += (size_t) bytes;
 	}
-	if (n == bufsize)
+	return 0;
+}
+
+int tmbr_ctrl_read(int fd, tmbr_pkt_t *out)
+{
+	char prefix[TMBR_PKT_PREFIXLEN + 1] = {0}, type;
+	unsigned messagelen;
+
+	if (read_bytes(fd, prefix, sizeof(prefix) - 1) < 0 ||
+	    sscanf(prefix, "%c%04u", &type, &messagelen) != 2 ||
+	    type < '0' || type >= '0' + TMBR_PKT_LAST ||
+	    messagelen > sizeof(out->message) - 1 ||
+	    read_bytes(fd, out->message, messagelen) < 0)
 		return -1;
-	return (ssize_t) n;
+
+	out->message[messagelen] = '\0';
+	out->type = (tmbr_pkt_type_t) type - '0';
+
+	return 0;
 }
 
-ssize_t tmbr_ctrl_write(int fd, const char *buf, size_t bufsize)
+static int write_bytes(int fd, const char *buf, size_t bufsize)
 {
-	size_t n = 0;
-	while (n < bufsize) {
-		ssize_t bytes = write(fd, buf + n, bufsize - n);
-		if (bytes <= 0) {
-			if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
-				continue;
+	size_t total = 0;
+	while (total < bufsize) {
+		ssize_t bytes = write(fd, buf + total, bufsize - total);
+		if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
+			continue;
+		if (bytes <= 0)
 			return -1;
-		}
-		n += (size_t) bytes;
+		total += (size_t) bytes;
 	}
-	return (ssize_t) n;
+	return 0;
 }
 
-ssize_t tmbr_ctrl_writef(int fd, const char *fmt, ...)
+int tmbr_ctrl_write(int fd, tmbr_pkt_type_t type, const char *fmt, ...)
 {
-	char buf[TMBR_CTRL_BUFSIZE];
+	char prefix[TMBR_PKT_PREFIXLEN + 1], message[TMBR_PKT_MESSAGELEN];
+	int messagelen;
 	va_list ap;
-	int n;
 
 	va_start(ap, fmt);
-	n = vsnprintf(buf, sizeof(buf), fmt, ap);
+	messagelen = vsnprintf(message, sizeof(message), fmt, ap);
 	va_end(ap);
 
-	if (n < 0)
+	if (messagelen < 0 || (unsigned) messagelen >= sizeof(message) - 1)
+		return -1;
+	snprintf(prefix, sizeof(prefix), "%c%04u", type + '0', messagelen);
+
+	if (write_bytes(fd, prefix, sizeof(prefix) - 1) < 0 ||
+	    write_bytes(fd, message, (size_t) messagelen) < 0)
 		return -1;
 
-	return tmbr_ctrl_write(fd, buf, (size_t)(n + 1));
+	return 0;
 }

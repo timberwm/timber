@@ -1057,16 +1057,16 @@ static int tmbr_cmd_tree_rotate(TMBR_UNUSED const tmbr_command_args_t *args)
 
 static void tmbr_handle_command(int fd)
 {
-	char buf[TMBR_CTRL_BUFSIZE];
 	tmbr_command_args_t args;
 	tmbr_command_t command;
+	tmbr_pkt_t pkt;
 	const char *argv[10];
 	int error, argc;
 
-	if (tmbr_ctrl_read(fd, buf, sizeof(buf)) < 0)
+	if (tmbr_ctrl_read(fd, &pkt) < 0 || pkt.type != TMBR_PKT_COMMAND)
 		return;
 
-	if ((argv[0] = strtok(buf, " ")) == NULL)
+	if ((argv[0] = strtok(pkt.message, " ")) == NULL)
 		return;
 	for (argc = 1; argc < (int) ARRAY_SIZE(argv); argc++)
 		if ((argv[argc] = strtok(NULL, " ")) == NULL)
@@ -1093,7 +1093,7 @@ static void tmbr_handle_command(int fd)
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(&args); break;
 	}
 
-	tmbr_ctrl_writef(fd, "%d", error);
+	tmbr_ctrl_write(fd, TMBR_PKT_ERROR, "%d", error);
 }
 
 static void tmbr_cleanup(TMBR_UNUSED int signal)
