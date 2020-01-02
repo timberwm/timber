@@ -185,19 +185,28 @@ int tmbr_ctrl_connect(const char **out_path, char create)
 	return fd;
 }
 
+static int read_bytes(int fd, char *buf, size_t bufsize)
+{
+	size_t total = 0;
+	while (total < bufsize) {
+		ssize_t bytes = read(fd, buf + total, bufsize - total);
+		if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
+			continue;
+		if (bytes <= 0)
+			return -1;
+		total += (size_t) bytes;
+	}
+	return 0;
+}
+
 ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize)
 {
-	ssize_t bytes;
 	size_t n = 0;
-	char c;
 
 	while (n < bufsize) {
-		if ((bytes = read(fd, &c, 1)) <= 0) {
-			if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
-				continue;
+		if (read_bytes(fd, buf + n, 1) < 0)
 			return -1;
-		}
-		if ((buf[n++] = c) == '\0')
+		if (buf[n++] == '\0')
 			break;
 	}
 	if (n == bufsize)
