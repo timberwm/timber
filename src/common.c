@@ -205,22 +205,21 @@ ssize_t tmbr_ctrl_read(int fd, char *buf, size_t bufsize)
 	return (ssize_t) n;
 }
 
-ssize_t tmbr_ctrl_write(int fd, const char *buf, size_t bufsize)
+static int write_bytes(int fd, const char *buf, size_t bufsize)
 {
-	size_t n = 0;
-	while (n < bufsize) {
-		ssize_t bytes = write(fd, buf + n, bufsize - n);
-		if (bytes <= 0) {
-			if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
-				continue;
+	size_t total = 0;
+	while (total < bufsize) {
+		ssize_t bytes = write(fd, buf + total, bufsize - total);
+		if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
+			continue;
+		if (bytes <= 0)
 			return -1;
-		}
-		n += (size_t) bytes;
+		total += (size_t) bytes;
 	}
-	return (ssize_t) n;
+	return 0;
 }
 
-ssize_t tmbr_ctrl_writef(int fd, const char *fmt, ...)
+int tmbr_ctrl_writef(int fd, const char *fmt, ...)
 {
 	char buf[TMBR_CTRL_BUFSIZE];
 	va_list ap;
@@ -233,5 +232,5 @@ ssize_t tmbr_ctrl_writef(int fd, const char *fmt, ...)
 	if (n < 0)
 		return -1;
 
-	return tmbr_ctrl_write(fd, buf, (size_t)(n + 1));
+	return write_bytes(fd, buf, (size_t)(n + 1));
 }
