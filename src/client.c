@@ -30,8 +30,8 @@ typedef int (*tmbr_cmd_t)(int argc, const char *argv[]);
 static int tmbr_execute(tmbr_command_t cmd, const tmbr_command_args_t *args, int fd)
 {
 	char params[3][32] = { "", "", "" };
-	char buf[TMBR_CTRL_BUFSIZE];
-	int error;
+	int error = EINVAL;
+	tmbr_pkt_t pkt;
 
 	if (commands[cmd].args & TMBR_ARG_SEL)
 		snprintf(params[0], sizeof(params[0]), " %s", selections[args->sel]);
@@ -40,12 +40,12 @@ static int tmbr_execute(tmbr_command_t cmd, const tmbr_command_args_t *args, int
 	if (commands[cmd].args & TMBR_ARG_INT)
 		snprintf(params[2], sizeof(params[2]), " %i", args->i);
 
-	if (tmbr_ctrl_writef(fd, "%s %s%s%s%s", commands[cmd].cmd,
-			     commands[cmd].subcmd, params[0], params[1], params[2]) < 0 ||
-	    tmbr_ctrl_read(fd, buf, sizeof(buf)) < 0)
+	if (tmbr_ctrl_write(fd, TMBR_PKT_COMMAND, "%s %s%s%s%s", commands[cmd].cmd,
+			    commands[cmd].subcmd, params[0], params[1], params[2]) < 0 ||
+	    tmbr_ctrl_read(fd, &pkt) < 0)
 		return -1;
 
-	if ((error = atoi(buf)) != 0)
+	if (pkt.type != TMBR_PKT_ERROR || (error = atoi(pkt.message)) != 0)
 		printf("Error executing command: %s\n", strerror(error));
 
 	return error;
