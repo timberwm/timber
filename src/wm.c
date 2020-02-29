@@ -104,7 +104,7 @@ static struct {
 	} atoms;
 	int ctrlfd;
 	uint8_t ignored_events;
-} state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0 }, -1, 0 };
+} state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0, 0, 0, 0, 0, 0, 0 }, -1, 0 };
 
 static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 {
@@ -255,10 +255,12 @@ static void tmbr_client_free(tmbr_client_t *client)
 
 static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
 {
-	xcb_client_message_event_t msg = { 0 };
+	xcb_client_message_event_t msg;
 	xcb_get_property_reply_t *prop;
 	xcb_atom_t *atoms;
 	size_t i, len;
+
+	memset(&msg, 0, sizeof(msg));
 
 	if ((prop = xcb_get_property_reply(state.conn, xcb_get_property(state.conn, 0, client->window,
 									state.atoms.wm_protocols, XCB_ATOM_ATOM,
