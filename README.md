@@ -1,6 +1,9 @@
 timber - tree-based window manager
 ==================================
 
+[![GitLab Build Status](https://gitlab.com/timberwm/timber/badges/master/pipeline.svg)](https://gitlab.com/timberwm/timber/-/commits/master)
+[![Coverity Status](https://scan.coverity.com/projects/17917/badge.svg)](https://scan.coverity.com/projects/timber)
+
 The timber window manager is a simple tiling window manager that
 is heavily inspired by dwm[1] and bspwm[2]. As with bspwm, timber
 uses binary trees to keep track of clients and manage their

@@ -14,9 +14,8 @@ stages:
   stage: build
   script:
     - mkdir build
-    - cd build
-    - meson --warnlevel 3 --werror ..
-    - ninja
+    - meson build . --warnlevel 3 --werror
+    - ninja -C build all
 
 .build-clang:
   extends: .build
@@ -77,8 +76,7 @@ coverity:
   script:
     - curl https://scan.coverity.com/download/linux64 --form project=$COVERITY_PROJECT --form token=$COVERITY_TOKEN | tar xz
     - mkdir build
-    - cd build
-    - meson --warnlevel 3 --werror ..
-    - ../cov-analysis-linux64-*/bin/cov-build --dir cov-int ninja
+    - meson build . --warnlevel 3 --werror
+    - cov-analysis-linux64-*/bin/cov-build --dir cov-int ninja -C build all
     - tar czf cov-int.tar.gz cov-int
     - curl https://scan.coverity.com/builds?project=$COVERITY_PROJECT --form token=$COVERITY_TOKEN --form email=$GITLAB_USER_EMAIL --form file=@cov-int.tar.gz --form version=$CI_COMMIT_SHA --form description="$CI_COMMIT_SHA / $CI_COMMIT_TITLE / $CI_COMMIT_REF_NAME:$CI_PIPELINE_ID"
