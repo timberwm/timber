@@ -30,8 +30,8 @@ typedef int (*tmbr_cmd_t)(int argc, const char *argv[]);
 static int tmbr_execute(tmbr_command_t cmd, const tmbr_command_args_t *args, int fd)
 {
 	char params[3][32] = { "", "", "" };
-	int error = EINVAL;
 	tmbr_pkt_t pkt;
+	int error;
 
 	if (commands[cmd].args & TMBR_ARG_SEL)
 		snprintf(params[0], sizeof(params[0]), " %s", selections[args->sel]);
@@ -41,20 +41,20 @@ static int tmbr_execute(tmbr_command_t cmd, const tmbr_command_args_t *args, int
 		snprintf(params[2], sizeof(params[2]), " %i", args->i);
 
 	if (tmbr_ctrl_write(fd, TMBR_PKT_COMMAND, "%s %s%s%s%s", commands[cmd].cmd,
-			    commands[cmd].subcmd, params[0], params[1], params[2]) < 0 ||
-	    tmbr_ctrl_read(fd, &pkt) < 0)
+			    commands[cmd].subcmd, params[0], params[1], params[2]) < 0)
 		return -1;
 
+	while ((error = tmbr_ctrl_read(fd, &pkt)) == 0) {
+		if (pkt.type != TMBR_PKT_DATA)
+			break;
+		puts(pkt.message);
+	}
+	if (error < 0)
+		die("Could not read control packet");
 	if (pkt.type != TMBR_PKT_ERROR)
 		die("Received unexpected control packet from server");
 	if ((error = atoi(pkt.message)) != 0)
 		die("Error executing command: %s", strerror(error));
-
-	while (tmbr_ctrl_read(fd, &pkt) == 0) {
-		if (pkt.type != TMBR_PKT_DATA)
-			return -1;
-		puts(pkt.message);
-	}
 
 	return 0;
 }
