@@ -78,6 +78,7 @@ typedef struct {
 typedef enum {
 	TMBR_PKT_COMMAND,
 	TMBR_PKT_ERROR,
+	TMBR_PKT_DATA,
 	TMBR_PKT_LAST
 } tmbr_pkt_type_t;
 
