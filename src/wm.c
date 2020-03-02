@@ -1104,6 +1104,32 @@ static int tmbr_cmd_state_subscribe(int fd)
 	return ENOSPC;
 }
 
+static int tmbr_cmd_state_query(int fd)
+{
+	tmbr_tree_t *it, *tree;
+	tmbr_screen_t *s;
+	tmbr_desktop_t *d;
+
+	for (s = state.screens; s; s = s->next) {
+		tmbr_ctrl_write(fd, TMBR_PKT_DATA,
+				"screen (x=%u,y=%u,width=%u,height=%u,selected=%s)",
+				s->x, s->y, s->w, s->h, s == state.screen ? "true" : "false");
+		for (d = s->desktops; d; d = d->next) {
+			tmbr_ctrl_write(fd, TMBR_PKT_DATA,
+					"\tdesktop (selected=%s)",
+					d == s->focus ? "true" : "false");
+			tmbr_tree_foreach_leaf(d->clients, it, tree) {
+				tmbr_client_t *c = tree->client;
+				tmbr_ctrl_write(fd, TMBR_PKT_DATA,
+						"\t\tclient (window=%d,x=%u,y=%u,w=%u,h=%u,selected=%s)",
+						c->window, c->x, c->y, c->w, c->h, c == d->focus ? "true" : "false");
+			}
+		}
+	}
+
+	return 0;
+}
+
 static void tmbr_handle_command(int fd)
 {
 	tmbr_command_args_t args;
@@ -1143,6 +1169,7 @@ static void tmbr_handle_command(int fd)
 		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(&args); break;
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(&args); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(fd); persistent = 1; break;
+		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(fd); break;
 	}
 
 	if (!persistent)

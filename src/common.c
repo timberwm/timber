@@ -47,7 +47,8 @@ const tmbr_commands_t commands[] = {
 	{ "desktop", "swap",      TMBR_ARG_SEL              },
 	{ "screen", "focus",      TMBR_ARG_SEL              },
 	{ "tree", "rotate",       0                         },
-	{ "state", "subscribe",   0                         }
+	{ "state", "subscribe",   0                         },
+	{ "state", "query",       0                         }
 };
 
 const char *directions[] = { "north", "south", "east", "west" };
