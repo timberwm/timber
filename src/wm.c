@@ -19,7 +19,9 @@
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -103,8 +105,29 @@ static struct {
 		xcb_atom_t net_wm_state_fullscreen;
 	} atoms;
 	int ctrlfd;
+	int subfds[10];
 	uint8_t ignored_events;
-} state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0, 0, 0, 0, 0, 0, 0 }, -1, 0 };
+} state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0, 0, 0, 0, 0, 0, 0 }, -1, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0 };
+
+static __attribute__((format(printf, 1, 2))) void tmbr_notify(const char *fmt, ...)
+{
+	char buf[4096];
+	unsigned i;
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	for (i = 0; i < ARRAY_SIZE(state.subfds); i++) {
+		if (state.subfds[i] < 0)
+			continue;
+		if (tmbr_ctrl_write(state.subfds[i], TMBR_PKT_DATA, "%s", buf) < 0) {
+			close(state.subfds[i]);
+			state.subfds[i] = -1;
+		}
+	}
+}
 
 static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 {
@@ -1057,6 +1080,18 @@ static int tmbr_cmd_tree_rotate(TMBR_UNUSED const tmbr_command_args_t *args)
 	return 0;
 }
 
+static int tmbr_cmd_state_subscribe(int fd)
+{
+	unsigned i;
+	for (i = 0; i < ARRAY_SIZE(state.subfds); i++) {
+		if (state.subfds[i] >= 0)
+			continue;
+		state.subfds[i] = dup(fd);
+		return 0;
+	}
+	return ENOSPC;
+}
+
 static void tmbr_handle_command(int fd)
 {
 	tmbr_command_args_t args;
@@ -1093,6 +1128,7 @@ static void tmbr_handle_command(int fd)
 		case TMBR_COMMAND_DESKTOP_SWAP: error = tmbr_cmd_desktop_swap(&args); break;
 		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(&args); break;
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(&args); break;
+		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(fd); break;
 	}
 
 	tmbr_ctrl_write(fd, TMBR_PKT_ERROR, "%d", error);
