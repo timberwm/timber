@@ -1110,6 +1110,7 @@ static void tmbr_handle_command(int fd)
 	tmbr_command_t command;
 	tmbr_pkt_t pkt;
 	const char *argv[10];
+	char persistent = 0;
 	int error, argc;
 
 	if (tmbr_ctrl_read(fd, &pkt) < 0 || pkt.type != TMBR_PKT_COMMAND)
@@ -1141,10 +1142,11 @@ static void tmbr_handle_command(int fd)
 		case TMBR_COMMAND_DESKTOP_SWAP: error = tmbr_cmd_desktop_swap(&args); break;
 		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(&args); break;
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(&args); break;
-		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(fd); break;
+		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(fd); persistent = 1; break;
 	}
 
-	tmbr_ctrl_write(fd, TMBR_PKT_ERROR, "%d", error);
+	if (!persistent)
+		tmbr_ctrl_write(fd, TMBR_PKT_ERROR, "%d", error);
 }
 
 static void tmbr_cleanup(TMBR_UNUSED int signal)
