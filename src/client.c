@@ -45,10 +45,18 @@ static int tmbr_execute(tmbr_command_t cmd, const tmbr_command_args_t *args, int
 	    tmbr_ctrl_read(fd, &pkt) < 0)
 		return -1;
 
-	if (pkt.type != TMBR_PKT_ERROR || (error = atoi(pkt.message)) != 0)
-		printf("Error executing command: %s\n", strerror(error));
+	if (pkt.type != TMBR_PKT_ERROR)
+		die("Received unexpected control packet from server");
+	if ((error = atoi(pkt.message)) != 0)
+		die("Error executing command: %s", strerror(error));
 
-	return error;
+	while (tmbr_ctrl_read(fd, &pkt) == 0) {
+		if (pkt.type != TMBR_PKT_DATA)
+			return -1;
+		puts(pkt.message);
+	}
+
+	return 0;
 }
 
 int tmbr_client(int argc, const char *argv[])
@@ -64,7 +72,7 @@ int tmbr_client(int argc, const char *argv[])
 		die("Unable to connect to control socket");
 
 	if ((error = tmbr_execute(cmd, &args, fd)) < 0)
-		die("Failed to dispatch command\n");
+		die("Failed to dispatch command");
 
 	close(fd);
 

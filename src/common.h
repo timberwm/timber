@@ -47,7 +47,8 @@ typedef enum {
 	TMBR_COMMAND_DESKTOP_NEW,
 	TMBR_COMMAND_DESKTOP_SWAP,
 	TMBR_COMMAND_SCREEN_FOCUS,
-	TMBR_COMMAND_TREE_ROTATE
+	TMBR_COMMAND_TREE_ROTATE,
+	TMBR_COMMAND_STATE_SUBSCRIBE
 } tmbr_command_t;
 
 typedef enum {
@@ -78,6 +79,7 @@ typedef struct {
 typedef enum {
 	TMBR_PKT_COMMAND,
 	TMBR_PKT_ERROR,
+	TMBR_PKT_DATA,
 	TMBR_PKT_LAST
 } tmbr_pkt_type_t;
 
