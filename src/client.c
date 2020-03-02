@@ -64,7 +64,7 @@ int tmbr_client(int argc, const char *argv[])
 		die("Unable to connect to control socket");
 
 	if ((error = tmbr_execute(cmd, &args, fd)) < 0)
-		die("Failed to dispatch command\n");
+		die("Failed to dispatch command");
 
 	close(fd);
 
