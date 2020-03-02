@@ -1179,6 +1179,7 @@ static int tmbr_setup(void)
 	if ((state.ctrlfd = tmbr_ctrl_connect(&state.ctrl_path, 1)) < 0)
 		die("Unable to setup control socket");
 
+	signal(SIGPIPE, SIG_IGN);
 	signal(SIGINT, tmbr_cleanup);
 	signal(SIGHUP, tmbr_cleanup);
 	signal(SIGTERM, tmbr_cleanup);
