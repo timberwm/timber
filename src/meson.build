@@ -1,5 +1,3 @@
-add_global_arguments('-D_POSIX_C_SOURCE=200809L', language: 'c')
-
 config = configuration_data()
 config.set('version', meson.project_version())
 
