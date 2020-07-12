@@ -1110,19 +1110,27 @@ static int tmbr_cmd_state_query(int fd)
 	tmbr_screen_t *s;
 	tmbr_desktop_t *d;
 
+	tmbr_ctrl_write(fd, TMBR_PKT_DATA, "screens:");
 	for (s = state.screens; s; s = s->next) {
-		tmbr_ctrl_write(fd, TMBR_PKT_DATA,
-				"screen (x=%u,y=%u,width=%u,height=%u,selected=%s)",
-				s->x, s->y, s->w, s->h, s == state.screen ? "true" : "false");
+		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "- x: %u", s->x);
+		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  y: %u", s->y);
+		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  width: %u", s->w);
+		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  height: %u", s->h);
+		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  selected: %s", s == state.screen ? "true" : "false");
+		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  desktops:");
+
 		for (d = s->desktops; d; d = d->next) {
-			tmbr_ctrl_write(fd, TMBR_PKT_DATA,
-					"\tdesktop (selected=%s)",
-					d == s->focus ? "true" : "false");
+			tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  - selected: %s", d == s->focus ? "true" : "false");
+			tmbr_ctrl_write(fd, TMBR_PKT_DATA, "    clients:");
+
 			tmbr_tree_foreach_leaf(d->clients, it, tree) {
 				tmbr_client_t *c = tree->client;
-				tmbr_ctrl_write(fd, TMBR_PKT_DATA,
-						"\t\tclient (window=%d,x=%u,y=%u,w=%u,h=%u,selected=%s)",
-						c->window, c->x, c->y, c->w, c->h, c == d->focus ? "true" : "false");
+				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "    - window: %d", c->window);
+				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      x: %u", c->x);
+				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      y: %u", c->y);
+				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      width: %u", c->w);
+				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      height: %u", c->h);
+				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      selected: %s", c == d->focus ? "true" : "false");
 			}
 		}
 	}
