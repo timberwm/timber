@@ -8,7 +8,7 @@ stages:
 
 .setup-ubuntu:
   before_script:
-    - apt update && apt install -y gcc clang curl meson pkg-config libxcb1-dev libxcb-randr0-dev libxcb-util0-dev
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc clang curl meson pkg-config libxcb1-dev libxcb-randr0-dev libxcb-util0-dev
 
 .build:
   stage: build
