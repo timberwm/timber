@@ -1143,15 +1143,16 @@ static void tmbr_handle_command(int fd)
 	tmbr_command_args_t args;
 	tmbr_command_t command;
 	tmbr_pkt_t pkt;
+	char message[TMBR_PKT_MESSAGELEN];
 	const char *argv[10];
 	char persistent = 0;
 	int error, argc;
 
 	if (tmbr_ctrl_read(fd, &pkt) < 0 || pkt.type != TMBR_PKT_COMMAND)
 		return;
-	tmbr_notify("{type: command, command: %s}", pkt.message);
+	memcpy(message, &pkt.message, sizeof(message));
 
-	if ((argv[0] = strtok(pkt.message, " ")) == NULL)
+	if ((argv[0] = strtok(message, " ")) == NULL)
 		return;
 	for (argc = 1; argc < (int) ARRAY_SIZE(argv); argc++)
 		if ((argv[argc] = strtok(NULL, " ")) == NULL)
@@ -1179,6 +1180,8 @@ static void tmbr_handle_command(int fd)
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(fd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(fd); break;
 	}
+
+	tmbr_notify("{type: command, command: %s, error: %d}", pkt.message, error);
 
 	if (!persistent)
 		tmbr_ctrl_write(fd, TMBR_PKT_ERROR, "%d", error);
