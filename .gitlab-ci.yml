@@ -8,7 +8,7 @@ stages:
 
 .setup-ubuntu:
   before_script:
-    - apt update && apt install -y gcc clang curl meson pkg-config libxcb1-dev libxcb-randr0-dev libxcb-util0-dev
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc clang curl meson pkg-config libxcb1-dev libxcb-randr0-dev libxcb-util0-dev
 
 .build:
   stage: build
@@ -54,20 +54,20 @@ ubuntu-1604-gcc:
     - .build-gcc
     - .setup-ubuntu
 
-ubuntu-1910-gcc:
-  image: ubuntu:19.10
+ubuntu-2004-gcc:
+  image: ubuntu:20.04
   extends:
     - .setup-ubuntu
     - .build-gcc
 
-ubuntu-1910-clang:
-  image: ubuntu:19.10
+ubuntu-2004-clang:
+  image: ubuntu:20.04
   extends:
     - .setup-ubuntu
     - .build-clang
 
 coverity:
-  image: ubuntu:19.10
+  image: ubuntu:20.04
   extends: .setup-ubuntu
   stage: analyze
   only:
