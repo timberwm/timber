@@ -790,7 +790,7 @@ static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
 	    tmbr_screen_focus(client->desktop->screen) < 0)
 		return;
 
-	tmbr_notify("event: enter-notify(window=%d)", ev->event);
+	tmbr_notify("{type: event, name: enter-notify, window: %d}", ev->event);
 }
 
 static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
@@ -816,7 +816,7 @@ static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
 	if (tmbr_desktop_focus(state.screen->focus, client, 1) < 0)
 		die("Unable to focus new client");
 
-	tmbr_notify("event: map-request(window=%d)", ev->window);
+	tmbr_notify("{type: event, name: map-request, window: %d}", ev->window);
 }
 
 static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
@@ -827,7 +827,7 @@ static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
 		die("Unable to set WM state to 'withdrawn'");
 	xcb_aux_sync(state.conn);
 	state.ignored_events = XCB_ENTER_NOTIFY;
-	tmbr_notify("event: unmap-notify(window=%d)", ev->window);
+	tmbr_notify("{type: event, name: unmap-notify, window: %d}", ev->window);
 }
 
 static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
@@ -838,7 +838,7 @@ static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
 	if (tmbr_desktop_remove_client(client->desktop, client) < 0)
 		die("Unable to remove client from tree");
 	tmbr_client_free(client);
-	tmbr_notify("event: destroy-notify(window=%d)", ev->window);
+	tmbr_notify("{type: event, name: destroy-notify, window: %d}", ev->window);
 }
 
 static void tmbr_handle_client_message(xcb_client_message_event_t * ev)
@@ -850,7 +850,7 @@ static void tmbr_handle_client_message(xcb_client_message_event_t * ev)
 	if (ev->data.data32[1] == state.atoms.net_wm_state_fullscreen)
 		tmbr_desktop_set_fullscreen(client->desktop, client, ev->data.data32[0] == 1);
 
-	tmbr_notify("event: client-message(window=%d)", ev->window);
+	tmbr_notify("{type: event, name: client-message, window: %d}", ev->window);
 }
 
 static void tmbr_handle_error(xcb_request_error_t *ev)
@@ -858,7 +858,7 @@ static void tmbr_handle_error(xcb_request_error_t *ev)
 	if (ev->error_code == 3 /* BAD_WINDOW */)
 		return;
 
-	tmbr_notify("event: error(code=%d)", ev->error_code);
+	tmbr_notify("{type: event, name: error, code: %d}", ev->error_code);
 	die("X11 error when handling request '%s': %s",
 	    xcb_event_get_request_label(ev->major_opcode),
 	    xcb_event_get_error_label(ev->error_code));
@@ -870,7 +870,7 @@ static void tmbr_handle_screen_change_notify(void)
 	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(state.conn)).data) == NULL)
 		die("Unable to get root screen");
 	tmbr_screens_update(screen);
-	tmbr_notify("event: screen-change-notify");
+	tmbr_notify("{type: event, name: screen-change-notify}");
 }
 
 static void tmbr_handle_event(xcb_generic_event_t *ev)
@@ -1149,7 +1149,7 @@ static void tmbr_handle_command(int fd)
 
 	if (tmbr_ctrl_read(fd, &pkt) < 0 || pkt.type != TMBR_PKT_COMMAND)
 		return;
-	tmbr_notify("command: %s", pkt.message);
+	tmbr_notify("{type: command, command: %s}", pkt.message);
 
 	if ((argv[0] = strtok(pkt.message, " ")) == NULL)
 		return;
@@ -1287,7 +1287,7 @@ int tmbr_wm(void)
 	fds[1].fd = state.ctrlfd;
 	fds[1].events = POLLIN;
 
-	tmbr_notify("status: running");
+	tmbr_notify("{type: state, state: running}");
 	while (xcb_flush(state.conn) > 0) {
 		if (poll(fds, 2, -1) < 0)
 			die("timber: unable to poll for events");
@@ -1309,7 +1309,7 @@ int tmbr_wm(void)
 
 		state.ignored_events = 0;
 	}
-	tmbr_notify("status: shutdown");
+	tmbr_notify("{type: state, state: running}");
 
 	return 0;
 }
