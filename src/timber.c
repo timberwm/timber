@@ -23,7 +23,6 @@
 int main(int argc, const char *argv[])
 {
 	if (argc == 1)
-		tmbr_wm();
-
+		return tmbr_wm();
 	return tmbr_client(argc, argv);
 }
