@@ -65,9 +65,10 @@ typedef int (*tmbr_cmd_t)(int argc, const char *argv[]);
 
 static int tmbr_execute(const tmbr_command_t *cmd, int fd)
 {
-	tmbr_pkt_t pkt = {0};
+	tmbr_pkt_t pkt;
 	int error;
 
+	memset(&pkt, 0, sizeof(pkt));
 	pkt.type = TMBR_PKT_COMMAND;
 	pkt.u.command = *cmd;
 
@@ -161,6 +162,7 @@ int tmbr_client(int argc, const char *argv[])
 	tmbr_command_t cmd;
 	int error, fd;
 
+	memset(&cmd, 0, sizeof(cmd));
 	if ((tmbr_parse(&cmd, argc - 1, argv + 1)) < 0)
 		usage(argv[0]);
 

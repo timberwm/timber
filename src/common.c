@@ -143,15 +143,16 @@ int tmbr_ctrl_write(int fd, tmbr_pkt_t *pkt)
 
 int tmbr_ctrl_write_data(int fd, const char *fmt, ...)
 {
-	tmbr_pkt_t pkt = {0};
+	tmbr_pkt_t pkt;
 	int messagelen;
 	va_list ap;
+
+	memset(&pkt, 0, sizeof(pkt));
+	pkt.type = TMBR_PKT_DATA;
 
 	va_start(ap, fmt);
 	messagelen = vsnprintf(pkt.u.data, sizeof(pkt.u.data), fmt, ap);
 	va_end(ap);
-
-	pkt.type = TMBR_PKT_DATA;
 	if (messagelen < 0 || (unsigned) messagelen >= sizeof(pkt.u.data) - 1)
 		return -1;
 
