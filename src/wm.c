@@ -15,6 +15,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <poll.h>
@@ -964,6 +965,8 @@ static int tmbr_cmd_client_resize(const tmbr_command_t *cmd)
 		split = TMBR_SPLIT_VERTICAL; select = TMBR_SELECT_PREV; i = cmd->i; break;
 	    case TMBR_DIR_WEST:
 		split = TMBR_SPLIT_VERTICAL; select = TMBR_SELECT_NEXT; i = cmd->i * -1; break;
+	    case TMBR_DIR_LAST:
+		assert(0); break;
 	}
 
 	for (tree = client->tree; tree; tree = tree->parent) {
@@ -1149,6 +1152,11 @@ static void tmbr_handle_command(int fd)
 		return;
 	cmd = &pkt.u.command;
 
+	if (cmd->type >= TMBR_COMMAND_LAST || cmd->sel >= TMBR_SELECT_LAST || cmd->dir >= TMBR_DIR_LAST) {
+		error = EINVAL;
+		goto out;
+	}
+
 	switch (cmd->type) {
 		case TMBR_COMMAND_CLIENT_FOCUS: error = tmbr_cmd_client_focus(cmd); break;
 		case TMBR_COMMAND_CLIENT_FULLSCREEN: error = tmbr_cmd_client_fullscreen(cmd); break;
@@ -1165,8 +1173,10 @@ static void tmbr_handle_command(int fd)
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(cmd); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(fd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(fd); break;
+		case TMBR_COMMAND_LAST: assert(0); break;
 	}
 
+out:
 	tmbr_notify("{type: command, error: %d}", error);
 	if (persistent)
 		return;
