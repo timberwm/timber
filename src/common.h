@@ -66,6 +66,7 @@ typedef enum {
 } tmbr_select_t;
 
 typedef struct {
+	tmbr_command_t cmd;
 	tmbr_select_t sel;
 	tmbr_dir_t dir;
 	int i;
@@ -98,7 +99,7 @@ void __attribute__((noreturn)) usage(const char *executable);
 
 void *tmbr_alloc(size_t bytes, const char *msg);
 
-int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc, const char *argv[]);
+int tmbr_command_parse(tmbr_command_args_t *args, int argc, const char *argv[]);
 
 int tmbr_ctrl_connect(const char **out_path, char create);
 int tmbr_ctrl_read(int fd, tmbr_pkt_t *out);

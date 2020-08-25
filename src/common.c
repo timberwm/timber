@@ -88,7 +88,7 @@ void *tmbr_alloc(size_t bytes, const char *msg)
 	return ptr;
 }
 
-int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc, const char **argv)
+int tmbr_command_parse(tmbr_command_args_t *args, int argc, const char **argv)
 {
 	ssize_t c, i;
 
@@ -98,7 +98,7 @@ int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc,
 	ARRAY_FIND(commands, c, !strcmp(commands[c].cmd, argv[0]) && !strcmp(commands[c].subcmd, argv[1]));
 	if (c < 0)
 		return -1;
-	*cmd = (tmbr_command_t) c;
+	args->cmd = (tmbr_command_t) c;
 
 	argc -= 2;
 	argv += 2;

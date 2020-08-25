@@ -1141,7 +1141,6 @@ static int tmbr_cmd_state_query(int fd)
 static void tmbr_handle_command(int fd)
 {
 	tmbr_command_args_t args;
-	tmbr_command_t command;
 	tmbr_pkt_t pkt;
 	char message[TMBR_PKT_MESSAGELEN];
 	const char *argv[10];
@@ -1160,10 +1159,10 @@ static void tmbr_handle_command(int fd)
 	if (argc == (int) ARRAY_SIZE(argv))
 		return;
 
-	if (tmbr_command_parse(&command, &args, argc, argv) < 0)
+	if (tmbr_command_parse(&args, argc, argv) < 0)
 		return;
 
-	switch (command) {
+	switch (args.cmd) {
 		case TMBR_COMMAND_CLIENT_FOCUS: error = tmbr_cmd_client_focus(&args); break;
 		case TMBR_COMMAND_CLIENT_FULLSCREEN: error = tmbr_cmd_client_fullscreen(&args); break;
 		case TMBR_COMMAND_CLIENT_KILL: error = tmbr_cmd_client_kill(&args); break;

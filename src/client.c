@@ -27,21 +27,21 @@
 
 typedef int (*tmbr_cmd_t)(int argc, const char *argv[]);
 
-static int tmbr_execute(tmbr_command_t cmd, const tmbr_command_args_t *args, int fd)
+static int tmbr_execute(const tmbr_command_args_t *args, int fd)
 {
 	char params[3][32] = { "", "", "" };
 	tmbr_pkt_t pkt;
 	int error;
 
-	if (commands[cmd].args & TMBR_ARG_SEL)
+	if (commands[args->cmd].args & TMBR_ARG_SEL)
 		snprintf(params[0], sizeof(params[0]), " %s", selections[args->sel]);
-	if (commands[cmd].args & TMBR_ARG_DIR)
+	if (commands[args->cmd].args & TMBR_ARG_DIR)
 		snprintf(params[1], sizeof(params[1]), " %s", directions[args->dir]);
-	if (commands[cmd].args & TMBR_ARG_INT)
+	if (commands[args->cmd].args & TMBR_ARG_INT)
 		snprintf(params[2], sizeof(params[2]), " %i", args->i);
 
-	if (tmbr_ctrl_write(fd, TMBR_PKT_COMMAND, "%s %s%s%s%s", commands[cmd].cmd,
-			    commands[cmd].subcmd, params[0], params[1], params[2]) < 0)
+	if (tmbr_ctrl_write(fd, TMBR_PKT_COMMAND, "%s %s%s%s%s", commands[args->cmd].cmd,
+			    commands[args->cmd].subcmd, params[0], params[1], params[2]) < 0)
 		return -1;
 
 	while ((error = tmbr_ctrl_read(fd, &pkt)) == 0) {
@@ -62,16 +62,15 @@ static int tmbr_execute(tmbr_command_t cmd, const tmbr_command_args_t *args, int
 int tmbr_client(int argc, const char *argv[])
 {
 	tmbr_command_args_t args;
-	tmbr_command_t cmd;
 	int error, fd;
 
-	if ((tmbr_command_parse(&cmd, &args, argc - 1, argv + 1)) < 0)
+	if ((tmbr_command_parse(&args, argc - 1, argv + 1)) < 0)
 		usage(argv[0]);
 
 	if ((fd = tmbr_ctrl_connect(NULL, 0)) < 0)
 		die("Unable to connect to control socket");
 
-	if ((error = tmbr_execute(cmd, &args, fd)) < 0)
+	if ((error = tmbr_execute(&args, fd)) < 0)
 		die("Failed to dispatch command");
 
 	close(fd);
