@@ -20,18 +20,8 @@
 #define TMBR_UNUSED __attribute__((unused))
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
-#define ARRAY_FIND(array, i, cmp) \
-	for (i = 0; i < (ssize_t)ARRAY_SIZE(array); i++) \
-		if (cmp) \
-			break; \
-	if (i == ARRAY_SIZE(array)) \
-		i = -1;
 
 #define TMBR_PKT_MESSAGELEN 1024
-
-#define TMBR_ARG_SEL (1 << 1)
-#define TMBR_ARG_DIR (1 << 2)
-#define TMBR_ARG_INT (1 << 3)
 
 typedef enum {
 	TMBR_COMMAND_CLIENT_FOCUS,
@@ -71,12 +61,6 @@ typedef struct {
 	int i;
 } tmbr_command_args_t;
 
-typedef struct {
-	const char *cmd;
-	const char *subcmd;
-	int args;
-} tmbr_commands_t;
-
 typedef enum {
 	TMBR_PKT_COMMAND,
 	TMBR_PKT_ERROR,
@@ -93,16 +77,9 @@ typedef struct {
 	} u;
 } tmbr_pkt_t;
 
-extern const tmbr_commands_t commands[];
-extern const char *directions[];
-extern const char *selections[];
-
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);
-void __attribute__((noreturn)) usage(const char *executable);
 
 void *tmbr_alloc(size_t bytes, const char *msg);
-
-int tmbr_command_parse(tmbr_command_args_t *args, int argc, const char *argv[]);
 
 int tmbr_ctrl_connect(const char **out_path, char create);
 int tmbr_ctrl_read(int fd, tmbr_pkt_t *out);
