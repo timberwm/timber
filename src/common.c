@@ -33,27 +33,6 @@
 #include "common.h"
 #include "config.h"
 
-const tmbr_commands_t commands[] = {
-	{ "client", "focus",      TMBR_ARG_SEL              },
-	{ "client", "fullscreen", 0                         },
-	{ "client", "kill",       0                         },
-	{ "client", "resize",     TMBR_ARG_DIR|TMBR_ARG_INT },
-	{ "client", "swap",       TMBR_ARG_SEL              },
-	{ "client", "to_desktop", TMBR_ARG_SEL              },
-	{ "client", "to_screen",  TMBR_ARG_SEL              },
-	{ "desktop", "focus",     TMBR_ARG_SEL              },
-	{ "desktop", "kill",      0                         },
-	{ "desktop", "new",       0                         },
-	{ "desktop", "swap",      TMBR_ARG_SEL              },
-	{ "screen", "focus",      TMBR_ARG_SEL              },
-	{ "tree", "rotate",       0                         },
-	{ "state", "subscribe",   0                         },
-	{ "state", "query",       0                         }
-};
-
-const char *directions[] = { "north", "south", "east", "west" };
-const char *selections[] = { "prev", "next" };
-
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
 	va_list ap;
@@ -66,79 +45,12 @@ void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 	exit(-1);
 }
 
-void __attribute__((noreturn)) usage(const char *executable)
-{
-	size_t i;
-	printf("USAGE: %s\n", executable);
-
-	for (i = 0; i < ARRAY_SIZE(commands); i++)
-		printf("   or: %s %s %s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
-			commands[i].args & TMBR_ARG_SEL ? " (next|prev)" : "",
-			commands[i].args & TMBR_ARG_DIR ? " (north|south|east|west)" : "",
-			commands[i].args & TMBR_ARG_INT ? " <NUMBER>" : "");
-
-	exit(-1);
-}
-
 void *tmbr_alloc(size_t bytes, const char *msg)
 {
 	void *ptr;
 	if ((ptr = calloc(1, bytes)) == NULL)
 		die("%s", msg);
 	return ptr;
-}
-
-int tmbr_command_parse(tmbr_command_t *cmd, tmbr_command_args_t *args, int argc, const char **argv)
-{
-	ssize_t c, i;
-
-	if (argc < 2)
-		return -1;
-
-	ARRAY_FIND(commands, c, !strcmp(commands[c].cmd, argv[0]) && !strcmp(commands[c].subcmd, argv[1]));
-	if (c < 0)
-		return -1;
-	*cmd = (tmbr_command_t) c;
-
-	argc -= 2;
-	argv += 2;
-
-	if (commands[c].args & TMBR_ARG_SEL) {
-		if (!argc)
-			return -1;
-
-		ARRAY_FIND(commands, i, !strcmp(argv[0], selections[i]));
-		if (i < 0)
-			return -1;
-		args->sel = (tmbr_select_t) i;
-		argc--;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_DIR) {
-		if (!argc)
-			return -1;
-
-		ARRAY_FIND(commands, i, !strcmp(argv[0], directions[i]));
-		if (i < 0)
-			return -1;
-		args->dir = (tmbr_dir_t) i;
-		argc--;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_INT) {
-		if (!argc)
-			return -1;
-		args->i = atoi(argv[0]);
-		argc--;
-		argv++;
-	}
-
-	if (argc)
-		return -1;
-
-	return 0;
 }
 
 int tmbr_ctrl_connect(const char **out_path, char create)
@@ -203,19 +115,8 @@ static int read_bytes(int fd, char *buf, size_t bufsize)
 
 int tmbr_ctrl_read(int fd, tmbr_pkt_t *out)
 {
-	char prefix[TMBR_PKT_PREFIXLEN + 1] = {0}, type;
-	unsigned messagelen;
-
-	if (read_bytes(fd, prefix, sizeof(prefix) - 1) < 0 ||
-	    sscanf(prefix, "%c%04u", &type, &messagelen) != 2 ||
-	    type < '0' || type >= '0' + TMBR_PKT_LAST ||
-	    messagelen > sizeof(out->message) - 1 ||
-	    read_bytes(fd, out->message, messagelen) < 0)
+	if (read_bytes(fd, (char *) out, sizeof(*out)) < 0)
 		return -1;
-
-	out->message[messagelen] = '\0';
-	out->type = (tmbr_pkt_type_t) type - '0';
-
 	return 0;
 }
 
@@ -233,23 +134,27 @@ static int write_bytes(int fd, const char *buf, size_t bufsize)
 	return 0;
 }
 
-int tmbr_ctrl_write(int fd, tmbr_pkt_type_t type, const char *fmt, ...)
+int tmbr_ctrl_write(int fd, tmbr_pkt_t *pkt)
 {
-	char prefix[TMBR_PKT_PREFIXLEN + 1], message[TMBR_PKT_MESSAGELEN];
+	if (write_bytes(fd, (char *)pkt, sizeof(*pkt)) < 0)
+		return -1;
+	return 0;
+}
+
+int tmbr_ctrl_write_data(int fd, const char *fmt, ...)
+{
+	tmbr_pkt_t pkt;
 	int messagelen;
 	va_list ap;
 
+	memset(&pkt, 0, sizeof(pkt));
+	pkt.type = TMBR_PKT_DATA;
+
 	va_start(ap, fmt);
-	messagelen = vsnprintf(message, sizeof(message), fmt, ap);
+	messagelen = vsnprintf(pkt.u.data, sizeof(pkt.u.data), fmt, ap);
 	va_end(ap);
-
-	if (messagelen < 0 || (unsigned) messagelen >= sizeof(message) - 1)
-		return -1;
-	snprintf(prefix, sizeof(prefix), "%c%04u", type + '0', messagelen);
-
-	if (write_bytes(fd, prefix, sizeof(prefix) - 1) < 0 ||
-	    write_bytes(fd, message, (size_t) messagelen) < 0)
+	if (messagelen < 0 || (unsigned) messagelen >= sizeof(pkt.u.data) - 1)
 		return -1;
 
-	return 0;
+	return tmbr_ctrl_write(fd, &pkt);
 }
