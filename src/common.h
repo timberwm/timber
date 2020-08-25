@@ -24,6 +24,19 @@
 #define TMBR_PKT_MESSAGELEN 1024
 
 typedef enum {
+	TMBR_DIR_NORTH,
+	TMBR_DIR_SOUTH,
+	TMBR_DIR_EAST,
+	TMBR_DIR_WEST
+} tmbr_dir_t;
+
+typedef enum {
+	TMBR_SELECT_PREV,
+	TMBR_SELECT_NEXT,
+	TMBR_SELECT_NEAREST
+} tmbr_select_t;
+
+typedef enum {
 	TMBR_COMMAND_CLIENT_FOCUS,
 	TMBR_COMMAND_CLIENT_FULLSCREEN,
 	TMBR_COMMAND_CLIENT_KILL,
@@ -39,27 +52,14 @@ typedef enum {
 	TMBR_COMMAND_TREE_ROTATE,
 	TMBR_COMMAND_STATE_SUBSCRIBE,
 	TMBR_COMMAND_STATE_QUERY
-} tmbr_command_t;
-
-typedef enum {
-	TMBR_DIR_NORTH,
-	TMBR_DIR_SOUTH,
-	TMBR_DIR_EAST,
-	TMBR_DIR_WEST
-} tmbr_dir_t;
-
-typedef enum {
-	TMBR_SELECT_PREV,
-	TMBR_SELECT_NEXT,
-	TMBR_SELECT_NEAREST
-} tmbr_select_t;
+} tmbr_command_type_t;
 
 typedef struct {
-	tmbr_command_t cmd;
+	tmbr_command_type_t type;
 	tmbr_select_t sel;
 	tmbr_dir_t dir;
 	int i;
-} tmbr_command_args_t;
+} tmbr_command_t;
 
 typedef enum {
 	TMBR_PKT_COMMAND,
@@ -71,7 +71,7 @@ typedef enum {
 typedef struct {
 	tmbr_pkt_type_t type;
 	union {
-		tmbr_command_args_t command;
+		tmbr_command_t command;
 		int error;
 		char data[TMBR_PKT_MESSAGELEN];
 	} u;

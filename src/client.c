@@ -63,13 +63,13 @@ static const char *selections[] = { "prev", "next" };
 
 typedef int (*tmbr_cmd_t)(int argc, const char *argv[]);
 
-static int tmbr_execute(const tmbr_command_args_t *args, int fd)
+static int tmbr_execute(const tmbr_command_t *cmd, int fd)
 {
 	tmbr_pkt_t pkt = {0};
 	int error;
 
 	pkt.type = TMBR_PKT_COMMAND;
-	pkt.u.command = *args;
+	pkt.u.command = *cmd;
 
 	if (tmbr_ctrl_write(fd, &pkt) < 0)
 		return -1;
@@ -89,7 +89,7 @@ static int tmbr_execute(const tmbr_command_args_t *args, int fd)
 	return 0;
 }
 
-static int tmbr_parse(tmbr_command_args_t *args, int argc, const char **argv)
+static int tmbr_parse(tmbr_command_t *cmd, int argc, const char **argv)
 {
 	ssize_t c, i;
 
@@ -99,7 +99,7 @@ static int tmbr_parse(tmbr_command_args_t *args, int argc, const char **argv)
 	ARRAY_FIND(commands, c, !strcmp(commands[c].cmd, argv[0]) && !strcmp(commands[c].subcmd, argv[1]));
 	if (c < 0)
 		return -1;
-	args->cmd = (tmbr_command_t) c;
+	cmd->type = (tmbr_command_type_t) c;
 
 	argc -= 2;
 	argv += 2;
@@ -111,7 +111,7 @@ static int tmbr_parse(tmbr_command_args_t *args, int argc, const char **argv)
 		ARRAY_FIND(commands, i, !strcmp(argv[0], selections[i]));
 		if (i < 0)
 			return -1;
-		args->sel = (tmbr_select_t) i;
+		cmd->sel = (tmbr_select_t) i;
 		argc--;
 		argv++;
 	}
@@ -123,7 +123,7 @@ static int tmbr_parse(tmbr_command_args_t *args, int argc, const char **argv)
 		ARRAY_FIND(commands, i, !strcmp(argv[0], directions[i]));
 		if (i < 0)
 			return -1;
-		args->dir = (tmbr_dir_t) i;
+		cmd->dir = (tmbr_dir_t) i;
 		argc--;
 		argv++;
 	}
@@ -131,7 +131,7 @@ static int tmbr_parse(tmbr_command_args_t *args, int argc, const char **argv)
 	if (commands[c].args & TMBR_ARG_INT) {
 		if (!argc)
 			return -1;
-		args->i = atoi(argv[0]);
+		cmd->i = atoi(argv[0]);
 		argc--;
 		argv++;
 	}
@@ -158,16 +158,16 @@ static void __attribute__((noreturn)) usage(const char *executable)
 
 int tmbr_client(int argc, const char *argv[])
 {
-	tmbr_command_args_t args;
+	tmbr_command_t cmd;
 	int error, fd;
 
-	if ((tmbr_parse(&args, argc - 1, argv + 1)) < 0)
+	if ((tmbr_parse(&cmd, argc - 1, argv + 1)) < 0)
 		usage(argv[0]);
 
 	if ((fd = tmbr_ctrl_connect(NULL, 0)) < 0)
 		die("Unable to connect to control socket");
 
-	if ((error = tmbr_execute(&args, fd)) < 0)
+	if ((error = tmbr_execute(&cmd, fd)) < 0)
 		die("Failed to dispatch command");
 
 	close(fd);
