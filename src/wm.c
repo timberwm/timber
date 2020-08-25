@@ -122,7 +122,7 @@ static __attribute__((format(printf, 1, 2))) void tmbr_notify(const char *fmt, .
 	for (i = 0; i < ARRAY_SIZE(state.subfds); i++) {
 		if (state.subfds[i] < 0)
 			continue;
-		if (tmbr_ctrl_write(state.subfds[i], TMBR_PKT_DATA, "%s", buf) < 0) {
+		if (tmbr_ctrl_write_data(state.subfds[i], "%s", buf) < 0) {
 			close(state.subfds[i]);
 			state.subfds[i] = -1;
 		}
@@ -1110,27 +1110,27 @@ static int tmbr_cmd_state_query(int fd)
 	tmbr_screen_t *s;
 	tmbr_desktop_t *d;
 
-	tmbr_ctrl_write(fd, TMBR_PKT_DATA, "screens:");
+	tmbr_ctrl_write_data(fd, "screens:");
 	for (s = state.screens; s; s = s->next) {
-		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "- x: %u", s->x);
-		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  y: %u", s->y);
-		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  width: %u", s->w);
-		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  height: %u", s->h);
-		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  selected: %s", s == state.screen ? "true" : "false");
-		tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  desktops:");
+		tmbr_ctrl_write_data(fd, "- x: %u", s->x);
+		tmbr_ctrl_write_data(fd, "  y: %u", s->y);
+		tmbr_ctrl_write_data(fd, "  width: %u", s->w);
+		tmbr_ctrl_write_data(fd, "  height: %u", s->h);
+		tmbr_ctrl_write_data(fd, "  selected: %s", s == state.screen ? "true" : "false");
+		tmbr_ctrl_write_data(fd, "  desktops:");
 
 		for (d = s->desktops; d; d = d->next) {
-			tmbr_ctrl_write(fd, TMBR_PKT_DATA, "  - selected: %s", d == s->focus ? "true" : "false");
-			tmbr_ctrl_write(fd, TMBR_PKT_DATA, "    clients:");
+			tmbr_ctrl_write_data(fd, "  - selected: %s", d == s->focus ? "true" : "false");
+			tmbr_ctrl_write_data(fd, "    clients:");
 
 			tmbr_tree_foreach_leaf(d->clients, it, tree) {
 				tmbr_client_t *c = tree->client;
-				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "    - window: %d", c->window);
-				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      x: %u", c->x);
-				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      y: %u", c->y);
-				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      width: %u", c->w);
-				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      height: %u", c->h);
-				tmbr_ctrl_write(fd, TMBR_PKT_DATA, "      selected: %s", c == d->focus ? "true" : "false");
+				tmbr_ctrl_write_data(fd, "    - window: %d", c->window);
+				tmbr_ctrl_write_data(fd, "      x: %u", c->x);
+				tmbr_ctrl_write_data(fd, "      y: %u", c->y);
+				tmbr_ctrl_write_data(fd, "      width: %u", c->w);
+				tmbr_ctrl_write_data(fd, "      height: %u", c->h);
+				tmbr_ctrl_write_data(fd, "      selected: %s", c == d->focus ? "true" : "false");
 			}
 		}
 	}
@@ -1140,50 +1140,41 @@ static int tmbr_cmd_state_query(int fd)
 
 static void tmbr_handle_command(int fd)
 {
-	tmbr_command_args_t args;
-	tmbr_pkt_t pkt;
-	char message[TMBR_PKT_MESSAGELEN];
-	const char *argv[10];
+	tmbr_command_args_t *args;
 	char persistent = 0;
-	int error, argc;
+	tmbr_pkt_t pkt;
+	int error;
 
 	if (tmbr_ctrl_read(fd, &pkt) < 0 || pkt.type != TMBR_PKT_COMMAND)
 		return;
-	memcpy(message, &pkt.message, sizeof(message));
+	args = &pkt.u.command;
 
-	if ((argv[0] = strtok(message, " ")) == NULL)
-		return;
-	for (argc = 1; argc < (int) ARRAY_SIZE(argv); argc++)
-		if ((argv[argc] = strtok(NULL, " ")) == NULL)
-			break;
-	if (argc == (int) ARRAY_SIZE(argv))
-		return;
-
-	if (tmbr_command_parse(&args, argc, argv) < 0)
-		return;
-
-	switch (args.cmd) {
-		case TMBR_COMMAND_CLIENT_FOCUS: error = tmbr_cmd_client_focus(&args); break;
-		case TMBR_COMMAND_CLIENT_FULLSCREEN: error = tmbr_cmd_client_fullscreen(&args); break;
-		case TMBR_COMMAND_CLIENT_KILL: error = tmbr_cmd_client_kill(&args); break;
-		case TMBR_COMMAND_CLIENT_RESIZE: error = tmbr_cmd_client_resize(&args); break;
-		case TMBR_COMMAND_CLIENT_SWAP: error = tmbr_cmd_client_swap(&args); break;
-		case TMBR_COMMAND_CLIENT_TO_DESKTOP: error = tmbr_cmd_client_to_desktop(&args); break;
-		case TMBR_COMMAND_CLIENT_TO_SCREEN: error = tmbr_cmd_client_to_screen(&args); break;
-		case TMBR_COMMAND_DESKTOP_FOCUS: error = tmbr_cmd_desktop_focus(&args); break;
-		case TMBR_COMMAND_DESKTOP_KILL: error = tmbr_cmd_desktop_kill(&args); break;
-		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(&args); break;
-		case TMBR_COMMAND_DESKTOP_SWAP: error = tmbr_cmd_desktop_swap(&args); break;
-		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(&args); break;
-		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(&args); break;
+	switch (args->cmd) {
+		case TMBR_COMMAND_CLIENT_FOCUS: error = tmbr_cmd_client_focus(args); break;
+		case TMBR_COMMAND_CLIENT_FULLSCREEN: error = tmbr_cmd_client_fullscreen(args); break;
+		case TMBR_COMMAND_CLIENT_KILL: error = tmbr_cmd_client_kill(args); break;
+		case TMBR_COMMAND_CLIENT_RESIZE: error = tmbr_cmd_client_resize(args); break;
+		case TMBR_COMMAND_CLIENT_SWAP: error = tmbr_cmd_client_swap(args); break;
+		case TMBR_COMMAND_CLIENT_TO_DESKTOP: error = tmbr_cmd_client_to_desktop(args); break;
+		case TMBR_COMMAND_CLIENT_TO_SCREEN: error = tmbr_cmd_client_to_screen(args); break;
+		case TMBR_COMMAND_DESKTOP_FOCUS: error = tmbr_cmd_desktop_focus(args); break;
+		case TMBR_COMMAND_DESKTOP_KILL: error = tmbr_cmd_desktop_kill(args); break;
+		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(args); break;
+		case TMBR_COMMAND_DESKTOP_SWAP: error = tmbr_cmd_desktop_swap(args); break;
+		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(args); break;
+		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(args); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(fd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(fd); break;
 	}
 
-	tmbr_notify("{type: command, command: %s, error: %d}", pkt.message, error);
+	tmbr_notify("{type: command, error: %d}", error);
+	if (persistent)
+		return;
 
-	if (!persistent)
-		tmbr_ctrl_write(fd, TMBR_PKT_ERROR, "%d", error);
+	memset(&pkt, 0, sizeof(pkt));
+	pkt.type = TMBR_PKT_ERROR;
+	pkt.u.error = error;
+	tmbr_ctrl_write(fd, &pkt);
 }
 
 static void tmbr_cleanup(TMBR_UNUSED int signal)

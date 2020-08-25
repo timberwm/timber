@@ -28,7 +28,6 @@
 		i = -1;
 
 #define TMBR_PKT_MESSAGELEN 1024
-#define TMBR_PKT_PREFIXLEN 5
 
 #define TMBR_ARG_SEL (1 << 1)
 #define TMBR_ARG_DIR (1 << 2)
@@ -87,7 +86,11 @@ typedef enum {
 
 typedef struct {
 	tmbr_pkt_type_t type;
-	char message[TMBR_PKT_MESSAGELEN];
+	union {
+		tmbr_command_args_t command;
+		int error;
+		char data[TMBR_PKT_MESSAGELEN];
+	} u;
 } tmbr_pkt_t;
 
 extern const tmbr_commands_t commands[];
@@ -103,4 +106,5 @@ int tmbr_command_parse(tmbr_command_args_t *args, int argc, const char *argv[]);
 
 int tmbr_ctrl_connect(const char **out_path, char create);
 int tmbr_ctrl_read(int fd, tmbr_pkt_t *out);
-int __attribute__((format(printf, 3, 4))) tmbr_ctrl_write(int fd, tmbr_pkt_type_t type, const char *fmt, ...);
+int tmbr_ctrl_write(int fd, tmbr_pkt_t *pkt);
+int __attribute__((format(printf, 2, 3))) tmbr_ctrl_write_data(int fd, const char *fmt, ...);
