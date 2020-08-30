@@ -32,6 +32,7 @@
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -120,6 +121,7 @@ struct tmbr_server {
 	struct wl_display *display;
 	struct wlr_backend *backend;
 	struct wlr_compositor *compositor;
+	struct wlr_server_decoration_manager *decoration;
 	struct wlr_output_layout *output_layout;
 	struct wlr_seat *seat;
 	struct wlr_xdg_shell *xdg_shell;
@@ -1228,6 +1230,7 @@ int tmbr_wm(void)
 	if (wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
+	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
@@ -1235,6 +1238,7 @@ int tmbr_wm(void)
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL)
 		die("Could not create backends");
 
+	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
 	wlr_xcursor_manager_load(server.xcursor, 1);
 
