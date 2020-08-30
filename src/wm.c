@@ -374,6 +374,8 @@ static int tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, in
 
 	if (inputfocus) {
 		struct wlr_keyboard *keyboard;
+		if (desktop->focus)
+			wlr_xdg_toplevel_set_activated(desktop->focus->surface, false);
 		wlr_xdg_toplevel_set_activated(client->surface, true);
 		if ((keyboard = wlr_seat_get_keyboard(seat)) != NULL)
 			wlr_seat_keyboard_notify_enter(seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
