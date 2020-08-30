@@ -85,7 +85,7 @@ static int tmbr_execute(const tmbr_command_t *cmd, int fd)
 	if (pkt.type != TMBR_PKT_ERROR)
 		die("Received unexpected control packet from server");
 	if (pkt.u.error != 0)
-		die("Error executing command: %s", strerror(error));
+		die("Error executing command: %s", strerror(pkt.u.error));
 
 	return 0;
 }
