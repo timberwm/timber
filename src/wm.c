@@ -115,6 +115,7 @@ struct tmbr_screen {
 
 	struct wl_listener destroy;
 	struct wl_listener frame;
+	struct wl_listener mode;
 };
 
 struct tmbr_server {
@@ -578,6 +579,12 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	wlr_output_commit(screen->output);
 }
 
+static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_screen_t *screen = wl_container_of(listener, screen, mode);
+	tmbr_desktop_recalculate(screen->focus);
+}
+
 static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
 	if (screen->focus == desktop)
@@ -651,6 +658,7 @@ static int tmbr_screen_new(tmbr_screen_t **out, tmbr_server_t *server, struct wl
 
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
+	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
 
 	*out = screen;
 	return 0;
