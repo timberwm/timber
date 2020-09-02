@@ -136,6 +136,7 @@ struct tmbr_server {
 	struct wl_listener new_output;
 	struct wl_listener new_surface;
 
+	struct wl_listener cursor_axis;
 	struct wl_listener cursor_button;
 	struct wl_listener cursor_motion;
 	struct wl_listener cursor_motion_absolute;
@@ -803,6 +804,14 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 	wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER|WL_SEAT_CAPABILITY_KEYBOARD);
 }
 
+static void tmbr_server_on_cursor_axis(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, cursor_axis);
+	struct wlr_event_pointer_axis *event = payload;
+	wlr_seat_pointer_notify_axis(server->seat, event->time_msec, event->orientation,
+				     event->delta, event->delta_discrete, event->source);
+}
+
 static void tmbr_server_on_cursor_button(struct wl_listener *listener, void *payload)
 {
 	tmbr_server_t *server = wl_container_of(listener, server, cursor_button);
@@ -1284,6 +1293,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.seat->events.request_set_cursor, &server.request_set_cursor, tmbr_server_on_request_set_cursor);
 	tmbr_register(&server.seat->events.request_set_selection, &server.request_set_selection, tmbr_server_on_request_set_selection);
 	tmbr_register(&server.seat->events.request_set_primary_selection, &server.request_set_primary_selection, tmbr_server_on_request_set_primary_selection);
+	tmbr_register(&server.cursor->events.axis, &server.cursor_axis, tmbr_server_on_cursor_axis);
 	tmbr_register(&server.cursor->events.button, &server.cursor_button, tmbr_server_on_cursor_button);
 	tmbr_register(&server.cursor->events.motion, &server.cursor_motion, tmbr_server_on_cursor_motion);
 	tmbr_register(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute, tmbr_server_on_cursor_motion_absolute);
