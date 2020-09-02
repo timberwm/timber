@@ -78,7 +78,7 @@ struct tmbr_client {
 	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
 	struct wlr_xdg_surface *surface;
-	int h, w, x, y;
+	int h, w, x, y, border;
 
 	struct wl_listener map;
 	struct wl_listener unmap;
@@ -214,21 +214,6 @@ static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 		client->desktop->screen->output->needs_frame = true;
 }
 
-static int tmbr_client_kill(tmbr_client_t *client)
-{
-	wlr_xdg_toplevel_send_close(client->surface);
-	return 0;
-}
-
-static void tmbr_client_resize(tmbr_client_t *client, int w, int h, int border)
-{
-	if (client->w != w - 2 * border || client->h != h - 2 * border) {
-		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
-		client->w = w - 2 * border;
-		client->h = h - 2 * border;
-	}
-}
-
 static int tmbr_client_new(tmbr_client_t **out, tmbr_server_t *server, struct wlr_xdg_surface *surface)
 {
 	tmbr_client_t *client;
@@ -242,6 +227,95 @@ static int tmbr_client_new(tmbr_client_t **out, tmbr_server_t *server, struct wl
 
 	*out = client;
 	return 0;
+}
+
+static int tmbr_client_kill(tmbr_client_t *client)
+{
+	wlr_xdg_toplevel_send_close(client->surface);
+	return 0;
+}
+
+static void tmbr_client_set_box(tmbr_client_t *client, int x, int y, int w, int h, int border)
+{
+	if (client->w != w || client->h != h || client->border != border)
+		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+	client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
+}
+
+static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
+{
+	tmbr_client_t *client = payload;
+	struct wlr_output *output = client->desktop->screen->output;
+	struct wlr_texture *texture;
+	struct wlr_box box;
+	double ox = 0, oy = 0;
+	float matrix[9];
+
+	if ((texture = wlr_surface_get_texture(surface)) == NULL)
+		return;
+
+	wlr_output_layout_output_coords(client->server->output_layout, output, &ox, &oy);
+
+	box.x = (ox + sx + client->x + client->border) * output->scale;
+	box.y = (oy + sy + client->y + client->border) * output->scale;
+	box.width = surface->current.width * output->scale;
+	box.height = surface->current.height * output->scale;
+
+	wlr_matrix_project_box(matrix, &box, wlr_output_transform_invert(surface->current.transform), 0, output->transform_matrix);
+	wlr_render_texture_with_matrix(wlr_backend_get_renderer(output->backend), texture, matrix, 1);
+	wlr_surface_send_frame_done(surface, &client->desktop->screen->render_time);
+}
+
+static void tmbr_client_render(tmbr_client_t *c)
+{
+	if (c->border) {
+		float *color = (c->desktop->focus == c) ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE;
+		struct wlr_output *output = c->desktop->screen->output;
+		double ox = c->x, oy = c->y;
+		struct wlr_box borders[4];
+		size_t i;
+
+		wlr_output_layout_output_coords(c->server->output_layout, output, &ox, &oy);
+		borders[0] = (struct wlr_box){ ox, oy, c->w, c->border };
+		borders[1] = (struct wlr_box){ ox, oy, c->border, c->h };
+		borders[2] = (struct wlr_box){ ox + c->w - c->border, oy, c->border, c->h };
+		borders[3] = (struct wlr_box){ ox, oy + c->h - c->border, c->w, c->border };
+
+		for (i = 0; i < ARRAY_SIZE(borders); i++)
+			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
+	}
+
+	wlr_xdg_surface_for_each_surface(c->surface, tmbr_client_render_surface, c);
+}
+
+static void tmbr_tree_recalculate(tmbr_tree_t *tree, int x, int y, int w, int h)
+{
+	int xoff, yoff, lw, rw, lh, rh;
+
+	if (!tree)
+		return;
+
+	if (tree->client) {
+		tmbr_client_set_box(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
+		return;
+	}
+
+	if (tree->split == TMBR_SPLIT_VERTICAL) {
+		lw = (uint16_t) (w * (tree->ratio / 100.0));
+		rw = w - lw;
+		lh = rh = h;
+		xoff = lw;
+		yoff = 0;
+	} else {
+		lh = (uint16_t) (h * (tree->ratio / 100.0));
+		rh = h - lh;
+		lw = rw = w;
+		yoff = lh;
+		xoff = 0;
+	}
+
+	tmbr_tree_recalculate(tree->left, x, y, lw, lh);
+	tmbr_tree_recalculate(tree->right, x + xoff, y + yoff, rw, rh);
 }
 
 static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
@@ -401,13 +475,24 @@ static int tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, in
 	return 0;
 }
 
+static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
+{
+	int width, height;
+	wlr_output_effective_resolution(desktop->screen->output, &width, &height);
+	if (desktop->fullscreen)
+		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
+	else
+		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
+	desktop->screen->output->needs_frame = true;
+}
+
 static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client) < 0)
 		die("Unable to insert client into tree");
 	client->desktop = desktop;
 	desktop->fullscreen = 0;
-	desktop->screen->output->needs_frame = true;
+	tmbr_desktop_recalculate(desktop);
 	return 0;
 }
 
@@ -424,10 +509,10 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
 		die("Unable to remove client from tree");
 
-	desktop->screen->output->needs_frame = true;
 	desktop->fullscreen = 0;
 	client->desktop = NULL;
 	client->tree = NULL;
+	tmbr_desktop_recalculate(desktop);
 
 	return 0;
 }
@@ -449,99 +534,16 @@ static int tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
 	return 0;
 }
 
+static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, char fs)
+{
+	desktop->fullscreen = fs;
+	tmbr_desktop_recalculate(desktop);
+}
+
 static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_screen_t *screen = wl_container_of(listener, screen, destroy);
 	free(screen);
-}
-
-static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
-{
-	tmbr_client_t *client = payload;
-	struct wlr_output *output = client->desktop->screen->output;
-	struct wlr_texture *texture;
-	struct wlr_box box;
-	double ox = 0, oy = 0;
-	float matrix[9];
-
-	if ((texture = wlr_surface_get_texture(surface)) == NULL)
-		return;
-
-	wlr_output_layout_output_coords(client->server->output_layout, output, &ox, &oy);
-
-	box.x = (ox + sx + client->x) * output->scale;
-	box.y = (oy + sy + client->y) * output->scale;
-	box.width = surface->current.width * output->scale;
-	box.height = surface->current.height * output->scale;
-
-	wlr_matrix_project_box(matrix, &box, wlr_output_transform_invert(surface->current.transform), 0, output->transform_matrix);
-	wlr_render_texture_with_matrix(wlr_backend_get_renderer(output->backend), texture, matrix, 1);
-	wlr_surface_send_frame_done(surface, &client->desktop->screen->render_time);
-}
-
-static int tmbr_client_render(tmbr_client_t *c, int x, int y, int w, int h, int border)
-{
-	struct wlr_output *output = c->desktop->screen->output;
-
-	if (c->w != w - 2 * border || c->h != h - 2 * border) {
-		wlr_xdg_toplevel_set_size(c->surface, w - 2 * border, h - 2 * border);
-		c->w = w - 2 * border;
-		c->h = h - 2 * border;
-	}
-	c->x = x + border;
-	c->y = y + border;
-
-	if (border) {
-		struct wlr_box borders[4];
-		double ox = x, oy = y;
-		float *color;
-		size_t i;
-
-		wlr_output_layout_output_coords(c->server->output_layout, output, &ox, &oy);
-
-		borders[0] = (struct wlr_box){ ox, oy, w, border };
-		borders[1] = (struct wlr_box){ ox, oy, border, h };
-		borders[2] = (struct wlr_box){ ox + w - border, oy, border, h };
-		borders[3] = (struct wlr_box){ ox, oy + h - border, w, border };
-
-		color = c->desktop->focus == c ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE;
-		for (i = 0; i < ARRAY_SIZE(borders); i++)
-			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
-	}
-
-	wlr_xdg_surface_for_each_surface(c->surface, tmbr_client_render_surface, c);
-	return 0;
-}
-
-static int tmbr_render_tree(tmbr_tree_t *tree, int x, int y, int w, int h)
-{
-	int xoff, yoff, lw, rw, lh, rh;
-
-	if (!tree)
-		return 0;
-
-	if (tree->client)
-		return tmbr_client_render(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
-
-	if (tree->split == TMBR_SPLIT_VERTICAL) {
-		lw = (uint16_t) (w * (tree->ratio / 100.0));
-		rw = w - lw;
-		lh = rh = h;
-		xoff = lw;
-		yoff = 0;
-	} else {
-		lh = (uint16_t) (h * (tree->ratio / 100.0));
-		rh = h - lh;
-		lw = rw = w;
-		yoff = lh;
-		xoff = 0;
-	}
-
-	if (tmbr_render_tree(tree->left, x, y, lw, lh) < 0 ||
-	    tmbr_render_tree(tree->right, x + xoff, y + yoff, rw, rh) < 0)
-		die("Unable to render subtrees");
-
-	return 0;
 }
 
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -564,10 +566,11 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	wlr_renderer_clear(renderer, color);
 
 	if (screen->focus->fullscreen) {
-		if (tmbr_client_render(screen->focus->focus, 0, 0, width, height, 0) < 0)
-			die("Could not render client");
-	} else if (tmbr_render_tree(screen->focus->clients, 0, 0, width, height) < 0) {
-		die("Could not render clients");
+		tmbr_client_render(screen->focus->focus);
+	} else {
+		tmbr_tree_t *it, *t;
+		tmbr_tree_foreach_leaf(screen->focus->clients, it, t)
+			tmbr_client_render(t->client);
 	}
 
 	wlr_output_render_software_cursors(screen->output, NULL);
@@ -944,7 +947,7 @@ static int tmbr_cmd_client_resize(tmbr_server_t *server, const tmbr_command_t *c
 	if ((i < 0 && i >= tree->ratio) || (i > 0 && i + tree->ratio >= 100))
 		return EINVAL;
 	tree->ratio += i;
-	client->desktop->screen->output->needs_frame = true;
+	tmbr_desktop_recalculate(client->desktop);
 
 	return 0;
 }
@@ -954,7 +957,7 @@ static int tmbr_cmd_client_fullscreen(tmbr_server_t *server, TMBR_UNUSED const t
 	tmbr_client_t *focus;
 	if (tmbr_server_focussed_client(&focus, server) < 0)
 		return ENOENT;
-	focus->desktop->fullscreen ^= 1;
+	tmbr_desktop_set_fullscreen(focus->desktop, !focus->desktop->fullscreen);
 	return 0;
 }
 
@@ -1002,7 +1005,7 @@ static int tmbr_cmd_client_swap(tmbr_server_t *server, const tmbr_command_t *cmd
 		return ENOENT;
 	if (tmbr_tree_swap(focus->tree, next) < 0)
 		return EIO;
-	focus->desktop->screen->output->needs_frame = true;
+	tmbr_desktop_recalculate(focus->desktop);
 
 	return 0;
 }
@@ -1074,7 +1077,7 @@ static int tmbr_cmd_tree_rotate(tmbr_server_t *server, TMBR_UNUSED const tmbr_co
 		p->right = l;
 	}
 	p->split ^= 1;
-	focus->desktop->screen->output->needs_frame = true;
+	tmbr_desktop_recalculate(focus->desktop);
 
 	return 0;
 }
