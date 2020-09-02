@@ -107,11 +107,12 @@ struct tmbr_screen {
 	struct wl_list link;
 	tmbr_server_t *server;
 
+	struct wlr_output *output;
 	struct wl_list desktops;
 	tmbr_desktop_t *focus;
 
 	struct timespec render_time;
-	struct wlr_output *output;
+	char damaged;
 
 	struct wl_listener destroy;
 	struct wl_listener frame;
@@ -212,7 +213,7 @@ static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 {
 	tmbr_client_t *client = wl_container_of(listener, client, commit);
 	if (client->desktop)
-		client->desktop->screen->output->needs_frame = true;
+		client->desktop->screen->damaged = true;
 }
 
 static int tmbr_client_new(tmbr_client_t **out, tmbr_server_t *server, struct wlr_xdg_surface *surface)
@@ -484,7 +485,7 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
-	desktop->screen->output->needs_frame = true;
+	desktop->screen->damaged = true;
 }
 
 static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
@@ -556,7 +557,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 
 	clock_gettime(CLOCK_MONOTONIC, &screen->render_time);
 
-	if (!screen->output->needs_frame)
+	if (!screen->damaged)
 		return;
 
 	if (!wlr_output_attach_render(screen->output, NULL))
@@ -593,7 +594,7 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 		return -1;
 	if (tmbr_desktop_focus(desktop, desktop->focus, 1) < 0)
 		return -1;
-	screen->output->needs_frame = true;
+	screen->damaged = true;
 	screen->focus = desktop;
 	return 0;
 }
@@ -831,7 +832,7 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 			break;
 	if (!screen)
 		return;
-	screen->output->needs_frame = true;
+	screen->damaged = true;
 
 	if (screen->focus->fullscreen) {
 		client = screen->focus->focus;
