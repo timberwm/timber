@@ -16,22 +16,26 @@
  */
 
 #include <assert.h>
-#include <errno.h>
-#include <limits.h>
-#include <poll.h>
 #include <signal.h>
-#include <stdarg.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
-#include <sys/socket.h>
-
-#include <xcb/xcb.h>
-#include <xcb/xcb_aux.h>
-#include <xcb/xcb_event.h>
-#include <xcb/randr.h>
+#include <wlr/backend.h>
+#include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_matrix.h>
+#include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/util/log.h>
 
 #include "common.h"
 #include "config.h"
@@ -39,9 +43,12 @@
 
 #define TMBR_UNUSED __attribute__((unused))
 
+typedef struct tmbr_binding tmbr_binding_t;
 typedef struct tmbr_client tmbr_client_t;
+typedef struct tmbr_keyboard tmbr_keyboard_t;
 typedef struct tmbr_desktop tmbr_desktop_t;
 typedef struct tmbr_screen tmbr_screen_t;
+typedef struct tmbr_server tmbr_server_t;
 typedef struct tmbr_tree tmbr_tree_t;
 
 typedef enum {
@@ -49,35 +56,33 @@ typedef enum {
 	TMBR_SPLIT_HORIZONTAL
 } tmbr_split_t;
 
-typedef enum {
-	TMBR_WM_STATE_WITHDRAWN = 0,
-	TMBR_WM_STATE_NORMAL = 1
-} tmbr_wm_state_t;
+struct tmbr_binding {
+	struct wl_list link;
+
+	uint32_t modifiers;
+	xkb_keysym_t keycode;
+	char *command;
+};
+
+struct tmbr_keyboard {
+	tmbr_server_t *server;
+	struct wlr_input_device *device;
+
+	struct wl_listener key;
+	struct wl_listener modifiers;
+};
 
 struct tmbr_client {
+	tmbr_server_t *server;
 	tmbr_desktop_t *desktop;
 	tmbr_tree_t *tree;
-	xcb_window_t window;
-	uint16_t w, h;
-	int16_t x, y;
-};
+	struct wlr_xdg_surface *surface;
+	int h, w, x, y;
 
-struct tmbr_desktop {
-	tmbr_desktop_t *prev;
-	tmbr_desktop_t *next;
-	tmbr_screen_t *screen;
-	tmbr_tree_t *clients;
-	tmbr_client_t *focus;
-	uint8_t fullscreen;
-};
-
-struct tmbr_screen {
-	tmbr_screen_t *next;
-	tmbr_desktop_t *desktops;
-	tmbr_desktop_t *focus;
-	xcb_randr_output_t output;
-	uint16_t w, h;
-	int16_t x, y;
+	struct wl_listener map;
+	struct wl_listener unmap;
+	struct wl_listener destroy;
+	struct wl_listener commit;
 };
 
 struct tmbr_tree {
@@ -89,30 +94,94 @@ struct tmbr_tree {
 	uint8_t ratio;
 };
 
-static struct {
-	tmbr_screen_t *screens;
+struct tmbr_desktop {
+	struct wl_list link;
 	tmbr_screen_t *screen;
-	xcb_connection_t *conn;
-	xcb_window_t root, meta;
-	const xcb_query_extension_reply_t *randr;
-	const char *ctrl_path;
-	struct {
-		xcb_atom_t wm_delete_window;
-		xcb_atom_t wm_take_focus;
-		xcb_atom_t wm_protocols;
-		xcb_atom_t wm_state;
-		xcb_atom_t net_supported;
-		xcb_atom_t net_wm_state;
-		xcb_atom_t net_wm_state_fullscreen;
-	} atoms;
-	int ctrlfd;
-	int subfds[10];
-	uint8_t ignored_events;
-} state = { NULL, NULL, NULL, 0, 0, NULL, NULL, { 0, 0, 0, 0, 0, 0, 0 }, -1, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0 };
+	tmbr_tree_t *clients;
+	tmbr_client_t *focus;
+	char fullscreen;
+};
 
-static __attribute__((format(printf, 1, 2))) void tmbr_notify(const char *fmt, ...)
+struct tmbr_screen {
+	struct wl_list link;
+	tmbr_server_t *server;
+
+	struct wl_list desktops;
+	tmbr_desktop_t *focus;
+
+	struct timespec render_time;
+	struct wlr_output *output;
+
+	struct wl_listener destroy;
+	struct wl_listener frame;
+};
+
+struct tmbr_server {
+	struct wl_display *display;
+	struct wlr_backend *backend;
+	struct wlr_compositor *compositor;
+	struct wlr_output_layout *output_layout;
+	struct wlr_seat *seat;
+	struct wlr_xdg_shell *xdg_shell;
+	struct wlr_cursor *cursor;
+	struct wlr_xcursor_manager *xcursor;
+
+	struct wl_listener new_input;
+	struct wl_listener new_output;
+	struct wl_listener new_surface;
+
+	struct wl_listener cursor_button;
+	struct wl_listener cursor_motion;
+	struct wl_listener cursor_motion_absolute;
+	struct wl_listener cursor_frame;
+	struct wl_listener request_set_cursor;
+
+	const char *socket;
+	const char *ctrl_path;
+	int ctrlfd;
+	int subfds[16];
+
+	struct wl_list bindings;
+	tmbr_keyboard_t *keyboards;
+	struct wl_list screens;
+	tmbr_screen_t *screen;
+};
+
+static void tmbr_spawn(tmbr_server_t *server, const char *path, char * const argv[])
 {
-	char buf[4096];
+	pid_t pid;
+	int i;
+
+	if ((pid = fork()) < 0) {
+		die("Could not fork: %s", strerror(errno));
+	} else if (pid == 0) {
+		close(0);
+		for (i = 3; i < 1024; i++)
+			close(i);
+		setenv("WAYLAND_DISPLAY", server->socket, 1);
+		setenv("TMBR_CTRL_PATH", server->ctrl_path, 1);
+		if (execv(path, argv) < 0)
+			die("Could not execute '%s': %s", path, strerror(errno));
+	}
+}
+
+static struct wl_list *tmbr_list_get(struct wl_list *head, struct wl_list *link, tmbr_select_t which)
+{
+	struct wl_list *sibling = (which == TMBR_SELECT_PREV) ? link->prev : link->next;
+	if (sibling == head)
+		sibling = (which == TMBR_SELECT_PREV) ? head->prev : head->next;
+	return (sibling == link) ? NULL : sibling;
+}
+
+static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener, wl_notify_func_t callback)
+{
+	listener->notify = callback;
+	wl_signal_add(signal, listener);
+}
+
+static __attribute__((format(printf, 2, 3))) void tmbr_notify(tmbr_server_t *server, const char *fmt, ...)
+{
+	char buf[TMBR_PKT_MESSAGELEN];
 	unsigned i;
 	va_list ap;
 
@@ -120,14 +189,48 @@ static __attribute__((format(printf, 1, 2))) void tmbr_notify(const char *fmt, .
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	for (i = 0; i < ARRAY_SIZE(state.subfds); i++) {
-		if (state.subfds[i] < 0)
+	for (i = 0; i < ARRAY_SIZE(server->subfds); i++) {
+		if (server->subfds[i] <= 0)
 			continue;
-		if (tmbr_ctrl_write_data(state.subfds[i], "%s", buf) < 0) {
-			close(state.subfds[i]);
-			state.subfds[i] = -1;
+		if (tmbr_ctrl_write_data(server->subfds[i], "%s", buf) < 0) {
+			close(server->subfds[i]);
+			server->subfds[i] = 0;
 		}
 	}
+}
+
+static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_client_t *client = wl_container_of(listener, client, destroy);
+	free(client);
+}
+
+static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_client_t *client = wl_container_of(listener, client, commit);
+	if (client->desktop)
+		client->desktop->screen->output->needs_frame = true;
+}
+
+static int tmbr_client_kill(tmbr_client_t *client)
+{
+	wlr_xdg_toplevel_send_close(client->surface);
+	return 0;
+}
+
+static int tmbr_client_new(tmbr_client_t **out, tmbr_server_t *server, struct wlr_xdg_surface *surface)
+{
+	tmbr_client_t *client;
+
+	client = tmbr_alloc(sizeof(*client), "Could not allocate client");
+	client->server = server;
+	client->surface = surface;
+
+	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_client_on_destroy);
+	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_client_on_commit);
+
+	*out = client;
+	return 0;
 }
 
 static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
@@ -195,10 +298,6 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_se
 	return 0;
 }
 
-#define tmbr_tree_foreach_leaf(t, i, n) \
-	i = NULL, n = t; \
-	while ((!i && n && n->client && (i = n)) || (tmbr_tree_find_sibling(&n, n, TMBR_SELECT_NEXT) == 0 && ((!i && (i = n)) || i != n)))
-
 static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 {
 	tmbr_tree_t *l = a->left, *r = a->right;
@@ -221,6 +320,10 @@ static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 	return 0;
 }
 
+#define tmbr_tree_foreach_leaf(t, i, n) \
+	i = NULL, n = t; \
+	while ((!i && n && n->client && (i = n)) || (tmbr_tree_find_sibling(&n, n, TMBR_SELECT_NEXT) == 0 && ((!i && (i = n)) || i != n)))
+
 static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
 	if (node != *tree) {
@@ -237,144 +340,175 @@ static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 	return 0;
 }
 
-static int tmbr_client_draw_border(tmbr_client_t *client, uint32_t color)
+static int tmbr_desktop_new(tmbr_desktop_t **out)
 {
-	xcb_change_window_attributes(state.conn, client->window, XCB_CW_BORDER_PIXEL, &color);
+	*out = tmbr_alloc(sizeof(**out), "Could not allocate desktop");
 	return 0;
 }
 
-static int tmbr_client_set_wm_state(tmbr_client_t *client, tmbr_wm_state_t wmstate)
+static void tmbr_desktop_free(tmbr_desktop_t *desktop)
 {
-	uint32_t data[2] = { 0, XCB_NONE };
-	data[0] = wmstate;
-	xcb_change_property(state.conn, XCB_PROP_MODE_REPLACE, client->window,
-			    state.atoms.wm_state, state.atoms.wm_state, 32, 2, data);
-	return 0;
+	free(desktop);
 }
 
-static int tmbr_client_new(tmbr_client_t **out, xcb_window_t window)
+static int tmbr_desktop_find_sibling(tmbr_desktop_t **out, tmbr_desktop_t *desktop, tmbr_select_t which)
 {
-	const uint32_t values[] = { XCB_EVENT_MASK_ENTER_WINDOW };
-	xcb_void_cookie_t cookie;
-	tmbr_client_t *client;
-
-	client = tmbr_alloc(sizeof(*client), "Unable to allocate client");
-	client->window = window;
-
-	cookie = xcb_change_window_attributes_checked(state.conn, window, XCB_CW_EVENT_MASK, values);
-	if ((xcb_request_check(state.conn, cookie)) != NULL)
-		die("Could not subscribe to window events");
-
-	if (tmbr_client_set_wm_state(client, TMBR_WM_STATE_NORMAL) < 0)
-		die("Unable to set WM state to 'normal'");
-
-	*out = client;
-	return 0;
-}
-
-static void tmbr_client_free(tmbr_client_t *client)
-{
-	free(client);
-}
-
-static int tmbr_client_send_message(tmbr_client_t *client, xcb_atom_t value)
-{
-	xcb_client_message_event_t msg;
-	xcb_get_property_reply_t *prop;
-	xcb_atom_t *atoms;
-	size_t i, len;
-
-	memset(&msg, 0, sizeof(msg));
-
-	if ((prop = xcb_get_property_reply(state.conn, xcb_get_property(state.conn, 0, client->window,
-									state.atoms.wm_protocols, XCB_ATOM_ATOM,
-									0, UINT_MAX), NULL)) == NULL)
+	struct wl_list *sibling;
+	if ((sibling = tmbr_list_get(&desktop->screen->desktops, &desktop->link, which)) == NULL)
 		return -1;
-	atoms = (xcb_atom_t *) xcb_get_property_value(prop);
-	len = (unsigned) xcb_get_property_value_length(prop) / sizeof(*atoms);
+	*out = wl_container_of(sibling, *out, link);
+	return 0;
+}
 
-	for (i = 0; i < len; i++) {
-		if (atoms[i] != value)
-			continue;
-		msg.response_type = XCB_CLIENT_MESSAGE;
-		msg.window = client->window;
-		msg.type = state.atoms.wm_protocols;
-		msg.format = 32;
-		msg.data.data32[0] = value;
-		msg.data.data32[1] = XCB_CURRENT_TIME;
-		xcb_send_event(state.conn, 0, client->window, XCB_EVENT_MASK_NO_EVENT, (char *) &msg);
-		break;
+static int tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
+{
+	struct wlr_seat *seat = desktop->screen->server->seat;
+	struct wlr_surface *current = seat->keyboard_state.focused_surface;
+
+	if (!client) {
+		desktop->focus = NULL;
+		return 0;
+	}
+	if (current == client->surface->surface)
+		return 0;
+
+	if (inputfocus) {
+		struct wlr_keyboard *keyboard;
+		wlr_xdg_toplevel_set_activated(client->surface, true);
+		if ((keyboard = wlr_seat_get_keyboard(seat)) != NULL)
+			wlr_seat_keyboard_notify_enter(seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+		wlr_seat_pointer_notify_enter(seat, client->surface->surface, 0, 0);
 	}
 
-	free(prop);
-	return (i == len) ? -1 : 0;
+	desktop->focus = client;
+	desktop->screen->focus = desktop;
+	desktop->screen->server->screen = desktop->screen;
+	desktop->fullscreen = 0;
+
+	return 0;
 }
 
-static int tmbr_client_focus(tmbr_client_t *client)
+static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
-	if (!client)
+	if (tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client) < 0)
+		die("Unable to insert client into tree");
+	client->desktop = desktop;
+	desktop->fullscreen = 0;
+	desktop->screen->output->needs_frame = true;
+	return 0;
+}
+
+static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
+{
+	if (desktop->focus == client) {
+		tmbr_tree_t *sibling;
+		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST) < 0)
+			sibling = NULL;
+		if (tmbr_desktop_focus(desktop, sibling ? sibling->client : NULL, 1) < 0)
+			return -1;
+	}
+
+	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
+		die("Unable to remove client from tree");
+
+	desktop->screen->output->needs_frame = true;
+	desktop->fullscreen = 0;
+	client->desktop = NULL;
+	client->tree = NULL;
+
+	return 0;
+}
+
+static int tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
+{
+	struct wl_list *a = &_a->link, *b = &_b->link, *pos = b->prev;
+
+	if (_a->screen != _b->screen)
+		return -1;
+
+	wl_list_remove(b);
+	wl_list_insert(a->prev, b);
+	if (pos == a)
+		pos = b;
+	wl_list_remove(a);
+	wl_list_insert(pos, a);
+
+	return 0;
+}
+
+static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_screen_t *screen = wl_container_of(listener, screen, destroy);
+	free(screen);
+}
+
+static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
+{
+	tmbr_client_t *client = payload;
+	struct wlr_output *output = client->desktop->screen->output;
+	struct wlr_texture *texture;
+	struct wlr_box box;
+	double ox = 0, oy = 0;
+	float matrix[9];
+
+	if ((texture = wlr_surface_get_texture(surface)) == NULL)
+		return;
+
+	wlr_output_layout_output_coords(client->server->output_layout, output, &ox, &oy);
+
+	box.x = (ox + sx + client->x) * output->scale;
+	box.y = (oy + sy + client->y) * output->scale;
+	box.width = surface->current.width * output->scale;
+	box.height = surface->current.height * output->scale;
+
+	wlr_matrix_project_box(matrix, &box, wlr_output_transform_invert(surface->current.transform), 0, output->transform_matrix);
+	wlr_render_texture_with_matrix(wlr_backend_get_renderer(output->backend), texture, matrix, 1);
+	wlr_surface_send_frame_done(surface, &client->desktop->screen->render_time);
+}
+
+static int tmbr_client_render(tmbr_client_t *c, int x, int y, int w, int h, int border)
+{
+	struct wlr_output *output = c->desktop->screen->output;
+
+	if (c->w != w - 2 * border || c->h != h - 2 * border) {
+		wlr_xdg_toplevel_set_size(c->surface, w - 2 * border, h - 2 * border);
+		c->w = w - 2 * border;
+		c->h = h - 2 * border;
+	}
+	c->x = x + border;
+	c->y = y + border;
+
+	if (border) {
+		struct wlr_box borders[4];
+		double ox = x, oy = y;
+		float *color;
+		size_t i;
+
+		wlr_output_layout_output_coords(c->server->output_layout, output, &ox, &oy);
+
+		borders[0] = (struct wlr_box){ ox, oy, w, border };
+		borders[1] = (struct wlr_box){ ox, oy, border, h };
+		borders[2] = (struct wlr_box){ ox + w - border, oy, border, h };
+		borders[3] = (struct wlr_box){ ox, oy + h - border, w, border };
+
+		color = c->desktop->focus == c ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE;
+		for (i = 0; i < ARRAY_SIZE(borders); i++)
+			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
+	}
+
+	wlr_xdg_surface_for_each_surface(c->surface, tmbr_client_render_surface, c);
+	return 0;
+}
+
+static int tmbr_render_tree(tmbr_tree_t *tree, int x, int y, int w, int h)
+{
+	int xoff, yoff, lw, rw, lh, rh;
+
+	if (!tree)
 		return 0;
-	tmbr_client_draw_border(client, TMBR_COLOR_ACTIVE);
-	if (tmbr_client_send_message(client, state.atoms.wm_take_focus) < 0)
-		xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, client->window, XCB_CURRENT_TIME);
-	return 0;
-}
-
-static int tmbr_client_unfocus(tmbr_client_t *client)
-{
-	if (!client)
-		return 0;
-	tmbr_client_draw_border(client, TMBR_COLOR_INACTIVE);
-	xcb_set_input_focus(state.conn, XCB_INPUT_FOCUS_PARENT, state.meta, XCB_CURRENT_TIME);
-	return 0;
-}
-
-static void tmbr_client_kill(tmbr_client_t *client)
-{
-	if (tmbr_client_send_message(client, state.atoms.wm_delete_window) < 0)
-		xcb_kill_client(state.conn, client->window);
-}
-
-static int tmbr_client_move(tmbr_client_t *client, int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t border)
-{
-	uint32_t values[5];
-	uint16_t mask =
-		XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
-		XCB_CONFIG_WINDOW_BORDER_WIDTH;
-
-	((int32_t *) values)[0] = client->x = x;
-	((int32_t *) values)[1] = client->y = y;
-	values[2] = client->w = w - 2 * border;
-	values[3] = client->h = h - 2 * border;
-	values[4] = border;
-
-	xcb_configure_window(state.conn, client->window, mask, values);
-	return 0;
-}
-
-static int tmbr_client_hide(tmbr_client_t *c)
-{
-	return tmbr_client_move(c, c->w * -1, c->y, c->w, c->h, 0);
-}
-
-static int tmbr_client_set_fullscreen(tmbr_client_t *client, uint8_t fs)
-{
-	uint32_t stacking;
-	xcb_change_property(state.conn, XCB_PROP_MODE_REPLACE,
-			    client->window, state.atoms.net_wm_state, XCB_ATOM_ATOM, 32,
-			    fs, &state.atoms.net_wm_state_fullscreen);
-	stacking = fs ? XCB_STACK_MODE_ABOVE : XCB_STACK_MODE_BELOW;
-	xcb_configure_window(state.conn, client->window, XCB_CONFIG_WINDOW_STACK_MODE, &stacking);
-	return 0;
-}
-
-static int tmbr_layout_tree(tmbr_tree_t *tree, int16_t x, int16_t y, uint16_t w, uint16_t h)
-{
-	uint16_t xoff, yoff, lw, rw, lh, rh;
 
 	if (tree->client)
-		return tmbr_client_move(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
+		return tmbr_client_render(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
 
 	if (tree->split == TMBR_SPLIT_VERTICAL) {
 		lw = (uint16_t) (w * (tree->ratio / 100.0));
@@ -390,210 +524,42 @@ static int tmbr_layout_tree(tmbr_tree_t *tree, int16_t x, int16_t y, uint16_t w,
 		xoff = 0;
 	}
 
-	if (tmbr_layout_tree(tree->left, x, y, lw, lh) < 0 ||
-	    tmbr_layout_tree(tree->right, x + xoff, y + yoff, rw, rh) < 0)
-		die("Unable to layout subtrees");
+	if (tmbr_render_tree(tree->left, x, y, lw, lh) < 0 ||
+	    tmbr_render_tree(tree->right, x + xoff, y + yoff, rw, rh) < 0)
+		die("Unable to render subtrees");
 
 	return 0;
 }
 
-static int tmbr_desktop_new(tmbr_desktop_t **out)
+static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	*out = tmbr_alloc(sizeof(**out), "Unable to allocate desktop");
-	return 0;
-}
+	tmbr_screen_t *screen = wl_container_of(listener, screen, frame);
+	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
+	float color[4] = {0.3, 0.3, 0.3, 1.0};
+	int width, height;
 
-static void tmbr_desktop_free(tmbr_desktop_t *desktop)
-{
-	free(desktop);
-}
+	clock_gettime(CLOCK_MONOTONIC, &screen->render_time);
 
-static int tmbr_desktop_find_sibling(tmbr_desktop_t **out, tmbr_desktop_t *desktop, tmbr_select_t which)
-{
-	if (!desktop || (!desktop->prev && !desktop->next))
-		return -1;
-	if ((*out = (which == TMBR_SELECT_PREV) ? desktop->prev : desktop->next) != NULL)
-		return 0;
+	if (!screen->output->needs_frame)
+		return;
 
-	if (which == TMBR_SELECT_PREV)
-		for (*out = desktop->screen->desktops; *out && (*out)->next; *out = (*out)->next);
-	else if  (which == TMBR_SELECT_NEXT)
-		*out = desktop->screen->desktops;
-	return 0;
-}
+	if (!wlr_output_attach_render(screen->output, NULL))
+		return;
 
-static int tmbr_desktop_layout(tmbr_desktop_t *desktop)
-{
-	int error;
+	wlr_output_effective_resolution(screen->output, &width, &height);
+	wlr_renderer_begin(renderer, width, height);
+	wlr_renderer_clear(renderer, color);
 
-	if (!desktop->clients || desktop->screen->focus != desktop)
-		return 0;
-
-	if (desktop->fullscreen)
-		error = tmbr_client_move(desktop->focus,
-					 desktop->screen->x, desktop->screen->y,
-					 desktop->screen->w, desktop->screen->h, 0);
-	else
-		error = tmbr_layout_tree(desktop->clients,
-					 desktop->screen->x, desktop->screen->y,
-					 desktop->screen->w, desktop->screen->h);
-
-	if (error < 0)
-		die("Unable to layout desktop");
-
-	xcb_aux_sync(state.conn);
-	state.ignored_events = XCB_ENTER_NOTIFY;
-	return 0;
-}
-
-static int tmbr_desktop_hide(tmbr_desktop_t *d)
-{
-	tmbr_tree_t *it, *t;
-	tmbr_tree_foreach_leaf(d->clients, it, t)
-		tmbr_client_hide(t->client);
-	return 0;
-}
-
-static int tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
-{
-	if (inputfocus && (tmbr_client_unfocus(desktop->focus) < 0 || tmbr_client_focus(client) < 0))
-		return -1;
-	if (desktop->focus == client)
-		return 0;
-	if (desktop->fullscreen && tmbr_client_set_fullscreen(desktop->focus, 0) < 0)
-		return -1;
-
-	desktop->fullscreen = 0;
-	desktop->focus = client;
-
-	return tmbr_desktop_layout(desktop);
-}
-
-static int tmbr_desktop_unfocus(tmbr_desktop_t *desktop)
-{
-	if (!desktop)
-		return 0;
-	return tmbr_client_unfocus(desktop->focus);
-}
-
-static int tmbr_desktop_swap(tmbr_desktop_t *a, tmbr_desktop_t *b)
-{
-	tmbr_desktop_t *tmp;
-
-	if (a->screen != b->screen)
-		return -1;
-
-	tmp = a->next;
-	a->next = b->next;
-	b->next = tmp;
-	if (a->next) a->next->prev = a;
-	if (b->next) b->next->prev = b;
-
-	tmp = a->prev;
-	a->prev = b->prev;
-	b->prev = tmp;
-	if (a->prev) a->prev->next = a;
-	if (b->prev) b->prev->next = b;
-
-	if (!a->prev) a->screen->desktops = a;
-	if (!b->prev) b->screen->desktops = b;
-
-	return 0;
-}
-
-static int tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, tmbr_client_t *client, uint8_t fs)
-{
-	if (tmbr_desktop_focus(desktop, client, 1) < 0)
-		return -1;
-
-	desktop->fullscreen = fs;
-
-	if (tmbr_desktop_layout(desktop) < 0 ||
-	    tmbr_client_set_fullscreen(client, fs) < 0)
-		return -1;
-
-	return 0;
-}
-
-static int tmbr_desktop_find_window(tmbr_client_t **out, tmbr_desktop_t *desktop,
-		xcb_window_t window)
-{
-	tmbr_tree_t *n, *it;
-
-	tmbr_tree_foreach_leaf(desktop->clients, it, n) {
-		if (n->client->window == window) {
-			*out = n->client;
-			return 0;
-		}
+	if (screen->focus->fullscreen) {
+		if (tmbr_client_render(screen->focus->focus, 0, 0, width, height, 0) < 0)
+			die("Could not render client");
+	} else if (tmbr_render_tree(screen->focus->clients, 0, 0, width, height) < 0) {
+		die("Could not render clients");
 	}
 
-	return -1;
-}
-
-static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
-{
-	if (tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client) < 0)
-		die("Unable to insert client into tree");
-	client->desktop = desktop;
-	return 0;
-}
-
-static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
-{
-	if (desktop->focus == client) {
-		int setfocus = (desktop->screen == state.screen && desktop->screen->focus == desktop);
-		tmbr_tree_t *sibling;
-
-		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST) < 0)
-			sibling = NULL;
-		if (tmbr_desktop_focus(desktop, sibling ? sibling->client : NULL, setfocus) < 0)
-			return -1;
-	}
-
-	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
-		die("Unable to remove client from tree");
-
-	desktop->fullscreen = 0;
-	client->desktop = NULL;
-	client->tree = NULL;
-
-	return tmbr_desktop_layout(desktop);
-}
-
-static int tmbr_screen_find_by_output(tmbr_screen_t **out, xcb_randr_output_t output)
-{
-	for (*out = state.screens; *out; *out = (*out)->next)
-		if ((*out)->output == output)
-			return 0;
-	return -1;
-}
-
-static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, tmbr_select_t which)
-{
-	tmbr_screen_t *p;
-
-	if (which == TMBR_SELECT_PREV)
-		for (p = state.screens; p && p->next != screen; p = p->next);
-	else
-		p = screen->next;
-
-	if (!p && which == TMBR_SELECT_PREV)
-		for (p = state.screens; p && p->next; p = p->next);
-	else if (!p && which == TMBR_SELECT_NEXT)
-		p = state.screens;
-
-	return (*out = p) ? 0 : -1;
-}
-
-static int tmbr_screen_focus(tmbr_screen_t *screen)
-{
-	if (state.screen == screen)
-		return 0;
-	if ((state.screen && tmbr_desktop_unfocus(state.screen->focus) < 0) ||
-	    tmbr_desktop_focus(screen->focus, screen->focus->focus, 1) < 0)
-		return -1;
-	state.screen = screen;
-	return 0;
+	wlr_output_render_software_cursors(screen->output, NULL);
+	wlr_renderer_end(renderer);
+	wlr_output_commit(screen->output);
 }
 
 static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
@@ -602,313 +568,315 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 		return 0;
 	if (desktop->screen != screen)
 		return -1;
-
-	if (tmbr_desktop_unfocus(screen->focus) < 0 ||
-	    tmbr_desktop_hide(screen->focus) < 0 ||
-	    tmbr_desktop_focus(desktop, desktop->focus, 1) < 0)
+	if (tmbr_desktop_focus(desktop, desktop->focus, 1) < 0)
 		return -1;
-
+	screen->output->needs_frame = true;
 	screen->focus = desktop;
-	return tmbr_desktop_layout(desktop);
-}
-
-static int tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
-{
-	tmbr_desktop_t *prev = screen->focus, *next = prev ? prev->next : NULL;
-
-	desktop->screen = screen;
-	desktop->prev = prev;
-	desktop->next = next;
-
-	if (prev)
-		prev->next = desktop;
-	if (next)
-		next->prev = desktop;
-	if (!screen->focus)
-		screen->desktops = screen->focus = desktop;
-
 	return 0;
 }
 
 static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
-	if (desktop->clients || (!desktop->prev && !desktop->next))
+	if (desktop->clients)
 		return -1;
 
-	if (desktop->prev)
-		desktop->prev->next = desktop->next;
-	if (desktop->next)
-		desktop->next->prev = desktop->prev;
-
-	if (screen->desktops == desktop)
-		screen->desktops = desktop->next;
-	if (screen->focus == desktop)
-		tmbr_screen_focus_desktop(screen, desktop->next ? desktop->next : desktop->prev);
+	if (screen->focus == desktop) {
+		tmbr_desktop_t *sibling;
+		if (tmbr_desktop_find_sibling(&sibling, desktop, TMBR_SELECT_NEXT) < 0 ||
+		    tmbr_screen_focus_desktop(screen, sibling) < 0)
+			return -1;
+	}
+	wl_list_remove(&desktop->link);
 
 	return 0;
 }
 
-static int tmbr_screen_manage_windows(tmbr_screen_t *screen)
+static int tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
-	xcb_query_tree_reply_t *tree;
-	xcb_window_t *children;
-	int i;
-
-	if ((tree = xcb_query_tree_reply(state.conn, xcb_query_tree(state.conn, state.root), NULL)) == NULL)
-		die("Unable to query tree");
-
-	children = xcb_query_tree_children(tree);
-
-	for (i = 0; i < xcb_query_tree_children_length(tree); i++) {
-		xcb_get_window_attributes_reply_t *attrs = NULL;
-		tmbr_client_t *client;
-
-		if ((attrs = xcb_get_window_attributes_reply(state.conn,
-							     xcb_get_window_attributes(state.conn, children[i]),
-							     NULL)) == NULL)
-			goto next;
-
-		if (attrs->map_state != XCB_MAP_STATE_VIEWABLE || attrs->override_redirect)
-			goto next;
-
-		if (tmbr_client_new(&client, children[i]) < 0 ||
-		    tmbr_desktop_add_client(screen->focus, client) < 0 ||
-		    tmbr_desktop_focus(screen->focus, client, 1) < 0)
-			die("Unable to adopt client");
-next:
-		free(attrs);
-	}
-
-	free(tree);
-
+	wl_list_insert(&screen->desktops, &desktop->link);
+	desktop->screen = screen;
+	if (tmbr_screen_focus_desktop(screen, desktop) < 0)
+		return EIO;
 	return 0;
 }
 
-static int tmbr_screen_manage(xcb_randr_output_t output, int16_t x, int16_t y, uint16_t width, uint16_t height)
+static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, tmbr_select_t which)
 {
-	tmbr_desktop_t *d;
-	tmbr_screen_t *s;
-
-	if (tmbr_screen_find_by_output(&s, output) < 0) {
-		s = tmbr_alloc(sizeof(*s), "Unable to allocate screen");
-		if (tmbr_desktop_new(&d) < 0 || tmbr_screen_add_desktop(s, d) < 0)
-			die("Cannot set up desktop");
-		s->output = output;
-		s->next = state.screens;
-		state.screens = s;
-	}
-
-	s->x = x;
-	s->y = y;
-	s->w = width;
-	s->h = height;
-
-	return tmbr_desktop_layout(s->focus);
+	struct wl_list *sibling;
+	if ((sibling = tmbr_list_get(&screen->server->screens, &screen->link, which)) == NULL)
+		return -1;
+	*out = wl_container_of(sibling, *out, link);
+	return 0;
 }
 
-static int tmbr_screens_update(xcb_screen_t *screen)
+static int tmbr_screen_focus(tmbr_screen_t *screen)
 {
-	if (state.randr->present) {
-		xcb_randr_get_screen_resources_reply_t *screens;
-		xcb_randr_output_t *outputs;
-		int i;
-
-		if ((screens = xcb_randr_get_screen_resources_reply(state.conn,
-								    xcb_randr_get_screen_resources(state.conn, screen->root),
-								    NULL)) == NULL)
-			die("Unable to get screen resources");
-
-		outputs = xcb_randr_get_screen_resources_outputs(screens);
-
-		for (i = 0; i < xcb_randr_get_screen_resources_outputs_length(screens); i++) {
-			xcb_randr_get_output_info_reply_t *output = NULL;
-			xcb_randr_get_crtc_info_reply_t *crtc = NULL;
-
-			output = xcb_randr_get_output_info_reply(state.conn,
-								 xcb_randr_get_output_info(state.conn, outputs[i], XCB_CURRENT_TIME),
-								 NULL);
-			if (output == NULL || output->crtc == XCB_NONE)
-				goto next;
-
-			crtc = xcb_randr_get_crtc_info_reply(state.conn,
-							     xcb_randr_get_crtc_info(state.conn, output->crtc, XCB_CURRENT_TIME),
-							     NULL);
-			if (crtc == NULL)
-				goto next;
-
-			tmbr_screen_manage(outputs[i], crtc->x, crtc->y, crtc->width, crtc->height);
-next:
-			free(output);
-			free(crtc);
-		}
-
-		free(screens);
+	if (screen->server->screen == screen)
 		return 0;
-	} else {
-		return tmbr_screen_manage(0, 0, 0, screen->width_in_pixels, screen->height_in_pixels);
-	}
-}
-
-static void tmbr_screens_free(tmbr_screen_t *s)
-{
-	tmbr_screen_t *n;
-
-	for (; s; s = n) {
-		n = s->next;
-		free(s);
-	}
-
-	state.screens = NULL;
-}
-
-static int tmbr_client_find_by_focus(tmbr_client_t **out)
-{
-	if ((*out = state.screen->focus->focus) == NULL)
+	if (tmbr_desktop_focus(screen->focus, screen->focus->focus, 1) < 0)
 		return -1;
+	screen->server->screen = screen;
 	return 0;
 }
 
-static int tmbr_client_find_by_window(tmbr_client_t **out, xcb_window_t window)
+static int tmbr_screen_new(tmbr_screen_t **out, tmbr_server_t *server, struct wlr_output *output)
 {
 	tmbr_screen_t *screen;
 	tmbr_desktop_t *desktop;
 
-	for (screen = state.screens; screen; screen = screen->next)
-		for (desktop = screen->desktops; desktop; desktop = desktop->next)
-			if ((tmbr_desktop_find_window(out, desktop, window)) == 0)
-				return 0;
+	screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
+	screen->output = output;
+	screen->server = server;
+	wl_list_init(&screen->desktops);
 
-	return -1;
-}
+	if (tmbr_desktop_new(&desktop) < 0 ||
+	    tmbr_screen_add_desktop(screen, desktop) < 0)
+		die("Could not create desktop for screen");
 
-static void tmbr_handle_enter_notify(xcb_enter_notify_event_t *ev)
-{
-	tmbr_client_t *client;
+	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
+	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
 
-	if (ev->mode != XCB_NOTIFY_MODE_NORMAL ||
-	    tmbr_client_find_by_window(&client, ev->event) < 0 ||
-	    tmbr_desktop_focus(client->desktop, client, 1) < 0 ||
-	    tmbr_screen_focus(client->desktop->screen) < 0)
-		return;
-
-	tmbr_notify("{type: event, name: enter-notify, window: %d}", ev->event);
-}
-
-static void tmbr_handle_map_request(xcb_map_request_event_t *ev)
-{
-	xcb_get_window_attributes_reply_t *attrs;
-	tmbr_client_t *client;
-	uint8_t override;
-
-	attrs = xcb_get_window_attributes_reply(state.conn, xcb_get_window_attributes(state.conn, ev->window), NULL);
-	override = attrs ? attrs->override_redirect : 0;
-	free(attrs);
-
-	if (override || tmbr_client_find_by_window(&client, ev->window) == 0)
-		return;
-
-	if (tmbr_client_new(&client, ev->window) < 0 ||
-	    tmbr_desktop_add_client(state.screen->focus, client) < 0 ||
-	    tmbr_desktop_layout(state.screen->focus) < 0)
-		die("Unable to manage client");
-
-	xcb_map_window(state.conn, ev->window);
-
-	if (tmbr_desktop_focus(state.screen->focus, client, 1) < 0)
-		die("Unable to focus new client");
-
-	tmbr_notify("{type: event, name: map-request, window: %d}", ev->window);
-}
-
-static void tmbr_handle_unmap_notify(xcb_unmap_notify_event_t *ev)
-{
-	tmbr_client_t *client;
-	if (tmbr_client_find_by_window(&client, ev->window) == 0 &&
-	    tmbr_client_set_wm_state(client, TMBR_WM_STATE_WITHDRAWN) < 0)
-		die("Unable to set WM state to 'withdrawn'");
-	xcb_aux_sync(state.conn);
-	state.ignored_events = XCB_ENTER_NOTIFY;
-	tmbr_notify("{type: event, name: unmap-notify, window: %d}", ev->window);
-}
-
-static void tmbr_handle_destroy_notify(xcb_destroy_notify_event_t *ev)
-{
-	tmbr_client_t *client;
-	if (tmbr_client_find_by_window(&client, ev->window) < 0)
-		return;
-	if (tmbr_desktop_remove_client(client->desktop, client) < 0)
-		die("Unable to remove client from tree");
-	tmbr_client_free(client);
-	tmbr_notify("{type: event, name: destroy-notify, window: %d}", ev->window);
-}
-
-static void tmbr_handle_client_message(xcb_client_message_event_t * ev)
-{
-	tmbr_client_t *client;
-
-	if (ev->type != state.atoms.net_wm_state || tmbr_client_find_by_window(&client, ev->window) < 0)
-		return;
-	if (ev->data.data32[1] == state.atoms.net_wm_state_fullscreen)
-		tmbr_desktop_set_fullscreen(client->desktop, client, ev->data.data32[0] == 1);
-
-	tmbr_notify("{type: event, name: client-message, window: %d}", ev->window);
-}
-
-static void tmbr_handle_error(xcb_request_error_t *ev)
-{
-	if (ev->error_code == 3 /* BAD_WINDOW */)
-		return;
-
-	tmbr_notify("{type: event, name: error, code: %d}", ev->error_code);
-	die("X11 error when handling request '%s': %s",
-	    xcb_event_get_request_label(ev->major_opcode),
-	    xcb_event_get_error_label(ev->error_code));
-}
-
-static void tmbr_handle_screen_change_notify(void)
-{
-	xcb_screen_t *screen;
-	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(state.conn)).data) == NULL)
-		die("Unable to get root screen");
-	tmbr_screens_update(screen);
-	tmbr_notify("{type: event, name: screen-change-notify}");
-}
-
-static void tmbr_handle_event(xcb_generic_event_t *ev)
-{
-	uint8_t type = XCB_EVENT_RESPONSE_TYPE(ev);
-
-	if (type == XCB_ENTER_NOTIFY)
-		tmbr_handle_enter_notify((xcb_enter_notify_event_t *) ev);
-	else if (type == XCB_MAP_REQUEST)
-		tmbr_handle_map_request((xcb_map_request_event_t *) ev);
-	else if (type == XCB_UNMAP_NOTIFY)
-		tmbr_handle_unmap_notify((xcb_unmap_notify_event_t *) ev);
-	else if (type == XCB_DESTROY_NOTIFY)
-		tmbr_handle_destroy_notify((xcb_destroy_notify_event_t *) ev);
-	else if (type == XCB_CLIENT_MESSAGE)
-		tmbr_handle_client_message((xcb_client_message_event_t *) ev);
-	else if (state.randr->present && type == state.randr->first_event + XCB_RANDR_SCREEN_CHANGE_NOTIFY)
-		tmbr_handle_screen_change_notify();
-	else if (!type)
-		tmbr_handle_error((xcb_request_error_t *) ev);
-}
-
-static int tmbr_cmd_client_kill(TMBR_UNUSED const tmbr_command_t *cmd)
-{
-	tmbr_client_t *focus;
-	if (tmbr_client_find_by_focus(&focus) < 0)
-		return ENOENT;
-	tmbr_client_kill(focus);
+	*out = screen;
 	return 0;
 }
 
-static int tmbr_cmd_client_focus(const tmbr_command_t *cmd)
+static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
+{
+	struct wlr_output *output = payload;
+	tmbr_server_t *server = wl_container_of(listener, server, new_output);
+	tmbr_screen_t *screen;
+
+	if (!wl_list_empty(&output->modes)) {
+		struct wlr_output_mode *mode = wlr_output_preferred_mode(output);
+		wlr_output_set_mode(output, mode);
+		wlr_output_enable(output, true);
+		if (!wlr_output_commit(output))
+			return;
+	}
+
+	if (tmbr_screen_new(&screen, server, output) < 0)
+		die("Could not create new screen");
+	wl_list_insert(&server->screens, &screen->link);
+	if (!server->screen)
+		server->screen = screen;
+
+	wlr_output_layout_add_auto(server->output_layout, output);
+}
+
+static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_client_t *client = wl_container_of(listener, client, map);
+	if (tmbr_desktop_add_client(client->server->screen->focus, client) < 0)
+		die("Could not add newly mapped client to desktop");
+	if (tmbr_desktop_focus(client->server->screen->focus, client, 1) < 0)
+		die("Could not focus newly mapped client");
+}
+
+static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_client_t *client = wl_container_of(listener, client, unmap);
+	if (tmbr_desktop_remove_client(client->desktop, client) < 0)
+		die("Could not remove client from desktop");
+	client->desktop = NULL;
+}
+
+static void tmbr_server_on_new_surface(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, new_surface);
+	struct wlr_xdg_surface *surface = payload;
+	tmbr_client_t *client;
+
+	if (surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
+		return;
+
+	if (tmbr_client_new(&client, server, surface) < 0)
+		die("Could not create client");
+	tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
+	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
+}
+
+static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
+{
+	tmbr_keyboard_t *keyboard = wl_container_of(listener, keyboard, key);
+	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->device->keyboard);
+	struct wlr_event_keyboard_key *event = payload;
+	xkb_keysym_t keysym;
+	tmbr_binding_t *binding;
+
+	keysym = xkb_state_key_get_one_sym(keyboard->device->keyboard->xkb_state, event->keycode + 8);
+	keysym = xkb_keysym_to_lower(keysym);
+	if (event->state != WLR_KEY_PRESSED || keysym == XKB_KEY_NoSymbol)
+		goto unhandled;
+
+	wl_list_for_each(binding, &keyboard->server->bindings, link) {
+		if (binding->keycode != keysym || binding->modifiers != modifiers)
+			continue;
+		tmbr_spawn(keyboard->server, "/bin/sh", (char * const[]){
+			"/bin/sh", "-c", binding->command, NULL
+		});
+		return;
+	}
+
+unhandled:
+	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->device);
+	wlr_seat_keyboard_notify_key(keyboard->server->seat, event->time_msec, event->keycode, event->state);
+}
+
+static void tmbr_keyboard_on_modifiers(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_keyboard_t *keyboard = wl_container_of(listener, keyboard, modifiers);
+	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->device);
+	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->device->keyboard->modifiers);
+}
+
+static int tmbr_keyboard_new(tmbr_keyboard_t **out, tmbr_server_t *server, struct wlr_input_device *device)
+{
+	struct xkb_rule_names rules = {0};
+	struct xkb_context *context;
+	struct xkb_keymap *keymap;
+	tmbr_keyboard_t *keyboard;
+
+	if ((context = xkb_context_new(XKB_CONTEXT_NO_FLAGS)) == NULL)
+		die("Could not create XKB context");
+	if ((keymap = xkb_map_new_from_names(context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS)) == NULL)
+		die("Could not create XKB map");
+
+	keyboard = tmbr_alloc(sizeof(*keyboard), "Could not allocate keyboard");
+	keyboard->server = server;
+	keyboard->device = device;
+
+	wlr_keyboard_set_keymap(device->keyboard, keymap);
+	wlr_keyboard_set_repeat_info(device->keyboard, 25, 600);
+
+	tmbr_register(&device->keyboard->events.key, &keyboard->key, tmbr_keyboard_on_key);
+	tmbr_register(&device->keyboard->events.modifiers, &keyboard->modifiers, tmbr_keyboard_on_modifiers);
+
+	*out = keyboard;
+
+	xkb_keymap_unref(keymap);
+	xkb_context_unref(context);
+	return 0;
+}
+
+static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, new_input);
+	struct wlr_input_device *device = payload;
+
+	switch (device->type) {
+		case WLR_INPUT_DEVICE_POINTER:
+			wlr_cursor_attach_input_device(server->cursor, device);
+			break;
+		case WLR_INPUT_DEVICE_KEYBOARD:
+			if (tmbr_keyboard_new(&server->keyboards, server, device) < 0)
+				die("Could not create new keyboard");
+			break;
+		default:
+			break;
+	}
+
+	wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER|WL_SEAT_CAPABILITY_KEYBOARD);
+}
+
+static void tmbr_server_on_cursor_button(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, cursor_button);
+	struct wlr_event_pointer_button *event = payload;
+	wlr_seat_pointer_notify_button(server->seat, event->time_msec, event->button, event->state);
+}
+
+static void tmbr_server_on_cursor_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, cursor_frame);
+	wlr_seat_pointer_notify_frame(server->seat);
+}
+
+static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t time)
+{
+	double x = server->cursor->x, y = server->cursor->y;
+	struct wlr_output *output;
+	tmbr_client_t *client = NULL;
+	tmbr_screen_t *screen;
+	tmbr_tree_t *it, *t;
+
+	if ((output = wlr_output_layout_output_at(server->output_layout, x, y)) == NULL)
+		return;
+
+	wl_list_for_each(screen, &server->screens, link)
+		if (screen->output == output)
+			break;
+	if (!screen)
+		return;
+	screen->output->needs_frame = true;
+
+	if (screen->focus->fullscreen) {
+		client = screen->focus->focus;
+	} else {
+		tmbr_tree_foreach_leaf(screen->focus->clients, it, t) {
+			if (t->client->x > x || t->client->x + t->client->w < x ||
+			    t->client->y > y || t->client->y + t->client->h < y)
+				continue;
+			client = t->client;
+			break;
+		}
+	}
+
+	if (client) {
+		struct wlr_surface *surface;
+		double sx, sy;
+
+		if (screen->focus->focus != client)
+			tmbr_desktop_focus(screen->focus, client, 1);
+
+		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &sx, &sy)) != NULL) {
+			wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
+			wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
+		}
+
+		return;
+	}
+
+	wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
+}
+
+static void tmbr_server_on_cursor_motion(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, cursor_motion);
+	struct wlr_event_pointer_motion *event = payload;
+	wlr_cursor_move(server->cursor, event->device, event->delta_x, event->delta_y);
+	tmbr_server_handle_cursor_motion(server, event->time_msec);
+}
+
+static void tmbr_server_on_cursor_motion_absolute(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, cursor_motion_absolute);
+	struct wlr_event_pointer_motion_absolute *event = payload;
+	wlr_cursor_warp_absolute(server->cursor, event->device, event->x, event->y);
+	tmbr_server_handle_cursor_motion(server, event->time_msec);
+}
+
+static void tmbr_server_on_request_set_cursor(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, request_set_cursor);
+	struct wlr_seat_pointer_request_set_cursor_event *event = payload;
+	struct wlr_seat_client *focused_client = server->seat->pointer_state.focused_client;
+	if (focused_client == event->seat_client)
+		wlr_cursor_set_surface(server->cursor, event->surface, event->hotspot_x, event->hotspot_y);
+}
+
+static int tmbr_server_focussed_client(tmbr_client_t **out, tmbr_server_t *server)
+{
+	if ((*out = server->screen->focus->focus) == NULL)
+		return -1;
+	return 0;
+}
+
+static int tmbr_cmd_client_focus(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
 	tmbr_client_t *focus;
 	tmbr_tree_t *next;
 
-	if (tmbr_client_find_by_focus(&focus) < 0 ||
+	if (tmbr_server_focussed_client(&focus, server) < 0 ||
 	    tmbr_tree_find_sibling(&next, focus->tree, cmd->sel) < 0)
 		return ENOENT;
 	if (tmbr_desktop_focus(focus->desktop, next->client, 1) < 0)
@@ -917,35 +885,16 @@ static int tmbr_cmd_client_focus(const tmbr_command_t *cmd)
 	return 0;
 }
 
-static int tmbr_cmd_client_fullscreen(TMBR_UNUSED const tmbr_command_t *cmd)
+static int tmbr_cmd_client_kill(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
 {
-	tmbr_desktop_t *d = state.screen->focus;
-	if (!d->focus)
-		return ENOENT;
-	if (tmbr_desktop_set_fullscreen(d, d->focus, !d->fullscreen) < 0)
-		return EIO;
-	return 0;
-}
-
-static int tmbr_cmd_client_to_desktop(const tmbr_command_t *cmd)
-{
-	tmbr_desktop_t *target;
 	tmbr_client_t *focus;
-
-	if (tmbr_client_find_by_focus(&focus) < 0 ||
-	    tmbr_desktop_find_sibling(&target, focus->desktop, cmd->sel) < 0)
+	if (tmbr_server_focussed_client(&focus, server) < 0)
 		return ENOENT;
-
-	if (tmbr_desktop_remove_client(focus->desktop, focus) < 0 ||
-	    tmbr_client_hide(focus) < 0 ||
-	    tmbr_desktop_add_client(target, focus) < 0 ||
-	    tmbr_desktop_focus(target, focus, 0))
-		return EIO;
-
+	tmbr_client_kill(focus);
 	return 0;
 }
 
-static int tmbr_cmd_client_resize(const tmbr_command_t *cmd)
+static int tmbr_cmd_client_resize(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
 	tmbr_client_t *client;
 	tmbr_select_t select;
@@ -953,7 +902,7 @@ static int tmbr_cmd_client_resize(const tmbr_command_t *cmd)
 	tmbr_tree_t *tree;
 	int i;
 
-	if (tmbr_client_find_by_focus(&client) < 0)
+	if (tmbr_server_focussed_client(&client, server) < 0)
 		return ENOENT;
 
 	switch (cmd->dir) {
@@ -982,18 +931,43 @@ static int tmbr_cmd_client_resize(const tmbr_command_t *cmd)
 	if ((i < 0 && i >= tree->ratio) || (i > 0 && i + tree->ratio >= 100))
 		return EINVAL;
 	tree->ratio += i;
-	if (tmbr_desktop_layout(client->desktop) < 0)
+	client->desktop->screen->output->needs_frame = true;
+
+	return 0;
+}
+
+static int tmbr_cmd_client_fullscreen(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
+{
+	tmbr_client_t *focus;
+	if (tmbr_server_focussed_client(&focus, server) < 0)
+		return ENOENT;
+	focus->desktop->fullscreen ^= 1;
+	return 0;
+}
+
+static int tmbr_cmd_client_to_desktop(tmbr_server_t *server, const tmbr_command_t *cmd)
+{
+	tmbr_desktop_t *target;
+	tmbr_client_t *focus;
+
+	if (tmbr_server_focussed_client(&focus, server) < 0 ||
+	    tmbr_desktop_find_sibling(&target, focus->desktop, cmd->sel) < 0)
+		return ENOENT;
+
+	if (tmbr_desktop_remove_client(focus->desktop, focus) < 0 ||
+	    tmbr_desktop_add_client(target, focus) < 0 ||
+	    tmbr_desktop_focus(target, focus, 0))
 		return EIO;
 
 	return 0;
 }
 
-static int tmbr_cmd_client_to_screen(const tmbr_command_t *cmd)
+static int tmbr_cmd_client_to_screen(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
 	tmbr_screen_t *screen;
 	tmbr_client_t *client;
 
-	if (tmbr_client_find_by_focus(&client) < 0 ||
+	if (tmbr_server_focussed_client(&client, server) < 0 ||
 	    tmbr_screen_find_sibling(&screen, client->desktop->screen, cmd->sel) < 0)
 		return ENOENT;
 
@@ -1005,80 +979,79 @@ static int tmbr_cmd_client_to_screen(const tmbr_command_t *cmd)
 	return 0;
 }
 
-static int tmbr_cmd_client_swap(const tmbr_command_t *cmd)
+static int tmbr_cmd_client_swap(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
 	tmbr_client_t *focus;
 	tmbr_tree_t *next;
 
-	if (tmbr_client_find_by_focus(&focus) < 0 ||
+	if (tmbr_server_focussed_client(&focus, server) < 0 ||
 	    tmbr_tree_find_sibling(&next, focus->tree, cmd->sel) < 0)
 		return ENOENT;
-
-	if (tmbr_tree_swap(focus->tree, next) < 0 ||
-	    tmbr_desktop_layout(focus->desktop) < 0)
+	if (tmbr_tree_swap(focus->tree, next) < 0)
 		return EIO;
+	focus->desktop->screen->output->needs_frame = true;
 
 	return 0;
 }
 
-static int tmbr_cmd_desktop_new(TMBR_UNUSED const tmbr_command_t *cmd)
+static int tmbr_cmd_desktop_focus(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
-	tmbr_desktop_t *desktop;
-	if (tmbr_desktop_new(&desktop) < 0 ||
-	    tmbr_screen_add_desktop(state.screen, desktop) < 0)
+	tmbr_desktop_t *sibling;
+	if (tmbr_desktop_find_sibling(&sibling, server->screen->focus, cmd->sel) < 0)
+		return ENOENT;
+	if (tmbr_screen_focus_desktop(server->screen, sibling) < 0)
 		return EIO;
-	return tmbr_screen_focus_desktop(state.screen, desktop);
+	return 0;
 }
 
-static int tmbr_cmd_desktop_kill(TMBR_UNUSED const tmbr_command_t *cmd)
+static int tmbr_cmd_desktop_swap(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
-	tmbr_desktop_t *desktop = state.screen->focus;
+	tmbr_desktop_t *sibling;
+	if (tmbr_desktop_find_sibling(&sibling, server->screen->focus, cmd->sel) < 0)
+		return ENOENT;
+	if (tmbr_desktop_swap(server->screen->focus, sibling) < 0)
+		return EIO;
+	return 0;
+}
+
+static int tmbr_cmd_desktop_kill(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
+{
+	tmbr_desktop_t *desktop = server->screen->focus;
 	if (desktop->clients)
 		return EEXIST;
-	if (!desktop->prev && !desktop->next)
+	if (!desktop->link.prev && !desktop->link.next)
 		return ENOENT;
-	if (tmbr_screen_remove_desktop(state.screen, state.screen->focus) < 0)
+	if (tmbr_screen_remove_desktop(server->screen, desktop) < 0)
 		return EIO;
 	tmbr_desktop_free(desktop);
 	return 0;
 }
 
-static int tmbr_cmd_desktop_focus(const tmbr_command_t *cmd)
+static int tmbr_cmd_desktop_new(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
 {
-	tmbr_desktop_t *sibling;
-	if (tmbr_desktop_find_sibling(&sibling, state.screen->focus, cmd->sel) < 0)
-		return ENOENT;
-	if (tmbr_screen_focus_desktop(state.screen, sibling) < 0)
+	tmbr_desktop_t *desktop;
+	if (tmbr_desktop_new(&desktop) < 0 ||
+	    tmbr_screen_add_desktop(server->screen, desktop) < 0)
 		return EIO;
 	return 0;
 }
 
-static int tmbr_cmd_desktop_swap(const tmbr_command_t *cmd)
-{
-	tmbr_desktop_t *sibling;
-	if (tmbr_desktop_find_sibling(&sibling, state.screen->focus, cmd->sel) < 0)
-		return ENOENT;
-	if (tmbr_desktop_swap(state.screen->focus, sibling) < 0)
-		return EIO;
-	return 0;
-}
-
-static int tmbr_cmd_screen_focus(const tmbr_command_t *cmd)
+static int tmbr_cmd_screen_focus(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
 	tmbr_screen_t *sibling;
-	if (tmbr_screen_find_sibling(&sibling, state.screen, cmd->sel) < 0)
+	if (tmbr_screen_find_sibling(&sibling, server->screen, cmd->sel) < 0)
 		return ENOENT;
 	if (tmbr_screen_focus(sibling) < 0)
 		return EIO;
 	return 0;
 }
 
-static int tmbr_cmd_tree_rotate(TMBR_UNUSED const tmbr_command_t *cmd)
+static int tmbr_cmd_tree_rotate(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
 {
 	tmbr_client_t *focus;
 	tmbr_tree_t *p;
 
-	if (tmbr_client_find_by_focus(&focus) < 0 ||
+	if (tmbr_server_focussed_client(&focus, server) < 0 ||
 	    (p = focus->tree->parent) == NULL)
 		return ENOENT;
 
@@ -1088,47 +1061,52 @@ static int tmbr_cmd_tree_rotate(TMBR_UNUSED const tmbr_command_t *cmd)
 		p->right = l;
 	}
 	p->split ^= 1;
-
-	if (tmbr_desktop_layout(focus->desktop) < 0)
-		return EIO;
+	focus->desktop->screen->output->needs_frame = true;
 
 	return 0;
 }
 
-static int tmbr_cmd_state_subscribe(int fd)
+static int tmbr_cmd_state_subscribe(tmbr_server_t *server, int fd)
 {
 	unsigned i;
-	for (i = 0; i < ARRAY_SIZE(state.subfds); i++) {
-		if (state.subfds[i] >= 0)
+	for (i = 0; i < ARRAY_SIZE(server->subfds); i++) {
+		if (server->subfds[i] != 0)
 			continue;
-		state.subfds[i] = dup(fd);
+		server->subfds[i] = dup(fd);
 		return 0;
 	}
 	return ENOSPC;
 }
 
-static int tmbr_cmd_state_query(int fd)
+static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 {
-	tmbr_tree_t *it, *tree;
 	tmbr_screen_t *s;
-	tmbr_desktop_t *d;
 
 	tmbr_ctrl_write_data(fd, "screens:");
-	for (s = state.screens; s; s = s->next) {
-		tmbr_ctrl_write_data(fd, "- x: %u", s->x);
-		tmbr_ctrl_write_data(fd, "  y: %u", s->y);
-		tmbr_ctrl_write_data(fd, "  width: %u", s->w);
-		tmbr_ctrl_write_data(fd, "  height: %u", s->h);
-		tmbr_ctrl_write_data(fd, "  selected: %s", s == state.screen ? "true" : "false");
+	wl_list_for_each(s, &server->screens, link) {
+		tmbr_desktop_t *d;
+		double x, y;
+		int w, h;
+
+		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
+		wlr_output_effective_resolution(s->output, &w, &h);
+
+		tmbr_ctrl_write_data(fd, "- x: %lf", x);
+		tmbr_ctrl_write_data(fd, "  y: %lf", y);
+		tmbr_ctrl_write_data(fd, "  width: %u", w);
+		tmbr_ctrl_write_data(fd, "  height: %u", h);
+		tmbr_ctrl_write_data(fd, "  selected: %s", s == server->screen ? "true" : "false");
 		tmbr_ctrl_write_data(fd, "  desktops:");
 
-		for (d = s->desktops; d; d = d->next) {
+		wl_list_for_each(d, &s->desktops, link) {
+			tmbr_tree_t *it, *tree;
+
 			tmbr_ctrl_write_data(fd, "  - selected: %s", d == s->focus ? "true" : "false");
 			tmbr_ctrl_write_data(fd, "    clients:");
 
 			tmbr_tree_foreach_leaf(d->clients, it, tree) {
 				tmbr_client_t *c = tree->client;
-				tmbr_ctrl_write_data(fd, "    - window: %d", c->window);
+				tmbr_ctrl_write_data(fd, "    - title: %s", c->surface->toplevel->title);
 				tmbr_ctrl_write_data(fd, "      x: %u", c->x);
 				tmbr_ctrl_write_data(fd, "      y: %u", c->y);
 				tmbr_ctrl_write_data(fd, "      width: %u", c->w);
@@ -1141,15 +1119,45 @@ static int tmbr_cmd_state_query(int fd)
 	return 0;
 }
 
-static void tmbr_handle_command(int fd)
+static int tmbr_cmd_binding_add(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
-	tmbr_command_t *cmd;
-	char persistent = 0;
-	tmbr_pkt_t pkt;
-	int error;
+	tmbr_binding_t *binding;
 
-	if (tmbr_ctrl_read(fd, &pkt) < 0 || pkt.type != TMBR_PKT_COMMAND)
-		return;
+	if (!cmd->key.keycode)
+		return EINVAL;
+
+	wl_list_for_each(binding, &server->bindings, link)
+		if (binding->keycode == cmd->key.keycode && binding->modifiers == cmd->key.modifiers)
+			break;
+
+	if (&binding->link == &server->bindings) {
+		binding = tmbr_alloc(sizeof(*binding), "Could not allocate binding");
+		wl_list_insert(&server->bindings, &binding->link);
+	} else {
+		free(binding->command);
+	}
+
+	binding->modifiers = cmd->key.modifiers;
+	binding->keycode = cmd->key.keycode;
+	if ((binding->command = strndup(cmd->command, sizeof(cmd->command))) == NULL)
+		die("Could not allocate binding command");
+
+	return 0;
+}
+
+static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *payload)
+{
+	tmbr_server_t *server = payload;
+	tmbr_command_t *cmd;
+	tmbr_pkt_t pkt;
+	int error, cfd, persistent = 0;
+
+	cfd = accept(fd, NULL, NULL);
+	if (cfd < 0)
+		return 0;
+
+	if (tmbr_ctrl_read(cfd, &pkt) < 0 || pkt.type != TMBR_PKT_COMMAND)
+		return 0;
 	cmd = &pkt.u.command;
 
 	if (cmd->type >= TMBR_COMMAND_LAST || cmd->sel >= TMBR_SELECT_LAST || cmd->dir >= TMBR_DIR_LAST) {
@@ -1158,161 +1166,105 @@ static void tmbr_handle_command(int fd)
 	}
 
 	switch (cmd->type) {
-		case TMBR_COMMAND_CLIENT_FOCUS: error = tmbr_cmd_client_focus(cmd); break;
-		case TMBR_COMMAND_CLIENT_FULLSCREEN: error = tmbr_cmd_client_fullscreen(cmd); break;
-		case TMBR_COMMAND_CLIENT_KILL: error = tmbr_cmd_client_kill(cmd); break;
-		case TMBR_COMMAND_CLIENT_RESIZE: error = tmbr_cmd_client_resize(cmd); break;
-		case TMBR_COMMAND_CLIENT_SWAP: error = tmbr_cmd_client_swap(cmd); break;
-		case TMBR_COMMAND_CLIENT_TO_DESKTOP: error = tmbr_cmd_client_to_desktop(cmd); break;
-		case TMBR_COMMAND_CLIENT_TO_SCREEN: error = tmbr_cmd_client_to_screen(cmd); break;
-		case TMBR_COMMAND_DESKTOP_FOCUS: error = tmbr_cmd_desktop_focus(cmd); break;
-		case TMBR_COMMAND_DESKTOP_KILL: error = tmbr_cmd_desktop_kill(cmd); break;
-		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(cmd); break;
-		case TMBR_COMMAND_DESKTOP_SWAP: error = tmbr_cmd_desktop_swap(cmd); break;
-		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(cmd); break;
-		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(cmd); break;
-		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(fd); persistent = 1; break;
-		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(fd); break;
-		case TMBR_COMMAND_LAST: assert(0); break;
+		case TMBR_COMMAND_CLIENT_FOCUS: error = tmbr_cmd_client_focus(server, cmd); break;
+		case TMBR_COMMAND_CLIENT_KILL: error = tmbr_cmd_client_kill(server, cmd); break;
+		case TMBR_COMMAND_CLIENT_RESIZE: error = tmbr_cmd_client_resize(server, cmd); break;
+		case TMBR_COMMAND_CLIENT_SWAP: error = tmbr_cmd_client_swap(server, cmd); break;
+		case TMBR_COMMAND_CLIENT_FULLSCREEN: error = tmbr_cmd_client_fullscreen(server, cmd); break;
+		case TMBR_COMMAND_CLIENT_TO_DESKTOP: error = tmbr_cmd_client_to_desktop(server, cmd); break;
+		case TMBR_COMMAND_CLIENT_TO_SCREEN: error = tmbr_cmd_client_to_screen(server, cmd); break;
+		case TMBR_COMMAND_DESKTOP_FOCUS: error = tmbr_cmd_desktop_focus(server, cmd); break;
+		case TMBR_COMMAND_DESKTOP_SWAP: error = tmbr_cmd_desktop_swap(server, cmd); break;
+		case TMBR_COMMAND_DESKTOP_KILL: error = tmbr_cmd_desktop_kill(server, cmd); break;
+		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(server, cmd); break;
+		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(server, cmd); break;
+		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(server, cmd); break;
+		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(server, cfd); persistent = 1; break;
+		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(server, cfd); break;
+		case TMBR_COMMAND_BINDING_ADD: error = tmbr_cmd_binding_add(server, cmd); break;
+		case TMBR_COMMAND_LAST: error = ENOTSUP; break;
 	}
 
-out:
-	tmbr_notify("{type: command, error: %d}", error);
 	if (persistent)
-		return;
+		return 0;
 
+out:
+	tmbr_notify(server, "{type: command, error: %d}", error);
 	memset(&pkt, 0, sizeof(pkt));
 	pkt.type = TMBR_PKT_ERROR;
 	pkt.u.error = error;
-	tmbr_ctrl_write(fd, &pkt);
-}
-
-static void tmbr_cleanup(TMBR_UNUSED int signal)
-{
-	if (state.ctrlfd >= 0)
-		close(state.ctrlfd);
-	unlink(state.ctrl_path);
-
-	tmbr_screens_free(state.screens);
-	xcb_destroy_window(state.conn, state.meta);
-	xcb_disconnect(state.conn);
-}
-
-static int tmbr_setup_atom(xcb_atom_t *out, char *name)
-{
-	xcb_intern_atom_cookie_t cookie;
-	xcb_intern_atom_reply_t *reply;
-
-	cookie = xcb_intern_atom(state.conn, 0, (uint16_t) strlen(name), name);
-	if ((reply = xcb_intern_atom_reply(state.conn, cookie, NULL)) == NULL)
-		return -1;
-
-	*out = reply->atom;
-	free(reply);
+	tmbr_ctrl_write(cfd, &pkt);
 	return 0;
 }
 
-static int tmbr_setup_x11(void)
+static void tmbr_on_signal(int signal)
 {
-	uint32_t mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY;
-	uint32_t override_redirect = 1;
-	xcb_connection_t *conn;
-	xcb_screen_t *screen;
-
-	if ((state.conn = conn = xcb_connect(NULL, NULL)) == NULL ||
-	    xcb_connection_has_error(conn) != 0)
-		die("Unable to connect to X server");
-
-	if ((screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data) == NULL)
-		die("Unable to get root screen");
-
-	state.root = screen->root;
-
-	state.meta = xcb_generate_id(conn);
-	xcb_create_window(conn, XCB_COPY_FROM_PARENT, state.meta, state.root, -1, -1, 1, 1, 0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, XCB_NONE, NULL);
-	xcb_change_window_attributes(conn, state.meta, XCB_CW_OVERRIDE_REDIRECT, &override_redirect);
-	xcb_map_window(conn, state.meta);
-
-	if ((state.randr = xcb_get_extension_data(state.conn, &xcb_randr_id))->present)
-		xcb_randr_select_input(state.conn, screen->root, XCB_RANDR_NOTIFY_MASK_SCREEN_CHANGE);
-
-	if (xcb_request_check(conn, xcb_change_window_attributes_checked(conn, screen->root,
-									 XCB_CW_EVENT_MASK, &mask)) != NULL)
-		die("Another window manager is running already.");
-
-	if (tmbr_setup_atom(&state.atoms.wm_delete_window, "WM_DELETE_WINDOW") < 0 ||
-	    tmbr_setup_atom(&state.atoms.wm_take_focus, "WM_TAKE_FOCUS") < 0 ||
-	    tmbr_setup_atom(&state.atoms.wm_protocols, "WM_PROTOCOLS") < 0 ||
-	    tmbr_setup_atom(&state.atoms.wm_state, "WM_STATE") < 0 ||
-	    tmbr_setup_atom(&state.atoms.net_supported, "_NET_SUPPORTED") < 0 ||
-	    tmbr_setup_atom(&state.atoms.net_wm_state, "_NET_WM_STATE") < 0 ||
-	    tmbr_setup_atom(&state.atoms.net_wm_state_fullscreen, "_NET_WM_STATE_FULLSCREEN") < 0)
-		die("Unable to setup atoms");
-
-	xcb_change_property(state.conn, XCB_PROP_MODE_REPLACE, screen->root, state.atoms.net_supported,
-			    XCB_ATOM_ATOM, 32, 2, &state.atoms.net_wm_state);
-
-	if (tmbr_screens_update(screen) < 0 ||
-	    tmbr_screen_manage_windows(state.screens) < 0 ||
-	    tmbr_screen_focus(state.screens) < 0 ||
-	    tmbr_desktop_layout(state.screens->focus) < 0)
-		die("Unable to set up initial screens");
-
-	return 0;
-}
-
-static int tmbr_setup(void)
-{
-	if (tmbr_setup_x11() < 0)
-		die("Unable to setup X server");
-	if ((state.ctrlfd = tmbr_ctrl_connect(&state.ctrl_path, 1)) < 0)
-		die("Unable to setup control socket");
-
-	signal(SIGPIPE, SIG_IGN);
-	signal(SIGINT, tmbr_cleanup);
-	signal(SIGHUP, tmbr_cleanup);
-	signal(SIGTERM, tmbr_cleanup);
-	signal(SIGCHLD, tmbr_cleanup);
-
-	return 0;
+	waitpid(-1, &signal, WNOHANG);
 }
 
 int tmbr_wm(void)
 {
-	xcb_generic_event_t *ev;
-	struct pollfd fds[2];
+	tmbr_server_t server = {0};
+	struct sigaction sa;
+	struct stat st;
+	char *cfg;
 
-	if (tmbr_setup() < 0)
-		die("Unable to setup timber");
+	sa.sa_handler = tmbr_on_signal;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	if (sigaction(SIGCHLD, &sa, NULL) < 0)
+		die("Could not setup signal handler: %s", strerror(errno));
 
-	fds[0].fd = xcb_get_file_descriptor(state.conn);
-	fds[0].events = POLLIN;
-	fds[1].fd = state.ctrlfd;
-	fds[1].events = POLLIN;
+	wl_list_init(&server.bindings);
+	wl_list_init(&server.screens);
+	if ((server.display = wl_display_create()) == NULL)
+		die("Could not create display");
+	if ((server.backend = wlr_backend_autocreate(server.display, NULL)) == NULL)
+		die("Could not create backend");
+	wlr_renderer_init_wl_display(wlr_backend_get_renderer(server.backend), server.display);
 
-	tmbr_notify("{type: state, state: running}");
-	while (xcb_flush(state.conn) > 0) {
-		if (poll(fds, 2, -1) < 0)
-			die("timber: unable to poll for events");
+	if (wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
+	    wlr_data_device_manager_create(server.display) == NULL ||
+	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
+	    (server.cursor = wlr_cursor_create()) == NULL ||
+	    (server.output_layout = wlr_output_layout_create()) == NULL ||
+	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
+	    (server.xcursor = wlr_xcursor_manager_create(NULL, 24)) == NULL ||
+	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL)
+		die("Could not create backends");
 
-		if (fds[1].revents & POLLIN) {
-			int cfd = accept(fds[1].fd, NULL, NULL);
-			if (cfd < 0)
-				continue;
-			tmbr_handle_command(cfd);
-			close(cfd);
-		}
+	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
+	wlr_xcursor_manager_load(server.xcursor, 1);
 
-		while ((ev = xcb_poll_for_event(state.conn)) != NULL) {
-			if (!state.ignored_events ||
-			    XCB_EVENT_RESPONSE_TYPE(ev) != state.ignored_events)
-				tmbr_handle_event(ev);
-			free(ev);
-		}
+	tmbr_register(&server.backend->events.new_input, &server.new_input, tmbr_server_on_new_input);
+	tmbr_register(&server.backend->events.new_output, &server.new_output, tmbr_server_on_new_output);
+	tmbr_register(&server.xdg_shell->events.new_surface, &server.new_surface, tmbr_server_on_new_surface);
+	tmbr_register(&server.seat->events.request_set_cursor, &server.request_set_cursor, tmbr_server_on_request_set_cursor);
+	tmbr_register(&server.cursor->events.button, &server.cursor_button, tmbr_server_on_cursor_button);
+	tmbr_register(&server.cursor->events.motion, &server.cursor_motion, tmbr_server_on_cursor_motion);
+	tmbr_register(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute, tmbr_server_on_cursor_motion_absolute);
+	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_server_on_cursor_frame);
 
-		state.ignored_events = 0;
-	}
-	tmbr_notify("{type: state, state: running}");
+	if ((server.socket = wl_display_add_socket_auto(server.display)) == NULL)
+		die("Could not create Wayland socket");
+	if ((server.ctrlfd = tmbr_ctrl_connect(&server.ctrl_path, 1)) < 0)
+		die("Unable to setup control socket");
+	wl_event_loop_add_fd(wl_display_get_event_loop(server.display), server.ctrlfd,
+			     WL_EVENT_READABLE, tmbr_server_on_command, &server);
 
+	if (!wlr_backend_start(server.backend))
+		die("Could not start backend");
+
+	if ((cfg = getenv("TMBR_CONFIG_PATH")) == NULL)
+		cfg = TMBR_CONFIG_PATH;
+	if (stat(cfg, &st) == 0)
+		tmbr_spawn(&server, cfg, (char * const[]){ cfg, NULL });
+	else if (errno != ENOENT)
+		die("Could not execute config file: %s", strerror(errno));
+
+	wl_display_run(server.display);
+
+	wl_display_destroy_clients(server.display);
+	wl_display_destroy(server.display);
 	return 0;
 }

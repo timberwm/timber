@@ -21,6 +21,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <wlr/types/wlr_keyboard.h>
+
 #include "client.h"
 #include "common.h"
 #include "config.h"
@@ -35,6 +37,8 @@
 #define TMBR_ARG_SEL (1 << 1)
 #define TMBR_ARG_DIR (1 << 2)
 #define TMBR_ARG_INT (1 << 3)
+#define TMBR_ARG_KEY (1 << 4)
+#define TMBR_ARG_CMD (1 << 5)
 
 static const struct {
 	const char *cmd;
@@ -55,7 +59,22 @@ static const struct {
 	{ "screen", "focus",      TMBR_ARG_SEL              },
 	{ "tree", "rotate",       0                         },
 	{ "state", "subscribe",   0                         },
-	{ "state", "query",       0                         }
+	{ "state", "query",       0                         },
+	{ "binding", "add",       TMBR_ARG_KEY|TMBR_ARG_CMD }
+};
+
+static const struct {
+	const char *name;
+	enum wlr_keyboard_modifier modifier;
+} modmasks[] = {
+	{ "shift", WLR_MODIFIER_SHIFT },
+	{ "caps",  WLR_MODIFIER_CAPS  },
+	{ "ctrl",  WLR_MODIFIER_CTRL  },
+	{ "alt",   WLR_MODIFIER_ALT   },
+	{ "mod2",  WLR_MODIFIER_MOD2  },
+	{ "mod3",  WLR_MODIFIER_MOD3  },
+	{ "logo",  WLR_MODIFIER_LOGO  },
+	{ "mod5",  WLR_MODIFIER_MOD5  }
 };
 
 static const char *directions[] = { "north", "south", "east", "west" };
@@ -90,7 +109,7 @@ static int tmbr_execute(const tmbr_command_t *cmd, int fd)
 	return 0;
 }
 
-static int tmbr_parse(tmbr_command_t *cmd, int argc, const char **argv)
+static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 {
 	ssize_t c, i;
 
@@ -137,6 +156,40 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, const char **argv)
 		argv++;
 	}
 
+	if (commands[c].args & TMBR_ARG_KEY) {
+		char *key;
+
+		if (!argc)
+			return -1;
+
+		for (key = strtok(argv[0], "+"); key; key = strtok(NULL, "+")) {
+			ARRAY_FIND(modmasks, i, !strcmp(key, modmasks[i].name));
+			if (i >= 0) {
+				cmd->key.modifiers |= modmasks[i].modifier;
+				continue;
+			}
+
+			if ((cmd->key.keycode = xkb_keysym_from_name(key, 0)) == 0)
+				die("Unable to parse key '%s'", key);
+		}
+		if (!cmd->key.keycode)
+			die("Binding requires a key");
+
+		argc--;
+		argv++;
+	}
+
+	if (commands[c].args & TMBR_ARG_CMD) {
+		size_t len;
+		if (!argc)
+			return -1;
+		if ((len = strlen(argv[0])) > sizeof(cmd->command))
+			return -1;
+		memcpy(cmd->command, argv[0], len + 1);
+		argc--;
+		argv++;
+	}
+
 	if (argc)
 		return -1;
 
@@ -149,15 +202,17 @@ static void __attribute__((noreturn)) usage(const char *executable)
 	printf("USAGE: %s\n", executable);
 
 	for (i = 0; i < ARRAY_SIZE(commands); i++)
-		printf("   or: %s %s %s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
+		printf("   or: %s %s %s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
 			commands[i].args & TMBR_ARG_SEL ? " (next|prev)" : "",
 			commands[i].args & TMBR_ARG_DIR ? " (north|south|east|west)" : "",
-			commands[i].args & TMBR_ARG_INT ? " <NUMBER>" : "");
+			commands[i].args & TMBR_ARG_INT ? " <NUMBER>" : "",
+			commands[i].args & TMBR_ARG_KEY ? " <KEY>" : "",
+			commands[i].args & TMBR_ARG_CMD ? " <COMMAND>" : "");
 
 	exit(-1);
 }
 
-int tmbr_client(int argc, const char *argv[])
+int tmbr_client(int argc, char *argv[])
 {
 	tmbr_command_t cmd;
 	int error, fd;

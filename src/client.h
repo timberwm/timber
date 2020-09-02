@@ -15,4 +15,4 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-int tmbr_client(int argc, const char *argv[]);
+int tmbr_client(int argc, char *argv[]);
