@@ -28,8 +28,6 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 
-#include <xcb/xcb.h>
-
 #include "common.h"
 #include "config.h"
 
@@ -57,17 +55,13 @@ int tmbr_ctrl_connect(const char **out_path, char create)
 {
 	static char path[PATH_MAX] = { 0 };
 	struct sockaddr_un addr;
-	char *host = NULL, *env;
-	int fd, display;
-
-	if (!xcb_parse_display(NULL, &host, &display, NULL))
-		display = 0;
-	free(host);
+	char *env;
+	int fd;
 
 	if ((env = getenv("TMBR_CTRL_PATH")) != NULL)
 		strncpy(path, env, sizeof(path) - 1);
 	else
-		snprintf(path, sizeof(path), TMBR_CTRL_PATH, display);
+		strncpy(path, TMBR_CTRL_PATH, sizeof(path));
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
