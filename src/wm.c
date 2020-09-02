@@ -151,7 +151,7 @@ struct tmbr_server {
 	tmbr_screen_t *screen;
 };
 
-static void tmbr_spawn(tmbr_server_t *server, const char *path, char * const argv[])
+static void tmbr_spawn(const char *path, char * const argv[])
 {
 	pid_t pid;
 	int i;
@@ -162,8 +162,6 @@ static void tmbr_spawn(tmbr_server_t *server, const char *path, char * const arg
 		close(0);
 		for (i = 3; i < 1024; i++)
 			close(i);
-		setenv("WAYLAND_DISPLAY", server->socket, 1);
-		setenv("TMBR_CTRL_PATH", server->ctrl_path, 1);
 		if (execv(path, argv) < 0)
 			die("Could not execute '%s': %s", path, strerror(errno));
 	}
@@ -736,9 +734,7 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	wl_list_for_each(binding, &keyboard->server->bindings, link) {
 		if (binding->keycode != keysym || binding->modifiers != modifiers)
 			continue;
-		tmbr_spawn(keyboard->server, "/bin/sh", (char * const[]){
-			"/bin/sh", "-c", binding->command, NULL
-		});
+		tmbr_spawn("/bin/sh", (char * const[]){ "/bin/sh", "-c", binding->command, NULL });
 		return;
 	}
 
@@ -1274,8 +1270,10 @@ int tmbr_wm(void)
 
 	if ((server.socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");
+	setenv("WAYLAND_DISPLAY", server.socket, 1);
 	if ((server.ctrlfd = tmbr_ctrl_connect(&server.ctrl_path, 1)) < 0)
 		die("Unable to setup control socket");
+	setenv("TMBR_CTRL_PATH", server.ctrl_path, 1);
 	wl_event_loop_add_fd(wl_display_get_event_loop(server.display), server.ctrlfd,
 			     WL_EVENT_READABLE, tmbr_server_on_command, &server);
 
@@ -1285,7 +1283,7 @@ int tmbr_wm(void)
 	if ((cfg = getenv("TMBR_CONFIG_PATH")) == NULL)
 		cfg = TMBR_CONFIG_PATH;
 	if (stat(cfg, &st) == 0)
-		tmbr_spawn(&server, cfg, (char * const[]){ cfg, NULL });
+		tmbr_spawn(cfg, (char * const[]){ cfg, NULL });
 	else if (errno != ENOENT)
 		die("Could not execute config file: %s", strerror(errno));
 

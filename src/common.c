@@ -60,8 +60,10 @@ int tmbr_ctrl_connect(const char **out_path, char create)
 
 	if ((env = getenv("TMBR_CTRL_PATH")) != NULL)
 		strncpy(path, env, sizeof(path) - 1);
+	else if (getenv("XDG_RUNTIME_DIR") && getenv("WAYLAND_DISPLAY"))
+		snprintf(path, sizeof(path), "%s/%s.s", getenv("XDG_RUNTIME_DIR"), getenv("WAYLAND_DISPLAY"));
 	else
-		strncpy(path, TMBR_CTRL_PATH, sizeof(path));
+		die("Could not compute control socket.");
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
