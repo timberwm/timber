@@ -220,6 +220,15 @@ static int tmbr_client_kill(tmbr_client_t *client)
 	return 0;
 }
 
+static void tmbr_client_resize(tmbr_client_t *client, int w, int h, int border)
+{
+	if (client->w != w - 2 * border || client->h != h - 2 * border) {
+		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+		client->w = w - 2 * border;
+		client->h = h - 2 * border;
+	}
+}
+
 static int tmbr_client_new(tmbr_client_t **out, tmbr_server_t *server, struct wlr_xdg_surface *surface)
 {
 	tmbr_client_t *client;
