@@ -33,6 +33,8 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_server_decoration.h>
+#include <wlr/types/wlr_primary_selection.h>
+#include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -139,6 +141,8 @@ struct tmbr_server {
 	struct wl_listener cursor_motion_absolute;
 	struct wl_listener cursor_frame;
 	struct wl_listener request_set_cursor;
+	struct wl_listener request_set_selection;
+	struct wl_listener request_set_primary_selection;
 
 	const char *socket;
 	const char *ctrl_path;
@@ -885,6 +889,20 @@ static void tmbr_server_on_request_set_cursor(struct wl_listener *listener, void
 		wlr_cursor_set_surface(server->cursor, event->surface, event->hotspot_x, event->hotspot_y);
 }
 
+static void tmbr_server_on_request_set_selection(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, request_set_selection);
+	struct wlr_seat_request_set_selection_event *event = payload;
+	wlr_seat_set_selection(server->seat, event->source, event->serial);
+}
+
+static void tmbr_server_on_request_set_primary_selection(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, request_set_primary_selection);
+	struct wlr_seat_request_set_primary_selection_event *event = payload;
+	wlr_seat_set_primary_selection(server->seat, event->source, event->serial);
+}
+
 static int tmbr_server_focussed_client(tmbr_client_t **out, tmbr_server_t *server)
 {
 	if ((*out = server->screen->focus->focus) == NULL)
@@ -1246,6 +1264,7 @@ int tmbr_wm(void)
 
 	if (wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
+	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
@@ -1263,6 +1282,8 @@ int tmbr_wm(void)
 	tmbr_register(&server.backend->events.new_output, &server.new_output, tmbr_server_on_new_output);
 	tmbr_register(&server.xdg_shell->events.new_surface, &server.new_surface, tmbr_server_on_new_surface);
 	tmbr_register(&server.seat->events.request_set_cursor, &server.request_set_cursor, tmbr_server_on_request_set_cursor);
+	tmbr_register(&server.seat->events.request_set_selection, &server.request_set_selection, tmbr_server_on_request_set_selection);
+	tmbr_register(&server.seat->events.request_set_primary_selection, &server.request_set_primary_selection, tmbr_server_on_request_set_primary_selection);
 	tmbr_register(&server.cursor->events.button, &server.cursor_button, tmbr_server_on_cursor_button);
 	tmbr_register(&server.cursor->events.motion, &server.cursor_motion, tmbr_server_on_cursor_motion);
 	tmbr_register(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute, tmbr_server_on_cursor_motion_absolute);
