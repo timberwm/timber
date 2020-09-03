@@ -417,10 +417,9 @@ static void tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 	free(node);
 }
 
-static int tmbr_desktop_new(tmbr_desktop_t **out)
+static tmbr_desktop_t *tmbr_desktop_new(void)
 {
-	*out = tmbr_alloc(sizeof(**out), "Could not allocate desktop");
-	return 0;
+	return tmbr_alloc(sizeof(tmbr_desktop_t), "Could not allocate desktop");
 }
 
 static void tmbr_desktop_free(tmbr_desktop_t *desktop)
@@ -500,12 +499,12 @@ static void tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *c
 	tmbr_desktop_recalculate(desktop);
 }
 
-static int tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
+static void tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
 {
 	struct wl_list *a = &_a->link, *b = &_b->link, *pos = b->prev;
 
 	if (_a->screen != _b->screen)
-		return -1;
+		die("Cannot swap desktops of different screens");
 
 	wl_list_remove(b);
 	wl_list_insert(a->prev, b);
@@ -513,8 +512,6 @@ static int tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
 		pos = b;
 	wl_list_remove(a);
 	wl_list_insert(pos, a);
-
-	return 0;
 }
 
 static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, char fs)
@@ -627,8 +624,8 @@ static int tmbr_screen_new(tmbr_screen_t **out, tmbr_server_t *server, struct wl
 	screen->server = server;
 	wl_list_init(&screen->desktops);
 
-	if (tmbr_desktop_new(&desktop) < 0 ||
-	    tmbr_screen_add_desktop(screen, desktop) < 0)
+	desktop = tmbr_desktop_new();
+	if (tmbr_screen_add_desktop(screen, desktop) < 0)
 		die("Could not create desktop for screen");
 
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
@@ -1024,8 +1021,7 @@ static int tmbr_cmd_desktop_swap(tmbr_server_t *server, const tmbr_command_t *cm
 	tmbr_desktop_t *sibling;
 	if (tmbr_desktop_find_sibling(&sibling, server->screen->focus, cmd->sel) < 0)
 		return ENOENT;
-	if (tmbr_desktop_swap(server->screen->focus, sibling) < 0)
-		return EIO;
+	tmbr_desktop_swap(server->screen->focus, sibling);
 	return 0;
 }
 
@@ -1044,9 +1040,8 @@ static int tmbr_cmd_desktop_kill(tmbr_server_t *server, TMBR_UNUSED const tmbr_c
 
 static int tmbr_cmd_desktop_new(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
 {
-	tmbr_desktop_t *desktop;
-	if (tmbr_desktop_new(&desktop) < 0 ||
-	    tmbr_screen_add_desktop(server->screen, desktop) < 0)
+	tmbr_desktop_t *desktop = tmbr_desktop_new();
+	if (tmbr_screen_add_desktop(server->screen, desktop) < 0)
 		return EIO;
 	return 0;
 }
