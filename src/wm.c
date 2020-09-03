@@ -145,8 +145,6 @@ struct tmbr_server {
 	struct wl_listener request_set_selection;
 	struct wl_listener request_set_primary_selection;
 
-	const char *socket;
-	const char *ctrl_path;
 	int ctrlfd;
 	int subfds[16];
 
@@ -1262,6 +1260,7 @@ int tmbr_wm(void)
 {
 	struct sigaction sa;
 	struct stat st;
+	const char *socket;
 	char *cfg;
 
 	sa.sa_handler = tmbr_on_signal;
@@ -1307,10 +1306,10 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute, tmbr_server_on_cursor_motion_absolute);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_server_on_cursor_frame);
 
-	if ((server.socket = wl_display_add_socket_auto(server.display)) == NULL)
+	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");
-	setenv("WAYLAND_DISPLAY", server.socket, 1);
-	if ((server.ctrlfd = tmbr_ctrl_connect(&server.ctrl_path, 1)) < 0)
+	setenv("WAYLAND_DISPLAY", socket, 1);
+	if ((server.ctrlfd = tmbr_ctrl_connect(&socket, 1)) < 0)
 		die("Unable to setup control socket");
 	wl_event_loop_add_fd(wl_display_get_event_loop(server.display), server.ctrlfd,
 			     WL_EVENT_READABLE, tmbr_server_on_command, &server);
