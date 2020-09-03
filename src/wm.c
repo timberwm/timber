@@ -156,6 +156,8 @@ struct tmbr_server {
 	tmbr_screen_t *screen;
 };
 
+static tmbr_server_t server;
+
 static void tmbr_spawn(const char *path, char * const argv[])
 {
 	pid_t pid;
@@ -240,29 +242,19 @@ static int tmbr_client_kill(tmbr_client_t *client)
 	return 0;
 }
 
-static void tmbr_client_set_box(tmbr_client_t *client, int x, int y, int w, int h, int border)
-{
-	if (client->w != w || client->h != h || client->border != border)
-		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
-	client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
-}
-
 static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	tmbr_client_t *client = payload;
 	struct wlr_output *output = client->desktop->screen->output;
 	struct wlr_texture *texture;
 	struct wlr_box box;
-	double ox = 0, oy = 0;
 	float matrix[9];
 
 	if ((texture = wlr_surface_get_texture(surface)) == NULL)
 		return;
 
-	wlr_output_layout_output_coords(client->server->output_layout, output, &ox, &oy);
-
-	box.x = (ox + sx + client->x + client->border) * output->scale;
-	box.y = (oy + sy + client->y + client->border) * output->scale;
+	box.x = (client->x + client->border + sx) * output->scale;
+	box.y = (client->y + client->border + sy) * output->scale;
 	box.width = surface->current.width * output->scale;
 	box.height = surface->current.height * output->scale;
 
@@ -276,21 +268,25 @@ static void tmbr_client_render(tmbr_client_t *c)
 	if (c->border) {
 		float *color = (c->desktop->focus == c) ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE;
 		struct wlr_output *output = c->desktop->screen->output;
-		double ox = c->x, oy = c->y;
 		struct wlr_box borders[4];
 		size_t i;
 
-		wlr_output_layout_output_coords(c->server->output_layout, output, &ox, &oy);
-		borders[0] = (struct wlr_box){ ox, oy, c->w, c->border };
-		borders[1] = (struct wlr_box){ ox, oy, c->border, c->h };
-		borders[2] = (struct wlr_box){ ox + c->w - c->border, oy, c->border, c->h };
-		borders[3] = (struct wlr_box){ ox, oy + c->h - c->border, c->w, c->border };
+		borders[0] = (struct wlr_box){ c->x, c->y, c->w, c->border };
+		borders[1] = (struct wlr_box){ c->x, c->y, c->border, c->h };
+		borders[2] = (struct wlr_box){ c->x + c->w - c->border, c->y, c->border, c->h };
+		borders[3] = (struct wlr_box){ c->x, c->y + c->h - c->border, c->w, c->border };
 
 		for (i = 0; i < ARRAY_SIZE(borders); i++)
 			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
 	}
-
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_client_render_surface, c);
+}
+
+static void tmbr_client_set_box(tmbr_client_t *client, int x, int y, int w, int h, int border)
+{
+	if (client->w != w || client->h != h || client->border != border)
+		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+	client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
 }
 
 static void tmbr_tree_recalculate(tmbr_tree_t *tree, int x, int y, int w, int h)
@@ -555,21 +551,16 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 {
 	tmbr_screen_t *screen = wl_container_of(listener, screen, frame);
 	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
-	float color[4] = {0.3, 0.3, 0.3, 1.0};
 	int width, height;
 
+	if (!screen->damaged || !wlr_output_attach_render(screen->output, NULL))
+		return;
+
 	clock_gettime(CLOCK_MONOTONIC, &screen->render_time);
-
-	if (!screen->damaged)
-		return;
-
-	if (!wlr_output_attach_render(screen->output, NULL))
-		return;
-
 	wlr_output_effective_resolution(screen->output, &width, &height);
 	wlr_renderer_begin(renderer, width, height);
-	wlr_renderer_clear(renderer, color);
 
+	wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
 	if (screen->focus->fullscreen) {
 		tmbr_client_render(screen->focus->focus);
 	} else {
@@ -577,8 +568,8 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		tmbr_tree_foreach_leaf(screen->focus->clients, it, t)
 			tmbr_client_render(t->client);
 	}
-
 	wlr_output_render_software_cursors(screen->output, NULL);
+
 	wlr_renderer_end(renderer);
 	wlr_output_commit(screen->output);
 }
@@ -841,6 +832,9 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 			break;
 	if (!screen)
 		return;
+
+	if (tmbr_screen_focus(screen) < 0)
+		return;
 	screen->damaged = true;
 
 	if (screen->focus->fullscreen) {
@@ -917,6 +911,11 @@ static int tmbr_server_focussed_client(tmbr_client_t **out, tmbr_server_t *serve
 	if ((*out = server->screen->focus->focus) == NULL)
 		return -1;
 	return 0;
+}
+
+static void tmbr_server_stop(tmbr_server_t *server)
+{
+	wl_display_terminate(server->display);
 }
 
 static int tmbr_cmd_client_focus(tmbr_server_t *server, const tmbr_command_t *cmd)
@@ -1133,13 +1132,13 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 	tmbr_ctrl_write_data(fd, "screens:");
 	wl_list_for_each(s, &server->screens, link) {
 		tmbr_desktop_t *d;
-		double x, y;
+		double x = 0, y = 0;
 		int w, h;
 
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		wlr_output_effective_resolution(s->output, &w, &h);
-
-		tmbr_ctrl_write_data(fd, "- x: %lf", x);
+		tmbr_ctrl_write_data(fd, "- name: %s", s->output->name);
+		tmbr_ctrl_write_data(fd, "  x: %lf", x);
 		tmbr_ctrl_write_data(fd, "  y: %lf", y);
 		tmbr_ctrl_write_data(fd, "  width: %u", w);
 		tmbr_ctrl_write_data(fd, "  height: %u", h);
@@ -1164,6 +1163,12 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 		}
 	}
 
+	return 0;
+}
+
+static int tmbr_cmd_state_stop(tmbr_server_t *server)
+{
+	tmbr_server_stop(server);
 	return 0;
 }
 
@@ -1229,6 +1234,7 @@ static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *paylo
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(server, cmd); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(server, cfd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(server, cfd); break;
+		case TMBR_COMMAND_STATE_STOP: error = tmbr_cmd_state_stop(server); break;
 		case TMBR_COMMAND_BINDING_ADD: error = tmbr_cmd_binding_add(server, cmd); break;
 		case TMBR_COMMAND_LAST: error = ENOTSUP; break;
 	}
@@ -1247,12 +1253,14 @@ out:
 
 static void tmbr_on_signal(int signal)
 {
-	waitpid(-1, &signal, WNOHANG);
+	switch (signal) {
+		case SIGCHLD: waitpid(-1, &signal, WNOHANG); break;
+		case SIGTERM: tmbr_server_stop(&server); break;
+	}
 }
 
 int tmbr_wm(void)
 {
-	tmbr_server_t server = {0};
 	struct sigaction sa;
 	struct stat st;
 	char *cfg;
@@ -1260,7 +1268,8 @@ int tmbr_wm(void)
 	sa.sa_handler = tmbr_on_signal;
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = 0;
-	if (sigaction(SIGCHLD, &sa, NULL) < 0)
+	if (sigaction(SIGCHLD, &sa, NULL) < 0 ||
+	    sigaction(SIGTERM, &sa, NULL) < 0)
 		die("Could not setup signal handler: %s", strerror(errno));
 
 	wl_list_init(&server.bindings);
