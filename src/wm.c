@@ -1140,12 +1140,11 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 	tmbr_ctrl_write_data(fd, "screens:");
 	wl_list_for_each(s, &server->screens, link) {
 		tmbr_desktop_t *d;
-		double x, y;
+		double x = 0, y = 0;
 		int w, h;
 
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		wlr_output_effective_resolution(s->output, &w, &h);
-
 		tmbr_ctrl_write_data(fd, "- x: %lf", x);
 		tmbr_ctrl_write_data(fd, "  y: %lf", y);
 		tmbr_ctrl_write_data(fd, "  width: %u", w);
