@@ -561,20 +561,18 @@ static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 	screen->focus = desktop;
 }
 
-static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
+static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
 	if (desktop->clients)
-		return -1;
+		die("Cannot remove desktop from screen which has clients");
 
 	if (screen->focus == desktop) {
 		tmbr_desktop_t *sibling;
 		if ((sibling = tmbr_desktop_find_sibling(desktop, TMBR_SELECT_NEXT)) == NULL)
-			return -1;
+			die("Cannot remove last screen's desktop");
 		tmbr_screen_focus_desktop(screen, sibling);
 	}
 	wl_list_remove(&desktop->link);
-
-	return 0;
 }
 
 static void tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
@@ -1001,8 +999,7 @@ static int tmbr_cmd_desktop_kill(tmbr_server_t *server, TMBR_UNUSED const tmbr_c
 		return EEXIST;
 	if (!desktop->link.prev && !desktop->link.next)
 		return ENOENT;
-	if (tmbr_screen_remove_desktop(server->screen, desktop) < 0)
-		return EIO;
+	tmbr_screen_remove_desktop(server->screen, desktop);
 	tmbr_desktop_free(desktop);
 	return 0;
 }
