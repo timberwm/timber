@@ -444,17 +444,17 @@ static int tmbr_desktop_find_sibling(tmbr_desktop_t **out, tmbr_desktop_t *deskt
 	return 0;
 }
 
-static int tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
+static void tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
 {
 	struct wlr_seat *seat = desktop->screen->server->seat;
 	struct wlr_surface *current = seat->keyboard_state.focused_surface;
 
 	if (!client) {
 		desktop->focus = NULL;
-		return 0;
+		return;
 	}
 	if (current == client->surface->surface)
-		return 0;
+		return;
 
 	if (inputfocus) {
 		struct wlr_keyboard *keyboard;
@@ -469,9 +469,8 @@ static int tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, in
 	desktop->focus = client;
 	desktop->screen->focus = desktop;
 	desktop->screen->server->screen = desktop->screen;
+	desktop->screen->damaged = true;
 	desktop->fullscreen = 0;
-
-	return 0;
 }
 
 static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
@@ -485,24 +484,22 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 	desktop->screen->damaged = true;
 }
 
-static int tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
+static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client) < 0)
 		die("Unable to insert client into tree");
 	client->desktop = desktop;
 	desktop->fullscreen = 0;
 	tmbr_desktop_recalculate(desktop);
-	return 0;
 }
 
-static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
+static void tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (desktop->focus == client) {
 		tmbr_tree_t *sibling;
 		if (tmbr_tree_find_sibling(&sibling, client->tree, TMBR_SELECT_NEAREST) < 0)
 			sibling = NULL;
-		if (tmbr_desktop_focus(desktop, sibling ? sibling->client : NULL, 1) < 0)
-			return -1;
+		tmbr_desktop_focus(desktop, sibling ? sibling->client : NULL, 1);
 	}
 
 	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
@@ -512,8 +509,6 @@ static int tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 	client->desktop = NULL;
 	client->tree = NULL;
 	tmbr_desktop_recalculate(desktop);
-
-	return 0;
 }
 
 static int tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
@@ -584,9 +579,7 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 		return 0;
 	if (desktop->screen != screen)
 		return -1;
-	if (tmbr_desktop_focus(desktop, desktop->focus, 1) < 0)
-		return -1;
-	screen->damaged = true;
+	tmbr_desktop_focus(desktop, desktop->focus, 1);
 	screen->focus = desktop;
 	return 0;
 }
@@ -629,8 +622,7 @@ static int tmbr_screen_focus(tmbr_screen_t *screen)
 {
 	if (screen->server->screen == screen)
 		return 0;
-	if (tmbr_desktop_focus(screen->focus, screen->focus->focus, 1) < 0)
-		return -1;
+	tmbr_desktop_focus(screen->focus, screen->focus->focus, 1);
 	screen->server->screen = screen;
 	return 0;
 }
@@ -683,18 +675,14 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, map);
-	if (tmbr_desktop_add_client(client->server->screen->focus, client) < 0)
-		die("Could not add newly mapped client to desktop");
-	if (tmbr_desktop_focus(client->server->screen->focus, client, 1) < 0)
-		die("Could not focus newly mapped client");
+	tmbr_desktop_add_client(client->server->screen->focus, client);
+	tmbr_desktop_focus(client->server->screen->focus, client, 1);
 }
 
 static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, unmap);
-	if (tmbr_desktop_remove_client(client->desktop, client) < 0)
-		die("Could not remove client from desktop");
-	client->desktop = NULL;
+	tmbr_desktop_remove_client(client->desktop, client);
 }
 
 static void tmbr_server_on_new_surface(struct wl_listener *listener, void *payload)
@@ -851,9 +839,7 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 		struct wlr_surface *surface;
 		double sx, sy;
 
-		if (screen->focus->focus != client)
-			tmbr_desktop_focus(screen->focus, client, 1);
-
+		tmbr_desktop_focus(screen->focus, client, 1);
 		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &sx, &sy)) != NULL) {
 			wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
 			wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
@@ -924,8 +910,7 @@ static int tmbr_cmd_client_focus(tmbr_server_t *server, const tmbr_command_t *cm
 	if (tmbr_server_focussed_client(&focus, server) < 0 ||
 	    tmbr_tree_find_sibling(&next, focus->tree, cmd->sel) < 0)
 		return ENOENT;
-	if (tmbr_desktop_focus(focus->desktop, next->client, 1) < 0)
-		return EFAULT;
+	tmbr_desktop_focus(focus->desktop, next->client, 1);
 
 	return 0;
 }
@@ -999,11 +984,9 @@ static int tmbr_cmd_client_to_desktop(tmbr_server_t *server, const tmbr_command_
 	    tmbr_desktop_find_sibling(&target, focus->desktop, cmd->sel) < 0)
 		return ENOENT;
 
-	if (tmbr_desktop_remove_client(focus->desktop, focus) < 0 ||
-	    tmbr_desktop_add_client(target, focus) < 0 ||
-	    tmbr_desktop_focus(target, focus, 0))
-		return EIO;
-
+	tmbr_desktop_remove_client(focus->desktop, focus);
+	tmbr_desktop_add_client(target, focus);
+	tmbr_desktop_focus(target, focus, 0);
 	return 0;
 }
 
@@ -1016,11 +999,9 @@ static int tmbr_cmd_client_to_screen(tmbr_server_t *server, const tmbr_command_t
 	    tmbr_screen_find_sibling(&screen, client->desktop->screen, cmd->sel) < 0)
 		return ENOENT;
 
-	if (tmbr_desktop_remove_client(client->desktop, client) < 0 ||
-	    tmbr_desktop_add_client(screen->focus, client) < 0 ||
-	    tmbr_desktop_focus(screen->focus, client, 0) < 0)
-		return EIO;
-
+	tmbr_desktop_remove_client(client->desktop, client);
+	tmbr_desktop_add_client(screen->focus, client);
+	tmbr_desktop_focus(screen->focus, client, 0);
 	return 0;
 }
 
