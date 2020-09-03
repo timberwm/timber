@@ -184,7 +184,7 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 		size_t len;
 		if (!argc)
 			return -1;
-		if ((len = strlen(argv[0])) > sizeof(cmd->command))
+		if ((len = strlen(argv[0])) >= sizeof(cmd->command))
 			return -1;
 		memcpy(cmd->command, argv[0], len + 1);
 		argc--;
