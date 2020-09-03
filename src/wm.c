@@ -559,16 +559,15 @@ static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *
 	tmbr_desktop_recalculate(screen->focus);
 }
 
-static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
+static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
 	if (screen->focus == desktop)
-		return 0;
+		return;
 	if (desktop->screen != screen)
-		return -1;
+		die("Cannot focus desktop for different screen");
 	tmbr_desktop_focus(desktop, desktop->focus, 1);
 	screen->damaged = true;
 	screen->focus = desktop;
-	return 0;
 }
 
 static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
@@ -578,22 +577,20 @@ static int tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 
 	if (screen->focus == desktop) {
 		tmbr_desktop_t *sibling;
-		if (tmbr_desktop_find_sibling(&sibling, desktop, TMBR_SELECT_NEXT) < 0 ||
-		    tmbr_screen_focus_desktop(screen, sibling) < 0)
+		if (tmbr_desktop_find_sibling(&sibling, desktop, TMBR_SELECT_NEXT) < 0)
 			return -1;
+		tmbr_screen_focus_desktop(screen, sibling);
 	}
 	wl_list_remove(&desktop->link);
 
 	return 0;
 }
 
-static int tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
+static void tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
 	wl_list_insert(&screen->desktops, &desktop->link);
 	desktop->screen = screen;
-	if (tmbr_screen_focus_desktop(screen, desktop) < 0)
-		return EIO;
-	return 0;
+	tmbr_screen_focus_desktop(screen, desktop);
 }
 
 static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, tmbr_select_t which)
@@ -605,35 +602,27 @@ static int tmbr_screen_find_sibling(tmbr_screen_t **out, tmbr_screen_t *screen, 
 	return 0;
 }
 
-static int tmbr_screen_focus(tmbr_screen_t *screen)
+static void tmbr_screen_focus(tmbr_screen_t *screen)
 {
 	if (screen->server->screen == screen)
-		return 0;
+		return;
 	tmbr_desktop_focus(screen->focus, screen->focus->focus, 1);
 	screen->server->screen = screen;
-	return 0;
 }
 
-static int tmbr_screen_new(tmbr_screen_t **out, tmbr_server_t *server, struct wlr_output *output)
+static tmbr_screen_t *tmbr_screen_new(tmbr_server_t *server, struct wlr_output *output)
 {
-	tmbr_screen_t *screen;
-	tmbr_desktop_t *desktop;
-
-	screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
+	tmbr_screen_t *screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
 	screen->output = output;
 	screen->server = server;
 	wl_list_init(&screen->desktops);
 
-	desktop = tmbr_desktop_new();
-	if (tmbr_screen_add_desktop(screen, desktop) < 0)
-		die("Could not create desktop for screen");
-
+	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
 	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
 
-	*out = screen;
-	return 0;
+	return screen;
 }
 
 static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
@@ -650,8 +639,7 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 			return;
 	}
 
-	if (tmbr_screen_new(&screen, server, output) < 0)
-		die("Could not create new screen");
+	screen = tmbr_screen_new(server, output);
 	wl_list_insert(&server->screens, &screen->link);
 	if (!server->screen)
 		server->screen = screen;
@@ -806,8 +794,7 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	if (!screen)
 		return;
 
-	if (tmbr_screen_focus(screen) < 0)
-		return;
+	tmbr_screen_focus(screen);
 	screen->damaged = true;
 
 	if (screen->focus->fullscreen) {
@@ -1011,8 +998,7 @@ static int tmbr_cmd_desktop_focus(tmbr_server_t *server, const tmbr_command_t *c
 	tmbr_desktop_t *sibling;
 	if (tmbr_desktop_find_sibling(&sibling, server->screen->focus, cmd->sel) < 0)
 		return ENOENT;
-	if (tmbr_screen_focus_desktop(server->screen, sibling) < 0)
-		return EIO;
+	tmbr_screen_focus_desktop(server->screen, sibling);
 	return 0;
 }
 
@@ -1040,9 +1026,7 @@ static int tmbr_cmd_desktop_kill(tmbr_server_t *server, TMBR_UNUSED const tmbr_c
 
 static int tmbr_cmd_desktop_new(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
 {
-	tmbr_desktop_t *desktop = tmbr_desktop_new();
-	if (tmbr_screen_add_desktop(server->screen, desktop) < 0)
-		return EIO;
+	tmbr_screen_add_desktop(server->screen, tmbr_desktop_new());
 	return 0;
 }
 
@@ -1051,8 +1035,7 @@ static int tmbr_cmd_screen_focus(tmbr_server_t *server, const tmbr_command_t *cm
 	tmbr_screen_t *sibling;
 	if (tmbr_screen_find_sibling(&sibling, server->screen, cmd->sel) < 0)
 		return ENOENT;
-	if (tmbr_screen_focus(sibling) < 0)
-		return EIO;
+	tmbr_screen_focus(sibling);
 	return 0;
 }
 
