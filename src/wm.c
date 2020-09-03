@@ -156,6 +156,8 @@ struct tmbr_server {
 	tmbr_screen_t *screen;
 };
 
+static tmbr_server_t server;
+
 static void tmbr_spawn(const char *path, char * const argv[])
 {
 	pid_t pid;
@@ -919,6 +921,11 @@ static int tmbr_server_focussed_client(tmbr_client_t **out, tmbr_server_t *serve
 	return 0;
 }
 
+static void tmbr_server_stop(tmbr_server_t *server)
+{
+	wl_display_terminate(server->display);
+}
+
 static int tmbr_cmd_client_focus(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
 	tmbr_client_t *focus;
@@ -1167,6 +1174,12 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 	return 0;
 }
 
+static int tmbr_cmd_state_stop(tmbr_server_t *server)
+{
+	tmbr_server_stop(server);
+	return 0;
+}
+
 static int tmbr_cmd_binding_add(tmbr_server_t *server, const tmbr_command_t *cmd)
 {
 	tmbr_binding_t *binding;
@@ -1229,6 +1242,7 @@ static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *paylo
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(server, cmd); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(server, cfd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(server, cfd); break;
+		case TMBR_COMMAND_STATE_STOP: error = tmbr_cmd_state_stop(server); break;
 		case TMBR_COMMAND_BINDING_ADD: error = tmbr_cmd_binding_add(server, cmd); break;
 		case TMBR_COMMAND_LAST: error = ENOTSUP; break;
 	}
@@ -1247,12 +1261,14 @@ out:
 
 static void tmbr_on_signal(int signal)
 {
-	waitpid(-1, &signal, WNOHANG);
+	switch (signal) {
+		case SIGCHLD: waitpid(-1, &signal, WNOHANG); break;
+		case SIGTERM: tmbr_server_stop(&server); break;
+	}
 }
 
 int tmbr_wm(void)
 {
-	tmbr_server_t server = {0};
 	struct sigaction sa;
 	struct stat st;
 	char *cfg;
@@ -1260,7 +1276,8 @@ int tmbr_wm(void)
 	sa.sa_handler = tmbr_on_signal;
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = 0;
-	if (sigaction(SIGCHLD, &sa, NULL) < 0)
+	if (sigaction(SIGCHLD, &sa, NULL) < 0 ||
+	    sigaction(SIGTERM, &sa, NULL) < 0)
 		die("Could not setup signal handler: %s", strerror(errno));
 
 	wl_list_init(&server.bindings);
