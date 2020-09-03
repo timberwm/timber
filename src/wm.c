@@ -242,13 +242,6 @@ static int tmbr_client_kill(tmbr_client_t *client)
 	return 0;
 }
 
-static void tmbr_client_set_box(tmbr_client_t *client, int x, int y, int w, int h, int border)
-{
-	if (client->w != w || client->h != h || client->border != border)
-		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
-	client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
-}
-
 static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	tmbr_client_t *client = payload;
@@ -286,8 +279,14 @@ static void tmbr_client_render(tmbr_client_t *c)
 		for (i = 0; i < ARRAY_SIZE(borders); i++)
 			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
 	}
-
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_client_render_surface, c);
+}
+
+static void tmbr_client_set_box(tmbr_client_t *client, int x, int y, int w, int h, int border)
+{
+	if (client->w != w || client->h != h || client->border != border)
+		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+	client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
 }
 
 static void tmbr_tree_recalculate(tmbr_tree_t *tree, int x, int y, int w, int h)
@@ -552,21 +551,16 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 {
 	tmbr_screen_t *screen = wl_container_of(listener, screen, frame);
 	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
-	float color[4] = {0.3, 0.3, 0.3, 1.0};
 	int width, height;
 
+	if (!screen->damaged || !wlr_output_attach_render(screen->output, NULL))
+		return;
+
 	clock_gettime(CLOCK_MONOTONIC, &screen->render_time);
-
-	if (!screen->damaged)
-		return;
-
-	if (!wlr_output_attach_render(screen->output, NULL))
-		return;
-
 	wlr_output_effective_resolution(screen->output, &width, &height);
 	wlr_renderer_begin(renderer, width, height);
-	wlr_renderer_clear(renderer, color);
 
+	wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
 	if (screen->focus->fullscreen) {
 		tmbr_client_render(screen->focus->focus);
 	} else {
@@ -574,8 +568,8 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		tmbr_tree_foreach_leaf(screen->focus->clients, it, t)
 			tmbr_client_render(t->client);
 	}
-
 	wlr_output_render_software_cursors(screen->output, NULL);
+
 	wlr_renderer_end(renderer);
 	wlr_output_commit(screen->output);
 }
