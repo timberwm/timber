@@ -219,25 +219,21 @@ static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 		client->desktop->screen->damaged = true;
 }
 
-static int tmbr_client_new(tmbr_client_t **out, tmbr_server_t *server, struct wlr_xdg_surface *surface)
+static tmbr_client_t *tmbr_client_new(tmbr_server_t *server, struct wlr_xdg_surface *surface)
 {
-	tmbr_client_t *client;
-
-	client = tmbr_alloc(sizeof(*client), "Could not allocate client");
+	tmbr_client_t *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
 	client->server = server;
 	client->surface = surface;
 
 	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_client_on_commit);
 
-	*out = client;
-	return 0;
+	return client;
 }
 
-static int tmbr_client_kill(tmbr_client_t *client)
+static void tmbr_client_kill(tmbr_client_t *client)
 {
 	wlr_xdg_toplevel_send_close(client->surface);
-	return 0;
 }
 
 static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
@@ -669,8 +665,7 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 	if (surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
 		return;
 
-	if (tmbr_client_new(&client, server, surface) < 0)
-		die("Could not create client");
+	client = tmbr_client_new(server, surface);
 	tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
 	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
 }
