@@ -1145,7 +1145,8 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		wlr_output_effective_resolution(s->output, &w, &h);
-		tmbr_ctrl_write_data(fd, "- x: %lf", x);
+		tmbr_ctrl_write_data(fd, "- name: %s", s->output->name);
+		tmbr_ctrl_write_data(fd, "  x: %lf", x);
 		tmbr_ctrl_write_data(fd, "  y: %lf", y);
 		tmbr_ctrl_write_data(fd, "  width: %u", w);
 		tmbr_ctrl_write_data(fd, "  height: %u", h);
