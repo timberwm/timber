@@ -2,77 +2,30 @@ stages:
   - build
   - analyze
 
-.setup-alpine:
-  before_script:
-    - apk add clang gcc meson libc-dev libxcb-dev xcb-util-dev
+.setup: &setup
+  - test "${IMAGE%:*}" = "alpine" && apk add clang curl gcc meson musl-dev wlroots-dev
+  - test "${IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang curl gcc meson pkg-config wayland-protocols wlroots
+  - test "${IMAGE%:*}" = "ubuntu" && apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc clang curl meson pkg-config libwlroots-dev
 
-.setup-ubuntu:
-  before_script:
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc clang curl meson pkg-config libxcb1-dev libxcb-randr0-dev libxcb-util0-dev
-
-.build:
+build:
   stage: build
+  image: ${IMAGE}
+  before_script:
+    - *setup
   script:
     - mkdir build
     - meson build . --warnlevel 3 --werror
     - ninja -C build all
-
-.build-clang:
-  extends: .build
-  variables:
-    CC: clang
-
-.build-gcc:
-  extends: .build
-  variables:
-    CC: gcc
-
-alpine-latest:
-  image: alpine:latest
-  extends:
-    - .setup-alpine
-    - .build-gcc
-  image: alpine:latest
-
-alpine-edge:
-  image: alpine:edge
-  extends:
-    - .setup-alpine
-    - .build-gcc
-
-ubuntu-1604-clang:
-  image: ubuntu:16.04
-  extends:
-    - .build-clang
-    - .setup-ubuntu
-  variables:
-    CFLAGS: -Wno-padded
-
-ubuntu-1604-gcc:
-  image: ubuntu:16.04
-  extends:
-    - .build-gcc
-    - .setup-ubuntu
-
-ubuntu-2004-gcc:
-  image: ubuntu:20.04
-  extends:
-    - .setup-ubuntu
-    - .build-gcc
-
-ubuntu-2004-clang:
-  image: ubuntu:20.04
-  extends:
-    - .setup-ubuntu
-    - .build-clang
+  parallel:
+    matrix:
+      - CC: [ "clang", "gcc" ]
+        IMAGE: [ "alpine:latest", "alpine:edge", "archlinux:latest", "ubuntu:eoan", "ubuntu:focal" ]
 
 coverity:
-  image: ubuntu:20.04
-  extends: .setup-ubuntu
   stage: analyze
-  only:
-    refs:
-      - master
+  image: ubuntu:20.04
+  before_script:
+    - *setup
   script:
     - curl https://scan.coverity.com/download/linux64 --form project=$COVERITY_PROJECT --form token=$COVERITY_TOKEN | tar xz
     - mkdir build
@@ -80,3 +33,8 @@ coverity:
     - cov-analysis-linux64-*/bin/cov-build --dir cov-int ninja -C build all
     - tar czf cov-int.tar.gz cov-int
     - curl https://scan.coverity.com/builds?project=$COVERITY_PROJECT --form token=$COVERITY_TOKEN --form email=$GITLAB_USER_EMAIL --form file=@cov-int.tar.gz --form version=$CI_COMMIT_SHA --form description="$CI_COMMIT_SHA / $CI_COMMIT_TITLE / $CI_COMMIT_REF_NAME:$CI_PIPELINE_ID"
+  variables:
+    IMAGE: ubuntu:20.04
+  only:
+    refs:
+      - master
