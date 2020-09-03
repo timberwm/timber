@@ -832,6 +832,9 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 			break;
 	if (!screen)
 		return;
+
+	if (tmbr_screen_focus(screen) < 0)
+		return;
 	screen->damaged = true;
 
 	if (screen->focus->fullscreen) {
