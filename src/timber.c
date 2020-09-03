@@ -20,7 +20,7 @@
 #include "client.h"
 #include "wm.h"
 
-int main(int argc, const char *argv[])
+int main(int argc, char *argv[])
 {
 	if (argc == 1)
 		return tmbr_wm();

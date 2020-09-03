@@ -16,6 +16,7 @@
  */
 
 #include <sys/types.h>
+#include <xkbcommon/xkbcommon.h>
 
 #define TMBR_UNUSED __attribute__((unused))
 
@@ -54,6 +55,7 @@ typedef enum {
 	TMBR_COMMAND_TREE_ROTATE,
 	TMBR_COMMAND_STATE_SUBSCRIBE,
 	TMBR_COMMAND_STATE_QUERY,
+	TMBR_COMMAND_BINDING_ADD,
 	TMBR_COMMAND_LAST
 } tmbr_command_type_t;
 
@@ -62,6 +64,8 @@ typedef struct {
 	tmbr_select_t sel;
 	tmbr_dir_t dir;
 	int i;
+	struct { uint32_t modifiers; xkb_keysym_t keycode; } key;
+	char command[128];
 } tmbr_command_t;
 
 typedef enum {
