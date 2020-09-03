@@ -317,7 +317,7 @@ static void tmbr_tree_recalculate(tmbr_tree_t *tree, int x, int y, int w, int h)
 	tmbr_tree_recalculate(tree->right, x + xoff, y + yoff, rw, rh);
 }
 
-static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
+static void tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 {
 	tmbr_tree_t *l, *r, *p = *tree;
 
@@ -342,8 +342,6 @@ static int tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 	} else {
 		*tree = r;
 	}
-
-	return 0;
 }
 
 static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, tmbr_select_t which)
@@ -382,7 +380,7 @@ static int tmbr_tree_find_sibling(tmbr_tree_t **node, tmbr_tree_t *tree, tmbr_se
 	return 0;
 }
 
-static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
+static void tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 {
 	tmbr_tree_t *l = a->left, *r = a->right;
 	tmbr_client_t *c = a->client;
@@ -400,28 +398,23 @@ static int tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 		b->left->parent = b;
 	if ((b->right = r) != NULL)
 		b->right->parent = b;
-
-	return 0;
 }
 
 #define tmbr_tree_foreach_leaf(t, i, n) \
 	i = NULL, n = t; \
 	while ((!i && n && n->client && (i = n)) || (tmbr_tree_find_sibling(&n, n, TMBR_SELECT_NEXT) == 0 && ((!i && (i = n)) || i != n)))
 
-static int tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
+static void tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
 	if (node != *tree) {
 		tmbr_tree_t *uplift = (node->parent->left == node) ?
 					node->parent->right : node->parent->left;
-		if (tmbr_tree_swap(uplift, node->parent) < 0)
-			return -1;
+		tmbr_tree_swap(uplift, node->parent);
 		free(uplift);
 	} else {
 		*tree = NULL;
 	}
-
 	free(node);
-	return 0;
 }
 
 static int tmbr_desktop_new(tmbr_desktop_t **out)
@@ -485,8 +478,7 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 
 static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
-	if (tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client) < 0)
-		die("Unable to insert client into tree");
+	tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client);
 	client->desktop = desktop;
 	desktop->fullscreen = 0;
 	tmbr_desktop_recalculate(desktop);
@@ -500,9 +492,7 @@ static void tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *c
 			sibling = NULL;
 		tmbr_desktop_focus(desktop, sibling ? sibling->client : NULL, 1);
 	}
-
-	if (tmbr_tree_remove(&desktop->clients, client->tree) < 0)
-		die("Unable to remove client from tree");
+	tmbr_tree_remove(&desktop->clients, client->tree);
 
 	desktop->fullscreen = 0;
 	client->desktop = NULL;
@@ -1013,8 +1003,7 @@ static int tmbr_cmd_client_swap(tmbr_server_t *server, const tmbr_command_t *cmd
 	if (tmbr_server_focussed_client(&focus, server) < 0 ||
 	    tmbr_tree_find_sibling(&next, focus->tree, cmd->sel) < 0)
 		return ENOENT;
-	if (tmbr_tree_swap(focus->tree, next) < 0)
-		return EIO;
+	tmbr_tree_swap(focus->tree, next);
 	tmbr_desktop_recalculate(focus->desktop);
 
 	return 0;
