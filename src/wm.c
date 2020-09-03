@@ -1313,7 +1313,6 @@ int tmbr_wm(void)
 	setenv("WAYLAND_DISPLAY", server.socket, 1);
 	if ((server.ctrlfd = tmbr_ctrl_connect(&server.ctrl_path, 1)) < 0)
 		die("Unable to setup control socket");
-	setenv("TMBR_CTRL_PATH", server.ctrl_path, 1);
 	wl_event_loop_add_fd(wl_display_get_event_loop(server.display), server.ctrlfd,
 			     WL_EVENT_READABLE, tmbr_server_on_command, &server);
 
