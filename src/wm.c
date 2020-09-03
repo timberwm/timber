@@ -149,7 +149,6 @@ struct tmbr_server {
 	int subfds[16];
 
 	struct wl_list bindings;
-	tmbr_keyboard_t *keyboards;
 	struct wl_list screens;
 	tmbr_screen_t *screen;
 };
@@ -702,7 +701,7 @@ static void tmbr_keyboard_on_modifiers(struct wl_listener *listener, TMBR_UNUSED
 	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->device->keyboard->modifiers);
 }
 
-static int tmbr_keyboard_new(tmbr_keyboard_t **out, tmbr_server_t *server, struct wlr_input_device *device)
+static void tmbr_keyboard_setup(tmbr_server_t *server, struct wlr_input_device *device)
 {
 	struct xkb_rule_names rules = {0};
 	struct xkb_context *context;
@@ -724,11 +723,8 @@ static int tmbr_keyboard_new(tmbr_keyboard_t **out, tmbr_server_t *server, struc
 	tmbr_register(&device->keyboard->events.key, &keyboard->key, tmbr_keyboard_on_key);
 	tmbr_register(&device->keyboard->events.modifiers, &keyboard->modifiers, tmbr_keyboard_on_modifiers);
 
-	*out = keyboard;
-
 	xkb_keymap_unref(keymap);
 	xkb_context_unref(context);
-	return 0;
 }
 
 static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload)
@@ -741,8 +737,7 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 			wlr_cursor_attach_input_device(server->cursor, device);
 			break;
 		case WLR_INPUT_DEVICE_KEYBOARD:
-			if (tmbr_keyboard_new(&server->keyboards, server, device) < 0)
-				die("Could not create new keyboard");
+			tmbr_keyboard_setup(server, device);
 			break;
 		default:
 			break;
