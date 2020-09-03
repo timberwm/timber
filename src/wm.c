@@ -255,16 +255,13 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 	struct wlr_output *output = client->desktop->screen->output;
 	struct wlr_texture *texture;
 	struct wlr_box box;
-	double ox = 0, oy = 0;
 	float matrix[9];
 
 	if ((texture = wlr_surface_get_texture(surface)) == NULL)
 		return;
 
-	wlr_output_layout_output_coords(client->server->output_layout, output, &ox, &oy);
-
-	box.x = (ox + sx + client->x + client->border) * output->scale;
-	box.y = (oy + sy + client->y + client->border) * output->scale;
+	box.x = (client->x + client->border + sx) * output->scale;
+	box.y = (client->y + client->border + sy) * output->scale;
 	box.width = surface->current.width * output->scale;
 	box.height = surface->current.height * output->scale;
 
@@ -278,15 +275,13 @@ static void tmbr_client_render(tmbr_client_t *c)
 	if (c->border) {
 		float *color = (c->desktop->focus == c) ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE;
 		struct wlr_output *output = c->desktop->screen->output;
-		double ox = c->x, oy = c->y;
 		struct wlr_box borders[4];
 		size_t i;
 
-		wlr_output_layout_output_coords(c->server->output_layout, output, &ox, &oy);
-		borders[0] = (struct wlr_box){ ox, oy, c->w, c->border };
-		borders[1] = (struct wlr_box){ ox, oy, c->border, c->h };
-		borders[2] = (struct wlr_box){ ox + c->w - c->border, oy, c->border, c->h };
-		borders[3] = (struct wlr_box){ ox, oy + c->h - c->border, c->w, c->border };
+		borders[0] = (struct wlr_box){ c->x, c->y, c->w, c->border };
+		borders[1] = (struct wlr_box){ c->x, c->y, c->border, c->h };
+		borders[2] = (struct wlr_box){ c->x + c->w - c->border, c->y, c->border, c->h };
+		borders[3] = (struct wlr_box){ c->x, c->y + c->h - c->border, c->w, c->border };
 
 		for (i = 0; i < ARRAY_SIZE(borders); i++)
 			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
