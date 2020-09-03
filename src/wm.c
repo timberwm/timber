@@ -1205,12 +1205,10 @@ static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *paylo
 	tmbr_pkt_t pkt;
 	int error, cfd, persistent = 0;
 
-	cfd = accept(fd, NULL, NULL);
-	if (cfd < 0)
+	if ((cfd = accept(fd, NULL, NULL)) < 0)
 		return 0;
-
 	if (tmbr_ctrl_read(cfd, &pkt) < 0 || pkt.type != TMBR_PKT_COMMAND)
-		return 0;
+		goto out;
 	cmd = &pkt.u.command;
 
 	if (cmd->type >= TMBR_COMMAND_LAST || cmd->sel >= TMBR_SELECT_LAST || cmd->dir >= TMBR_DIR_LAST) {
@@ -1239,15 +1237,16 @@ static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *paylo
 		case TMBR_COMMAND_LAST: error = ENOTSUP; break;
 	}
 
-	if (persistent)
+	if (!error && persistent)
 		return 0;
 
-out:
 	tmbr_notify(server, "{type: command, error: %d}", error);
 	memset(&pkt, 0, sizeof(pkt));
 	pkt.type = TMBR_PKT_ERROR;
 	pkt.u.error = error;
 	tmbr_ctrl_write(cfd, &pkt);
+out:
+	close(cfd);
 	return 0;
 }
 
