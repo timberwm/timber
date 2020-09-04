@@ -469,7 +469,6 @@ static void tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, i
 	desktop->focus = client;
 	desktop->screen->focus = desktop;
 	desktop->screen->server->screen = desktop->screen;
-	desktop->screen->damaged = true;
 	desktop->fullscreen = 0;
 }
 
@@ -580,6 +579,7 @@ static int tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desk
 	if (desktop->screen != screen)
 		return -1;
 	tmbr_desktop_focus(desktop, desktop->focus, 1);
+	screen->damaged = true;
 	screen->focus = desktop;
 	return 0;
 }
