@@ -1290,7 +1290,7 @@ int tmbr_wm(void)
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");
 	setenv("WAYLAND_DISPLAY", socket, 1);
-	if ((server.ctrlfd = tmbr_ctrl_connect(&socket, 1)) < 0)
+	if ((server.ctrlfd = tmbr_ctrl_connect(1)) < 0)
 		die("Unable to setup control socket");
 	wl_event_loop_add_fd(wl_display_get_event_loop(server.display), server.ctrlfd,
 			     WL_EVENT_READABLE, tmbr_server_on_command, &server);

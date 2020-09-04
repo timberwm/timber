@@ -89,7 +89,7 @@ void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);
 
 void *tmbr_alloc(size_t bytes, const char *msg);
 
-int tmbr_ctrl_connect(const char **out_path, char create);
+int tmbr_ctrl_connect(char create);
 int tmbr_ctrl_read(int fd, tmbr_pkt_t *out);
 int tmbr_ctrl_write(int fd, tmbr_pkt_t *pkt);
 int __attribute__((format(printf, 2, 3))) tmbr_ctrl_write_data(int fd, const char *fmt, ...);
