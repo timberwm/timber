@@ -51,9 +51,9 @@ void *tmbr_alloc(size_t bytes, const char *msg)
 	return ptr;
 }
 
-int tmbr_ctrl_connect(const char **out_path, char create)
+int tmbr_ctrl_connect(char create)
 {
-	static char path[PATH_MAX] = { 0 };
+	char path[PATH_MAX] = { 0 };
 	struct sockaddr_un addr;
 	char *env;
 	int fd;
@@ -90,8 +90,6 @@ int tmbr_ctrl_connect(const char **out_path, char create)
 		die("Unable to connect to control socket: %s", strerror(errno));
 	}
 
-	if (out_path)
-		*out_path = path;
 	return fd;
 }
 

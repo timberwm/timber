@@ -222,7 +222,7 @@ int tmbr_client(int argc, char *argv[])
 	if ((tmbr_parse(&cmd, argc - 1, argv + 1)) < 0)
 		usage(argv[0]);
 
-	if ((fd = tmbr_ctrl_connect(NULL, 0)) < 0)
+	if ((fd = tmbr_ctrl_connect(0)) < 0)
 		die("Unable to connect to control socket");
 
 	if ((error = tmbr_execute(&cmd, fd)) < 0)
