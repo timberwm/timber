@@ -1055,6 +1055,23 @@ static int tmbr_cmd_screen_scale(tmbr_server_t *server, const tmbr_command_t *cm
 	return 0;
 }
 
+static int tmbr_cmd_screen_mode(tmbr_server_t *server, const tmbr_command_t *cmd)
+{
+	struct wlr_output_mode *mode;
+	tmbr_screen_t *s;
+
+	if ((s = tmbr_server_find_output(server, cmd->screen)) == NULL)
+		return ENOENT;
+	wl_list_for_each(mode, &s->output->modes, link) {
+		if (cmd->mode.width !=  mode->width || cmd->mode.height != mode->height || cmd->mode.refresh != mode->refresh)
+			continue;
+		wlr_output_set_mode(s->output, mode);
+		return 0;
+	}
+
+	return ENOENT;
+}
+
 static int tmbr_cmd_tree_rotate(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
 {
 	tmbr_client_t *focus;
@@ -1190,6 +1207,7 @@ static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *paylo
 		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(server, cmd); break;
 		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(server, cmd); break;
 		case TMBR_COMMAND_SCREEN_SCALE: error = tmbr_cmd_screen_scale(server, cmd); break;
+		case TMBR_COMMAND_SCREEN_MODE: error = tmbr_cmd_screen_mode(server, cmd); break;
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(server, cmd); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(server, cfd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(server, cfd); break;
