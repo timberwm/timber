@@ -282,6 +282,18 @@ static void tmbr_client_set_box(tmbr_client_t *client, int x, int y, int w, int 
 	client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
 }
 
+static void tmbr_client_focus(tmbr_client_t *client, bool focus)
+{
+	wlr_xdg_toplevel_set_activated(client->surface, focus);
+	if (focus) {
+		struct wlr_seat *seat = client->desktop->screen->server->seat;
+		struct wlr_keyboard *keyboard;
+		if ((keyboard = wlr_seat_get_keyboard(seat)) != NULL)
+			wlr_seat_keyboard_notify_enter(seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+		wlr_seat_pointer_notify_enter(seat, client->surface->surface, 0, 0);
+	}
+}
+
 static void tmbr_tree_recalculate(tmbr_tree_t *tree, int x, int y, int w, int h)
 {
 	int xoff, yoff, lw, rw, lh, rh;
@@ -431,8 +443,7 @@ static tmbr_desktop_t *tmbr_desktop_find_sibling(tmbr_desktop_t *desktop, tmbr_s
 
 static void tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
 {
-	struct wlr_seat *seat = desktop->screen->server->seat;
-	struct wlr_surface *current = seat->keyboard_state.focused_surface;
+	struct wlr_surface *current = desktop->screen->server->seat->keyboard_state.focused_surface;
 
 	if (!client) {
 		desktop->focus = NULL;
@@ -442,13 +453,9 @@ static void tmbr_desktop_focus(tmbr_desktop_t *desktop, tmbr_client_t *client, i
 		return;
 
 	if (inputfocus) {
-		struct wlr_keyboard *keyboard;
 		if (desktop->focus)
-			wlr_xdg_toplevel_set_activated(desktop->focus->surface, false);
-		wlr_xdg_toplevel_set_activated(client->surface, true);
-		if ((keyboard = wlr_seat_get_keyboard(seat)) != NULL)
-			wlr_seat_keyboard_notify_enter(seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
-		wlr_seat_pointer_notify_enter(seat, client->surface->surface, 0, 0);
+			tmbr_client_focus(desktop->focus, false);
+		tmbr_client_focus(client, true);
 	}
 
 	desktop->focus = client;
@@ -530,8 +537,9 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	wlr_output_effective_resolution(screen->output, &width, &height);
 	wlr_renderer_begin(renderer, width, height);
 
-	wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
-	if (screen->focus->fullscreen) {
+	if (!screen->focus->focus) {
+		wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
+	} else if (screen->focus->fullscreen) {
 		tmbr_client_render(screen->focus->focus);
 	} else {
 		tmbr_tree_t *it, *t;
