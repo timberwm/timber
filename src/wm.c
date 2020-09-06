@@ -260,15 +260,15 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 static void tmbr_client_render(tmbr_client_t *c)
 {
 	if (c->border) {
-		float *color = (c->desktop->focus == c) ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE;
 		struct wlr_output *output = c->desktop->screen->output;
-		struct wlr_box borders[4];
+		float *color = (c->desktop->focus == c) ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE, s = output->scale;
+		struct wlr_box borders[4] = {
+			{ c->x * s, c->y * s, c->w * s, c->border * s },
+			{ c->x * s, c->y * s, c->border * s, c->h * s },
+			{ (c->x + c->w - c->border) * s, c->y * s, c->border * s, c->h * s },
+			{ c->x * s, (c->y + c->h - c->border) * s, c->w * s, c->border * s },
+		};
 		size_t i;
-
-		borders[0] = (struct wlr_box){ c->x, c->y, c->w, c->border };
-		borders[1] = (struct wlr_box){ c->x, c->y, c->border, c->h };
-		borders[2] = (struct wlr_box){ c->x + c->w - c->border, c->y, c->border, c->h };
-		borders[3] = (struct wlr_box){ c->x, c->y + c->h - c->border, c->w, c->border };
 
 		for (i = 0; i < ARRAY_SIZE(borders); i++)
 			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
