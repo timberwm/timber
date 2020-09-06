@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <wlr/backend.h>
+#include <wlr/render/gles2.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
@@ -246,6 +247,12 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 
 	if ((texture = wlr_surface_get_texture(surface)) == NULL)
 		return;
+	if (wlr_texture_is_gles2(texture)) {
+		struct wlr_gles2_texture_attribs attribs;
+		wlr_gles2_texture_get_attribs(texture, &attribs);
+		glBindTexture(attribs.target, attribs.tex);
+		glTexParameteri(attribs.target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
 
 	box.x = (client->x + client->border + sx) * output->scale;
 	box.y = (client->y + client->border + sy) * output->scale;

@@ -35,6 +35,7 @@ executable(
       xdg_shell_protocol_c,
   ],
   dependencies: [
+    dependency('glesv2'),
     dependency('pixman-1'),
     dependency('wayland-server'),
     dependency('wlroots'),
