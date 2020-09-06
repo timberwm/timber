@@ -1070,6 +1070,23 @@ static int tmbr_cmd_screen_scale(tmbr_server_t *server, const tmbr_command_t *cm
 	return 0;
 }
 
+static int tmbr_cmd_screen_mode(tmbr_server_t *server, const tmbr_command_t *cmd)
+{
+	struct wlr_output_mode *mode;
+	tmbr_screen_t *s;
+
+	if ((s = tmbr_server_find_output(server, cmd->screen)) == NULL)
+		return ENOENT;
+	wl_list_for_each(mode, &s->output->modes, link) {
+		if (cmd->mode.width !=  mode->width || cmd->mode.height != mode->height || cmd->mode.refresh != mode->refresh)
+			continue;
+		wlr_output_set_mode(s->output, mode);
+		return 0;
+	}
+
+	return ENOENT;
+}
+
 static int tmbr_cmd_tree_rotate(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
 {
 	tmbr_client_t *focus;
@@ -1108,6 +1125,7 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 
 	tmbr_ctrl_write_data(fd, "screens:");
 	wl_list_for_each(s, &server->screens, link) {
+		struct wlr_output_mode *mode;
 		tmbr_desktop_t *d;
 		double x = 0, y = 0;
 		int w, h;
@@ -1115,11 +1133,11 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		wlr_output_effective_resolution(s->output, &w, &h);
 		tmbr_ctrl_write_data(fd, "- name: %s", s->output->name);
-		tmbr_ctrl_write_data(fd, "  x: %lf", x);
-		tmbr_ctrl_write_data(fd, "  y: %lf", y);
-		tmbr_ctrl_write_data(fd, "  width: %u", w);
-		tmbr_ctrl_write_data(fd, "  height: %u", h);
+		tmbr_ctrl_write_data(fd, "  geom: {x: %u, y: %u, width: %u, height: %u}", (int)x, (int)y, w, h);
 		tmbr_ctrl_write_data(fd, "  selected: %s", s == server->screen ? "true" : "false");
+		tmbr_ctrl_write_data(fd, "  modes:");
+		wl_list_for_each(mode, &s->output->modes, link)
+			tmbr_ctrl_write_data(fd, "  - %dx%d@%d", mode->width, mode->height, mode->refresh);
 		tmbr_ctrl_write_data(fd, "  desktops:");
 
 		wl_list_for_each(d, &s->desktops, link) {
@@ -1131,10 +1149,7 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 			tmbr_tree_foreach_leaf(d->clients, it, tree) {
 				tmbr_client_t *c = tree->client;
 				tmbr_ctrl_write_data(fd, "    - title: %s", c->surface->toplevel->title);
-				tmbr_ctrl_write_data(fd, "      x: %u", c->x);
-				tmbr_ctrl_write_data(fd, "      y: %u", c->y);
-				tmbr_ctrl_write_data(fd, "      width: %u", c->w);
-				tmbr_ctrl_write_data(fd, "      height: %u", c->h);
+				tmbr_ctrl_write_data(fd, "      geom: {x: %u, y: %u, width: %u, height: %u}", c->x, c->y, c->w, c->h);
 				tmbr_ctrl_write_data(fd, "      selected: %s", c == d->focus ? "true" : "false");
 			}
 		}
@@ -1207,6 +1222,7 @@ static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *paylo
 		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(server, cmd); break;
 		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(server, cmd); break;
 		case TMBR_COMMAND_SCREEN_SCALE: error = tmbr_cmd_screen_scale(server, cmd); break;
+		case TMBR_COMMAND_SCREEN_MODE: error = tmbr_cmd_screen_mode(server, cmd); break;
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(server, cmd); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(server, cfd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(server, cfd); break;

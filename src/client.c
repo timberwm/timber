@@ -40,30 +40,32 @@
 #define TMBR_ARG_INT    (1 << 3)
 #define TMBR_ARG_KEY    (1 << 4)
 #define TMBR_ARG_CMD    (1 << 5)
+#define TMBR_ARG_MODE   (1 << 6)
 
 static const struct {
 	const char *cmd;
 	const char *subcmd;
 	int args;
 } commands[] = {
-	{ "client", "focus",      TMBR_ARG_SEL                 },
-	{ "client", "fullscreen", 0                            },
-	{ "client", "kill",       0                            },
-	{ "client", "resize",     TMBR_ARG_DIR|TMBR_ARG_INT    },
-	{ "client", "swap",       TMBR_ARG_SEL                 },
-	{ "client", "to_desktop", TMBR_ARG_SEL                 },
-	{ "client", "to_screen",  TMBR_ARG_SEL                 },
-	{ "desktop", "focus",     TMBR_ARG_SEL                 },
-	{ "desktop", "kill",      0                            },
-	{ "desktop", "new",       0                            },
-	{ "desktop", "swap",      TMBR_ARG_SEL                 },
-	{ "screen", "focus",      TMBR_ARG_SEL                 },
-	{ "screen", "scale",      TMBR_ARG_SCREEN|TMBR_ARG_INT },
-	{ "tree", "rotate",       0                            },
-	{ "state", "subscribe",   0                            },
-	{ "state", "query",       0                            },
-	{ "state", "stop",        0                            },
-	{ "binding", "add",       TMBR_ARG_KEY|TMBR_ARG_CMD    }
+	{ "client", "focus",      TMBR_ARG_SEL                  },
+	{ "client", "fullscreen", 0                             },
+	{ "client", "kill",       0                             },
+	{ "client", "resize",     TMBR_ARG_DIR|TMBR_ARG_INT     },
+	{ "client", "swap",       TMBR_ARG_SEL                  },
+	{ "client", "to_desktop", TMBR_ARG_SEL                  },
+	{ "client", "to_screen",  TMBR_ARG_SEL                  },
+	{ "desktop", "focus",     TMBR_ARG_SEL                  },
+	{ "desktop", "kill",      0                             },
+	{ "desktop", "new",       0                             },
+	{ "desktop", "swap",      TMBR_ARG_SEL                  },
+	{ "screen", "focus",      TMBR_ARG_SEL                  },
+	{ "screen", "scale",      TMBR_ARG_SCREEN|TMBR_ARG_INT  },
+	{ "screen", "mode",       TMBR_ARG_SCREEN|TMBR_ARG_MODE },
+	{ "tree", "rotate",       0                             },
+	{ "state", "subscribe",   0                             },
+	{ "state", "query",       0                             },
+	{ "state", "stop",        0                             },
+	{ "binding", "add",       TMBR_ARG_KEY|TMBR_ARG_CMD     }
 };
 
 static const struct {
@@ -204,6 +206,15 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 		argv++;
 	}
 
+	if (commands[c].args & TMBR_ARG_MODE) {
+		if (!argc)
+			return -1;
+		if (sscanf(argv[0], "%dx%d@%d", &cmd->mode.width, &cmd->mode.height, &cmd->mode.refresh) != 3)
+			return -1;
+		argc--;
+		argv++;
+	}
+
 	if (argc)
 		return -1;
 
@@ -216,13 +227,14 @@ static void __attribute__((noreturn)) usage(const char *executable)
 	printf("USAGE: %s\n", executable);
 
 	for (i = 0; i < ARRAY_SIZE(commands); i++)
-		printf("   or: %s %s %s%s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
+		printf("   or: %s %s %s%s%s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
 			commands[i].args & TMBR_ARG_SCREEN ? " <SCREEN>" : "",
 			commands[i].args & TMBR_ARG_SEL ? " (next|prev)" : "",
 			commands[i].args & TMBR_ARG_DIR ? " (north|south|east|west)" : "",
 			commands[i].args & TMBR_ARG_INT ? " <NUMBER>" : "",
 			commands[i].args & TMBR_ARG_KEY ? " <KEY>" : "",
-			commands[i].args & TMBR_ARG_CMD ? " <COMMAND>" : "");
+			commands[i].args & TMBR_ARG_CMD ? " <COMMAND>" : "",
+			commands[i].args & TMBR_ARG_MODE ? " <WIDTH>x<HEIGHT>@<REFRESH>" : "");
 
 	exit(-1);
 }

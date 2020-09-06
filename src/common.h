@@ -53,6 +53,7 @@ typedef enum {
 	TMBR_COMMAND_DESKTOP_SWAP,
 	TMBR_COMMAND_SCREEN_FOCUS,
 	TMBR_COMMAND_SCREEN_SCALE,
+	TMBR_COMMAND_SCREEN_MODE,
 	TMBR_COMMAND_TREE_ROTATE,
 	TMBR_COMMAND_STATE_SUBSCRIBE,
 	TMBR_COMMAND_STATE_QUERY,
@@ -67,6 +68,7 @@ typedef struct {
 	tmbr_dir_t dir;
 	int i;
 	struct { uint32_t modifiers; xkb_keysym_t keycode; } key;
+	struct { int height; int width; int refresh; } mode;
 	char command[128];
 	char screen[16];
 } tmbr_command_t;
