@@ -88,6 +88,7 @@ struct tmbr_client {
 	struct wl_listener unmap;
 	struct wl_listener destroy;
 	struct wl_listener commit;
+	struct wl_listener request_fullscreen;
 };
 
 struct tmbr_tree {
@@ -654,6 +655,16 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	wlr_output_layout_add_auto(server->output_layout, output);
 }
 
+static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
+{
+	struct wlr_xdg_toplevel_set_fullscreen_event *event = payload;
+	tmbr_client_t *client = wl_container_of(listener, client, request_fullscreen);
+	if (client->desktop) {
+		tmbr_desktop_focus_client(client->server->screen->focus, client, 0);
+		tmbr_desktop_set_fullscreen(client->desktop, event->fullscreen);
+	}
+}
+
 static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, map);
@@ -679,6 +690,7 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 	client = tmbr_client_new(server, surface);
 	tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
 	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
+	tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 }
 
 static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
