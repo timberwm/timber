@@ -1093,6 +1093,7 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 
 	tmbr_ctrl_write_data(fd, "screens:");
 	wl_list_for_each(s, &server->screens, link) {
+		struct wlr_output_mode *mode;
 		tmbr_desktop_t *d;
 		double x = 0, y = 0;
 		int w, h;
@@ -1102,6 +1103,9 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 		tmbr_ctrl_write_data(fd, "- name: %s", s->output->name);
 		tmbr_ctrl_write_data(fd, "  geom: {x: %u, y: %u, width: %u, height: %u}", (int)x, (int)y, w, h);
 		tmbr_ctrl_write_data(fd, "  selected: %s", s == server->screen ? "true" : "false");
+		tmbr_ctrl_write_data(fd, "  modes:");
+		wl_list_for_each(mode, &s->output->modes, link)
+			tmbr_ctrl_write_data(fd, "  - %dx%d@%d", mode->width, mode->height, mode->refresh);
 		tmbr_ctrl_write_data(fd, "  desktops:");
 
 		wl_list_for_each(d, &s->desktops, link) {
