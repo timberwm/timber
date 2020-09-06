@@ -537,8 +537,9 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	wlr_output_effective_resolution(screen->output, &width, &height);
 	wlr_renderer_begin(renderer, width, height);
 
-	wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
-	if (screen->focus->fullscreen) {
+	if (!screen->focus->focus) {
+		wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
+	} else if (screen->focus->fullscreen) {
 		tmbr_client_render(screen->focus->focus);
 	} else {
 		tmbr_tree_t *it, *t;
