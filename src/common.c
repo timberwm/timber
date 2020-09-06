@@ -55,12 +55,9 @@ int tmbr_ctrl_connect(char create)
 {
 	char path[PATH_MAX] = { 0 };
 	struct sockaddr_un addr;
-	char *env;
 	int fd;
 
-	if ((env = getenv("TMBR_CTRL_PATH")) != NULL)
-		strncpy(path, env, sizeof(path) - 1);
-	else if (getenv("XDG_RUNTIME_DIR") && getenv("WAYLAND_DISPLAY"))
+	if (getenv("XDG_RUNTIME_DIR") && getenv("WAYLAND_DISPLAY"))
 		snprintf(path, sizeof(path), "%s/%s.s", getenv("XDG_RUNTIME_DIR"), getenv("WAYLAND_DISPLAY"));
 	else
 		die("Could not compute control socket.");
