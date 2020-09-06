@@ -120,7 +120,7 @@ struct tmbr_screen {
 
 	struct wl_listener destroy;
 	struct wl_listener frame;
-	struct wl_listener mode;
+	struct wl_listener change;
 };
 
 struct tmbr_server {
@@ -565,9 +565,9 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	pixman_region32_fini(&damage);
 }
 
-static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
+static void tmbr_screen_on_change(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	tmbr_screen_t *screen = wl_container_of(listener, screen, mode);
+	tmbr_screen_t *screen = wl_container_of(listener, screen, change);
 	tmbr_desktop_recalculate(screen->focus);
 }
 
@@ -623,7 +623,8 @@ static tmbr_screen_t *tmbr_screen_new(tmbr_server_t *server, struct wlr_output *
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
-	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
+	tmbr_register(&output->events.mode, &screen->change, tmbr_screen_on_change);
+	tmbr_register(&output->events.scale, &screen->change, tmbr_screen_on_change);
 
 	return screen;
 }
