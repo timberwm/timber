@@ -90,32 +90,11 @@ int tmbr_ctrl_connect(char create)
 	return fd;
 }
 
-static int read_bytes(int fd, char *buf, size_t bufsize)
-{
-	size_t total = 0;
-	while (total < bufsize) {
-		ssize_t bytes = read(fd, buf + total, bufsize - total);
-		if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
-			continue;
-		if (bytes <= 0)
-			return -1;
-		total += (size_t) bytes;
-	}
-	return 0;
-}
-
 int tmbr_ctrl_read(int fd, tmbr_pkt_t *out)
 {
-	if (read_bytes(fd, (char *) out, sizeof(*out)) < 0)
-		return -1;
-	return 0;
-}
-
-static int write_bytes(int fd, const char *buf, size_t bufsize)
-{
 	size_t total = 0;
-	while (total < bufsize) {
-		ssize_t bytes = write(fd, buf + total, bufsize - total);
+	while (total < sizeof(*out)) {
+		ssize_t bytes = read(fd, (char *)out + total, sizeof(*out) - total);
 		if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
 			continue;
 		if (bytes <= 0)
@@ -127,8 +106,15 @@ static int write_bytes(int fd, const char *buf, size_t bufsize)
 
 int tmbr_ctrl_write(int fd, tmbr_pkt_t *pkt)
 {
-	if (write_bytes(fd, (char *)pkt, sizeof(*pkt)) < 0)
-		return -1;
+	size_t total = 0;
+	while (total < sizeof(*pkt)) {
+		ssize_t bytes = write(fd, (char *)pkt + total, sizeof(*pkt) - total);
+		if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
+			continue;
+		if (bytes <= 0)
+			return -1;
+		total += (size_t) bytes;
+	}
 	return 0;
 }
 
