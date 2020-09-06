@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <wlr/backend.h>
+#include <wlr/render/gles2.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
@@ -119,7 +120,7 @@ struct tmbr_screen {
 
 	struct wl_listener destroy;
 	struct wl_listener frame;
-	struct wl_listener mode;
+	struct wl_listener change;
 };
 
 struct tmbr_server {
@@ -246,6 +247,12 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 
 	if ((texture = wlr_surface_get_texture(surface)) == NULL)
 		return;
+	if (wlr_texture_is_gles2(texture)) {
+		struct wlr_gles2_texture_attribs attribs;
+		wlr_gles2_texture_get_attribs(texture, &attribs);
+		glBindTexture(attribs.target, attribs.tex);
+		glTexParameteri(attribs.target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
 
 	box.x = (client->x + client->border + sx) * output->scale;
 	box.y = (client->y + client->border + sy) * output->scale;
@@ -260,15 +267,15 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 static void tmbr_client_render(tmbr_client_t *c)
 {
 	if (c->border) {
-		float *color = (c->desktop->focus == c) ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE;
 		struct wlr_output *output = c->desktop->screen->output;
-		struct wlr_box borders[4];
+		float *color = (c->desktop->focus == c) ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE, s = output->scale;
+		struct wlr_box borders[4] = {
+			{ c->x * s, c->y * s, c->w * s, c->border * s },
+			{ c->x * s, c->y * s, c->border * s, c->h * s },
+			{ (c->x + c->w - c->border) * s, c->y * s, c->border * s, c->h * s },
+			{ c->x * s, (c->y + c->h - c->border) * s, c->w * s, c->border * s },
+		};
 		size_t i;
-
-		borders[0] = (struct wlr_box){ c->x, c->y, c->w, c->border };
-		borders[1] = (struct wlr_box){ c->x, c->y, c->border, c->h };
-		borders[2] = (struct wlr_box){ c->x + c->w - c->border, c->y, c->border, c->h };
-		borders[3] = (struct wlr_box){ c->x, c->y + c->h - c->border, c->w, c->border };
 
 		for (i = 0; i < ARRAY_SIZE(borders); i++)
 			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
@@ -534,11 +541,9 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		return;
 	if (needs_frame) {
 		struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
-		int width, height;
 
 		clock_gettime(CLOCK_MONOTONIC, &screen->render_time);
-		wlr_output_effective_resolution(screen->output, &width, &height);
-		wlr_renderer_begin(renderer, width, height);
+		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
 
 		if (!screen->focus->focus) {
 			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
@@ -560,9 +565,9 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	pixman_region32_fini(&damage);
 }
 
-static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
+static void tmbr_screen_on_change(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	tmbr_screen_t *screen = wl_container_of(listener, screen, mode);
+	tmbr_screen_t *screen = wl_container_of(listener, screen, change);
 	tmbr_desktop_recalculate(screen->focus);
 }
 
@@ -618,7 +623,8 @@ static tmbr_screen_t *tmbr_screen_new(tmbr_server_t *server, struct wlr_output *
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
-	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
+	tmbr_register(&output->events.mode, &screen->change, tmbr_screen_on_change);
+	tmbr_register(&output->events.scale, &screen->change, tmbr_screen_on_change);
 
 	return screen;
 }
@@ -862,6 +868,15 @@ static tmbr_client_t *tmbr_server_focussed_client(tmbr_server_t *server)
 	return server->screen->focus->focus;
 }
 
+static tmbr_screen_t *tmbr_server_find_output(tmbr_server_t *server, const char *output)
+{
+	tmbr_screen_t *s;
+	wl_list_for_each(s, &server->screens, link)
+		if (strcmp(s->output->name, output))
+			return s;
+	return NULL;
+}
+
 static void tmbr_server_stop(tmbr_server_t *server)
 {
 	wl_display_terminate(server->display);
@@ -1029,6 +1044,17 @@ static int tmbr_cmd_screen_focus(tmbr_server_t *server, const tmbr_command_t *cm
 	return 0;
 }
 
+static int tmbr_cmd_screen_scale(tmbr_server_t *server, const tmbr_command_t *cmd)
+{
+	tmbr_screen_t *s;
+	if (cmd->i <= 0 || cmd->i >= 10000 || cmd->screen[sizeof(cmd->screen) - 1])
+		return EINVAL;
+	if ((s = tmbr_server_find_output(server, cmd->screen)) == NULL)
+		return ENOENT;
+	wlr_output_set_scale(s->output, cmd->i / 100.0);
+	return 0;
+}
+
 static int tmbr_cmd_tree_rotate(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
 {
 	tmbr_client_t *focus;
@@ -1165,6 +1191,7 @@ static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *paylo
 		case TMBR_COMMAND_DESKTOP_KILL: error = tmbr_cmd_desktop_kill(server, cmd); break;
 		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(server, cmd); break;
 		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(server, cmd); break;
+		case TMBR_COMMAND_SCREEN_SCALE: error = tmbr_cmd_screen_scale(server, cmd); break;
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(server, cmd); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(server, cfd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(server, cfd); break;
