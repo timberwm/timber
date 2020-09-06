@@ -1100,10 +1100,7 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		wlr_output_effective_resolution(s->output, &w, &h);
 		tmbr_ctrl_write_data(fd, "- name: %s", s->output->name);
-		tmbr_ctrl_write_data(fd, "  x: %lf", x);
-		tmbr_ctrl_write_data(fd, "  y: %lf", y);
-		tmbr_ctrl_write_data(fd, "  width: %u", w);
-		tmbr_ctrl_write_data(fd, "  height: %u", h);
+		tmbr_ctrl_write_data(fd, "  geom: {x: %u, y: %u, width: %u, height: %u}", (int)x, (int)y, w, h);
 		tmbr_ctrl_write_data(fd, "  selected: %s", s == server->screen ? "true" : "false");
 		tmbr_ctrl_write_data(fd, "  desktops:");
 
@@ -1116,10 +1113,7 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 			tmbr_tree_foreach_leaf(d->clients, it, tree) {
 				tmbr_client_t *c = tree->client;
 				tmbr_ctrl_write_data(fd, "    - title: %s", c->surface->toplevel->title);
-				tmbr_ctrl_write_data(fd, "      x: %u", c->x);
-				tmbr_ctrl_write_data(fd, "      y: %u", c->y);
-				tmbr_ctrl_write_data(fd, "      width: %u", c->w);
-				tmbr_ctrl_write_data(fd, "      height: %u", c->h);
+				tmbr_ctrl_write_data(fd, "      geom: {x: %u, y: %u, width: %u, height: %u}", c->x, c->y, c->w, c->h);
 				tmbr_ctrl_write_data(fd, "      selected: %s", c == d->focus ? "true" : "false");
 			}
 		}
