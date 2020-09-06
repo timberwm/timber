@@ -518,10 +518,13 @@ static void tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
 	wl_list_insert(pos, a);
 }
 
-static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, char fs)
+static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen)
 {
-	desktop->fullscreen = fs;
-	tmbr_desktop_recalculate(desktop);
+	if (desktop->fullscreen != fullscreen) {
+		desktop->fullscreen = fullscreen;
+		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
+		tmbr_desktop_recalculate(desktop);
+	}
 }
 
 static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
