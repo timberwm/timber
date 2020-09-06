@@ -104,7 +104,7 @@ struct tmbr_desktop {
 	tmbr_screen_t *screen;
 	tmbr_tree_t *clients;
 	tmbr_client_t *focus;
-	char fullscreen;
+	bool fullscreen;
 };
 
 struct tmbr_screen {
