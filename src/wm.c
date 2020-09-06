@@ -31,6 +31,7 @@
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_damage.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_primary_selection.h>
@@ -114,7 +115,7 @@ struct tmbr_screen {
 	tmbr_desktop_t *focus;
 
 	struct timespec render_time;
-	char damaged;
+	struct wlr_output_damage *damage;
 
 	struct wl_listener destroy;
 	struct wl_listener frame;
@@ -215,7 +216,7 @@ static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 {
 	tmbr_client_t *client = wl_container_of(listener, client, commit);
 	if (client->desktop)
-		client->desktop->screen->damaged = true;
+		wlr_output_damage_add_whole(client->desktop->screen->damage);
 }
 
 static tmbr_client_t *tmbr_client_new(tmbr_server_t *server, struct wlr_xdg_surface *surface)
@@ -472,7 +473,7 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
-	desktop->screen->damaged = true;
+	wlr_output_damage_add_whole(desktop->screen->damage);
 }
 
 static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
@@ -527,29 +528,38 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_screen_t *screen = wl_container_of(listener, screen, frame);
-	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
-	int width, height;
+	pixman_region32_t damage;
+	bool needs_frame;
 
-	if (!screen->damaged || !wlr_output_attach_render(screen->output, NULL))
+	pixman_region32_init(&damage);
+	if (!wlr_output_damage_attach_render(screen->damage, &needs_frame, &damage))
 		return;
+	if (needs_frame) {
+		struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
+		int width, height;
 
-	clock_gettime(CLOCK_MONOTONIC, &screen->render_time);
-	wlr_output_effective_resolution(screen->output, &width, &height);
-	wlr_renderer_begin(renderer, width, height);
+		clock_gettime(CLOCK_MONOTONIC, &screen->render_time);
+		wlr_output_effective_resolution(screen->output, &width, &height);
+		wlr_renderer_begin(renderer, width, height);
 
-	if (!screen->focus->focus) {
-		wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
-	} else if (screen->focus->fullscreen) {
-		tmbr_client_render(screen->focus->focus);
+		if (!screen->focus->focus) {
+			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
+		} else if (screen->focus->fullscreen) {
+			tmbr_client_render(screen->focus->focus);
+		} else {
+			tmbr_tree_t *it, *t;
+			tmbr_tree_foreach_leaf(screen->focus->clients, it, t)
+				tmbr_client_render(t->client);
+		}
+		wlr_output_render_software_cursors(screen->output, NULL);
+
+		wlr_renderer_end(renderer);
+		wlr_output_commit(screen->output);
 	} else {
-		tmbr_tree_t *it, *t;
-		tmbr_tree_foreach_leaf(screen->focus->clients, it, t)
-			tmbr_client_render(t->client);
+		wlr_output_rollback(screen->output);
 	}
-	wlr_output_render_software_cursors(screen->output, NULL);
 
-	wlr_renderer_end(renderer);
-	wlr_output_commit(screen->output);
+	pixman_region32_fini(&damage);
 }
 
 static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -565,7 +575,7 @@ static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
 	tmbr_desktop_focus(desktop, desktop->focus, 1);
-	screen->damaged = true;
+	wlr_output_damage_add_whole(screen->damage);
 	screen->focus = desktop;
 }
 
@@ -611,6 +621,7 @@ static tmbr_screen_t *tmbr_screen_new(tmbr_server_t *server, struct wlr_output *
 	tmbr_screen_t *screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
 	screen->output = output;
 	screen->server = server;
+	screen->damage = wlr_output_damage_create(output);
 	wl_list_init(&screen->desktops);
 
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
@@ -786,7 +797,6 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 		return;
 
 	tmbr_screen_focus(screen);
-	screen->damaged = true;
 
 	if (screen->focus->fullscreen) {
 		client = screen->focus->focus;
@@ -804,6 +814,7 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 		struct wlr_surface *surface;
 		double sx, sy;
 
+		wlr_output_damage_add_whole(screen->damage);
 		tmbr_desktop_focus(screen->focus, client, 1);
 		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &sx, &sy)) != NULL) {
 			wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
