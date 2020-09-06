@@ -534,11 +534,9 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		return;
 	if (needs_frame) {
 		struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
-		int width, height;
 
 		clock_gettime(CLOCK_MONOTONIC, &screen->render_time);
-		wlr_output_effective_resolution(screen->output, &width, &height);
-		wlr_renderer_begin(renderer, width, height);
+		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
 
 		if (!screen->focus->focus) {
 			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
