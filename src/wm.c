@@ -599,7 +599,7 @@ static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *de
 
 static void tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
-	wl_list_insert(&screen->desktops, &desktop->link);
+	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
 	desktop->screen = screen;
 	tmbr_screen_focus_desktop(screen, desktop);
 }
