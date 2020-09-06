@@ -868,6 +868,15 @@ static tmbr_client_t *tmbr_server_focussed_client(tmbr_server_t *server)
 	return server->screen->focus->focus;
 }
 
+static tmbr_screen_t *tmbr_server_find_output(tmbr_server_t *server, const char *output)
+{
+	tmbr_screen_t *s;
+	wl_list_for_each(s, &server->screens, link)
+		if (strcmp(s->output->name, output))
+			return s;
+	return NULL;
+}
+
 static void tmbr_server_stop(tmbr_server_t *server)
 {
 	wl_display_terminate(server->display);
@@ -1035,6 +1044,17 @@ static int tmbr_cmd_screen_focus(tmbr_server_t *server, const tmbr_command_t *cm
 	return 0;
 }
 
+static int tmbr_cmd_screen_scale(tmbr_server_t *server, const tmbr_command_t *cmd)
+{
+	tmbr_screen_t *s;
+	if (cmd->i <= 0 || cmd->i >= 10000 || cmd->screen[sizeof(cmd->screen) - 1])
+		return EINVAL;
+	if ((s = tmbr_server_find_output(server, cmd->screen)) == NULL)
+		return ENOENT;
+	wlr_output_set_scale(s->output, cmd->i / 100.0);
+	return 0;
+}
+
 static int tmbr_cmd_tree_rotate(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
 {
 	tmbr_client_t *focus;
@@ -1171,6 +1191,7 @@ static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *paylo
 		case TMBR_COMMAND_DESKTOP_KILL: error = tmbr_cmd_desktop_kill(server, cmd); break;
 		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(server, cmd); break;
 		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(server, cmd); break;
+		case TMBR_COMMAND_SCREEN_SCALE: error = tmbr_cmd_screen_scale(server, cmd); break;
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(server, cmd); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(server, cfd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(server, cfd); break;
