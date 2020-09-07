@@ -269,7 +269,7 @@ static void tmbr_client_render(tmbr_client_t *c)
 {
 	if (c->border) {
 		struct wlr_output *output = c->desktop->screen->output;
-		float *color = (c->desktop->focus == c) ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE, s = output->scale;
+		float *color = (float[4])TMBR_COLOR_INACTIVE, s = output->scale;
 		struct wlr_box borders[4] = {
 			{ c->x * s, c->y * s, c->w * s, c->border * s },
 			{ c->x * s, c->y * s, c->border * s, c->h * s },
@@ -278,6 +278,8 @@ static void tmbr_client_render(tmbr_client_t *c)
 		};
 		size_t i;
 
+		if (c->desktop->focus == c && c->desktop->screen == c->server->screen)
+			color = (float[4])TMBR_COLOR_ACTIVE;
 		for (i = 0; i < ARRAY_SIZE(borders); i++)
 			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
 	}
@@ -532,12 +534,12 @@ static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 {
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
-	if (screen->focus != desktop) {
+	if (screen->focus != desktop || screen->server->screen != screen) {
 		tmbr_desktop_focus_client(desktop, desktop->focus, 1);
 		wlr_output_damage_add_whole(screen->damage);
 		screen->focus = desktop;
+		screen->server->screen = screen;
 	}
-	screen->server->screen = desktop->screen;
 }
 
 static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
