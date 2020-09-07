@@ -114,16 +114,18 @@ static int tmbr_execute(const tmbr_command_t *cmd, int fd)
 	return 0;
 }
 
-static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
+static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 {
 	ssize_t c, i;
 
+	if (argc < 1)
+		die("Missing command");
 	if (argc < 2)
-		return -1;
+		die("Missing subcommand");
 
 	ARRAY_FIND(commands, c, !strcmp(commands[c].cmd, argv[0]) && !strcmp(commands[c].subcmd, argv[1]));
 	if (c < 0)
-		return -1;
+		die("Unknown command '%s %s'", argv[0], argv[1]);
 	cmd->type = (tmbr_command_type_t) c;
 
 	argc -= 2;
@@ -132,9 +134,9 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 	if (commands[c].args & TMBR_ARG_SCREEN) {
 		size_t len;
 		if (!argc)
-			return -1;
+			die("Command is missing screen");
 		if ((len = strlen(argv[0])) >= sizeof(cmd->screen))
-			return -1;
+			die("Screen length exceeds maximum");
 		memcpy(cmd->screen, argv[0], len + 1);
 		argc--;
 		argv++;
@@ -142,11 +144,10 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 
 	if (commands[c].args & TMBR_ARG_SEL) {
 		if (!argc)
-			return -1;
-
+			die("Command is missing selection");
 		ARRAY_FIND(commands, i, !strcmp(argv[0], selections[i]));
 		if (i < 0)
-			return -1;
+			die("Unknown selection '%s'", argv[0]);
 		cmd->sel = (tmbr_select_t) i;
 		argc--;
 		argv++;
@@ -154,11 +155,10 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 
 	if (commands[c].args & TMBR_ARG_DIR) {
 		if (!argc)
-			return -1;
-
+			die("Command is missing direction");
 		ARRAY_FIND(commands, i, !strcmp(argv[0], directions[i]));
 		if (i < 0)
-			return -1;
+			die("Unknown direction '%s'", argv[0]);
 		cmd->dir = (tmbr_dir_t) i;
 		argc--;
 		argv++;
@@ -166,7 +166,7 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 
 	if (commands[c].args & TMBR_ARG_INT) {
 		if (!argc)
-			return -1;
+			die("Command is missing integer");
 		cmd->i = atoi(argv[0]);
 		argc--;
 		argv++;
@@ -176,7 +176,7 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 		char *key;
 
 		if (!argc)
-			return -1;
+			die("Command is missing key");
 
 		for (key = strtok(argv[0], "+"); key; key = strtok(NULL, "+")) {
 			ARRAY_FIND(modmasks, i, !strcmp(key, modmasks[i].name));
@@ -198,9 +198,9 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 	if (commands[c].args & TMBR_ARG_CMD) {
 		size_t len;
 		if (!argc)
-			return -1;
+			die("Command is missing command line");
 		if ((len = strlen(argv[0])) >= sizeof(cmd->command))
-			return -1;
+			die("Command length exceeds maximum");
 		memcpy(cmd->command, argv[0], len + 1);
 		argc--;
 		argv++;
@@ -208,17 +208,15 @@ static int tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 
 	if (commands[c].args & TMBR_ARG_MODE) {
 		if (!argc)
-			return -1;
+			die("Command is missing mode");
 		if (sscanf(argv[0], "%dx%d@%d", &cmd->mode.width, &cmd->mode.height, &cmd->mode.refresh) != 3)
-			return -1;
+			die("Invalid mode '%s'", argv[0]);
 		argc--;
 		argv++;
 	}
 
 	if (argc)
-		return -1;
-
-	return 0;
+		die("Command has trailing arguments");
 }
 
 static void __attribute__((noreturn)) usage(const char *executable)
@@ -242,11 +240,14 @@ static void __attribute__((noreturn)) usage(const char *executable)
 int tmbr_client(int argc, char *argv[])
 {
 	tmbr_command_t cmd;
-	int error, fd;
+	int error, fd, i;
+
+	for (i = 1; i < argc; i++)
+		if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help"))
+			usage(argv[0]);
 
 	memset(&cmd, 0, sizeof(cmd));
-	if ((tmbr_parse(&cmd, argc - 1, argv + 1)) < 0)
-		usage(argv[0]);
+	tmbr_parse(&cmd, argc - 1, argv + 1);
 
 	if ((fd = tmbr_ctrl_connect(0)) < 0)
 		die("Unable to connect to control socket");
