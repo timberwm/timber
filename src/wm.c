@@ -269,7 +269,7 @@ static void tmbr_client_render(tmbr_client_t *c)
 {
 	if (c->border) {
 		struct wlr_output *output = c->desktop->screen->output;
-		float *color = (c->desktop->focus == c) ? (float[4])TMBR_COLOR_ACTIVE : (float[4])TMBR_COLOR_INACTIVE, s = output->scale;
+		float *color = (float[4])TMBR_COLOR_INACTIVE, s = output->scale;
 		struct wlr_box borders[4] = {
 			{ c->x * s, c->y * s, c->w * s, c->border * s },
 			{ c->x * s, c->y * s, c->border * s, c->h * s },
@@ -278,6 +278,8 @@ static void tmbr_client_render(tmbr_client_t *c)
 		};
 		size_t i;
 
+		if (c->desktop->focus == c && c->desktop->screen == c->server->screen)
+			color = (float[4])TMBR_COLOR_ACTIVE;
 		for (i = 0; i < ARRAY_SIZE(borders); i++)
 			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
 	}
