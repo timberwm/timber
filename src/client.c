@@ -145,7 +145,7 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 	if (commands[c].args & TMBR_ARG_SEL) {
 		if (!argc)
 			die("Command is missing selection");
-		ARRAY_FIND(commands, i, !strcmp(argv[0], selections[i]));
+		ARRAY_FIND(selections, i, !strcmp(argv[0], selections[i]));
 		if (i < 0)
 			die("Unknown selection '%s'", argv[0]);
 		cmd->sel = (tmbr_select_t) i;
@@ -156,7 +156,7 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 	if (commands[c].args & TMBR_ARG_DIR) {
 		if (!argc)
 			die("Command is missing direction");
-		ARRAY_FIND(commands, i, !strcmp(argv[0], directions[i]));
+		ARRAY_FIND(directions, i, !strcmp(argv[0], directions[i]));
 		if (i < 0)
 			die("Unknown direction '%s'", argv[0]);
 		cmd->dir = (tmbr_dir_t) i;
