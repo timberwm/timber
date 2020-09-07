@@ -87,6 +87,7 @@ typedef struct {
 		int error;
 		char data[TMBR_PKT_MESSAGELEN];
 	} u;
+	char tag[4];
 } tmbr_pkt_t;
 
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);

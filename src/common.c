@@ -31,6 +31,8 @@
 #include "common.h"
 #include "config.h"
 
+static const char tag[4] = { 'T', 'M', 'B', 'R' };
+
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {
 	va_list ap;
@@ -93,6 +95,7 @@ int tmbr_ctrl_connect(char create)
 int tmbr_ctrl_read(int fd, tmbr_pkt_t *out)
 {
 	size_t total = 0;
+
 	while (total < sizeof(*out)) {
 		ssize_t bytes = read(fd, (char *)out + total, sizeof(*out) - total);
 		if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
@@ -101,12 +104,19 @@ int tmbr_ctrl_read(int fd, tmbr_pkt_t *out)
 			return -1;
 		total += (size_t) bytes;
 	}
+
+	if (!memcmp(out->tag, tag, sizeof(out->tag)))
+		return -1;
+
 	return 0;
 }
 
 int tmbr_ctrl_write(int fd, tmbr_pkt_t *pkt)
 {
 	size_t total = 0;
+
+	memcpy(pkt->tag, tag, sizeof(pkt->tag));
+
 	while (total < sizeof(*pkt)) {
 		ssize_t bytes = write(fd, (char *)pkt + total, sizeof(*pkt) - total);
 		if (bytes < 0 && (errno == EAGAIN || errno == EINTR))
@@ -115,6 +125,7 @@ int tmbr_ctrl_write(int fd, tmbr_pkt_t *pkt)
 			return -1;
 		total += (size_t) bytes;
 	}
+
 	return 0;
 }
 
