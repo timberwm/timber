@@ -571,7 +571,23 @@ static tmbr_screen_t *tmbr_screen_find_sibling(tmbr_screen_t *screen, tmbr_selec
 
 static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	tmbr_screen_t *screen = wl_container_of(listener, screen, destroy);
+	tmbr_screen_t *screen = wl_container_of(listener, screen, destroy), *sibling = tmbr_screen_find_sibling(screen, TMBR_SELECT_NEXT);
+	tmbr_desktop_t *desktop, *tmp;
+
+	if (sibling) {
+		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
+			tmbr_screen_add_desktop(sibling, desktop);
+		wl_list_init(&screen->desktops);
+	} else {
+		tmbr_tree_t *it, *t;
+		wl_list_for_each(desktop, &screen->desktops, link) {
+			tmbr_tree_foreach_leaf(desktop->clients, it, t)
+				tmbr_desktop_remove_client(desktop, t->client);
+		}
+		wl_display_terminate(screen->server->display);
+	}
+
+	wl_list_remove(&screen->link);
 	free(screen);
 }
 
@@ -675,7 +691,8 @@ static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *p
 static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, unmap);
-	tmbr_desktop_remove_client(client->desktop, client);
+	if (client->desktop)
+		tmbr_desktop_remove_client(client->desktop, client);
 }
 
 static void tmbr_server_on_new_surface(struct wl_listener *listener, void *payload)
