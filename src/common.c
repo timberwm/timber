@@ -105,7 +105,7 @@ int tmbr_ctrl_read(int fd, tmbr_pkt_t *out)
 		total += (size_t) bytes;
 	}
 
-	if (!memcmp(out->tag, tag, sizeof(out->tag)))
+	if (memcmp(out->tag, tag, sizeof(out->tag)))
 		return -1;
 
 	return 0;
