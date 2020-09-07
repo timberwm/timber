@@ -528,9 +528,66 @@ static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen
 	}
 }
 
+static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
+{
+	if (desktop->screen != screen)
+		die("Cannot focus desktop for different screen");
+	if (screen->focus != desktop) {
+		tmbr_desktop_focus_client(desktop, desktop->focus, 1);
+		wlr_output_damage_add_whole(screen->damage);
+		screen->focus = desktop;
+	}
+	screen->server->screen = desktop->screen;
+}
+
+static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
+{
+	if (desktop->clients)
+		die("Cannot remove desktop from screen which has clients");
+
+	if (screen->focus == desktop) {
+		tmbr_desktop_t *sibling;
+		if ((sibling = tmbr_desktop_find_sibling(desktop, TMBR_SELECT_NEXT)) == NULL)
+			die("Cannot remove last screen's desktop");
+		tmbr_screen_focus_desktop(screen, sibling);
+	}
+	wl_list_remove(&desktop->link);
+}
+
+static void tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
+{
+	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
+	desktop->screen = screen;
+	tmbr_screen_focus_desktop(screen, desktop);
+}
+
+static tmbr_screen_t *tmbr_screen_find_sibling(tmbr_screen_t *screen, tmbr_select_t which)
+{
+	struct wl_list *sibling;
+	if ((sibling = tmbr_list_get(&screen->server->screens, &screen->link, which)) == NULL)
+		return NULL;
+	return wl_container_of(sibling, screen, link);;
+}
+
 static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	tmbr_screen_t *screen = wl_container_of(listener, screen, destroy);
+	tmbr_screen_t *screen = wl_container_of(listener, screen, destroy), *sibling = tmbr_screen_find_sibling(screen, TMBR_SELECT_NEXT);
+	tmbr_desktop_t *desktop, *tmp;
+
+	if (sibling) {
+		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
+			tmbr_screen_add_desktop(sibling, desktop);
+		wl_list_init(&screen->desktops);
+	} else {
+		tmbr_tree_t *it, *t;
+		wl_list_for_each(desktop, &screen->desktops, link) {
+			tmbr_tree_foreach_leaf(desktop->clients, it, t)
+				tmbr_desktop_remove_client(desktop, t->client);
+		}
+		wl_display_terminate(screen->server->display);
+	}
+
+	wl_list_remove(&screen->link);
 	free(screen);
 }
 
@@ -573,47 +630,6 @@ static void tmbr_screen_on_change(struct wl_listener *listener, TMBR_UNUSED void
 {
 	tmbr_screen_t *screen = wl_container_of(listener, screen, change);
 	tmbr_desktop_recalculate(screen->focus);
-}
-
-static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
-{
-	if (desktop->screen != screen)
-		die("Cannot focus desktop for different screen");
-	if (screen->focus != desktop) {
-		tmbr_desktop_focus_client(desktop, desktop->focus, 1);
-		wlr_output_damage_add_whole(screen->damage);
-		screen->focus = desktop;
-	}
-	screen->server->screen = desktop->screen;
-}
-
-static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
-{
-	if (desktop->clients)
-		die("Cannot remove desktop from screen which has clients");
-
-	if (screen->focus == desktop) {
-		tmbr_desktop_t *sibling;
-		if ((sibling = tmbr_desktop_find_sibling(desktop, TMBR_SELECT_NEXT)) == NULL)
-			die("Cannot remove last screen's desktop");
-		tmbr_screen_focus_desktop(screen, sibling);
-	}
-	wl_list_remove(&desktop->link);
-}
-
-static void tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
-{
-	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
-	desktop->screen = screen;
-	tmbr_screen_focus_desktop(screen, desktop);
-}
-
-static tmbr_screen_t *tmbr_screen_find_sibling(tmbr_screen_t *screen, tmbr_select_t which)
-{
-	struct wl_list *sibling;
-	if ((sibling = tmbr_list_get(&screen->server->screens, &screen->link, which)) == NULL)
-		return NULL;
-	return wl_container_of(sibling, screen, link);;
 }
 
 static tmbr_screen_t *tmbr_screen_new(tmbr_server_t *server, struct wlr_output *output)
@@ -675,7 +691,8 @@ static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *p
 static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, unmap);
-	tmbr_desktop_remove_client(client->desktop, client);
+	if (client->desktop)
+		tmbr_desktop_remove_client(client->desktop, client);
 }
 
 static void tmbr_server_on_new_surface(struct wl_listener *listener, void *payload)
