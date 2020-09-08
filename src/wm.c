@@ -212,6 +212,11 @@ static __attribute__((format(printf, 2, 3))) void tmbr_notify(tmbr_server_t *ser
 static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, destroy);
+	wl_list_remove(&client->destroy.link);
+	wl_list_remove(&client->commit.link);
+	wl_list_remove(&client->map.link);
+	wl_list_remove(&client->unmap.link);
+	wl_list_remove(&client->request_fullscreen.link);
 	free(client);
 }
 
@@ -588,6 +593,10 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		wl_display_terminate(screen->server->display);
 	}
 
+	wl_list_remove(&screen->destroy.link);
+	wl_list_remove(&screen->frame.link);
+	wl_list_remove(&screen->mode.link);
+	wl_list_remove(&screen->scale.link);
 	wl_list_remove(&screen->link);
 	free(screen);
 }
