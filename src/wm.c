@@ -121,7 +121,8 @@ struct tmbr_screen {
 
 	struct wl_listener destroy;
 	struct wl_listener frame;
-	struct wl_listener change;
+	struct wl_listener scale;
+	struct wl_listener mode;
 };
 
 struct tmbr_server {
@@ -211,6 +212,11 @@ static __attribute__((format(printf, 2, 3))) void tmbr_notify(tmbr_server_t *ser
 static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, destroy);
+	wl_list_remove(&client->destroy.link);
+	wl_list_remove(&client->commit.link);
+	wl_list_remove(&client->map.link);
+	wl_list_remove(&client->unmap.link);
+	wl_list_remove(&client->request_fullscreen.link);
 	free(client);
 }
 
@@ -587,6 +593,10 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		wl_display_terminate(screen->server->display);
 	}
 
+	wl_list_remove(&screen->destroy.link);
+	wl_list_remove(&screen->frame.link);
+	wl_list_remove(&screen->mode.link);
+	wl_list_remove(&screen->scale.link);
 	wl_list_remove(&screen->link);
 	free(screen);
 }
@@ -626,9 +636,15 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	pixman_region32_fini(&damage);
 }
 
-static void tmbr_screen_on_change(struct wl_listener *listener, TMBR_UNUSED void *payload)
+static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	tmbr_screen_t *screen = wl_container_of(listener, screen, change);
+	tmbr_screen_t *screen = wl_container_of(listener, screen, mode);
+	tmbr_desktop_recalculate(screen->focus);
+}
+
+static void tmbr_screen_on_scale(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_screen_t *screen = wl_container_of(listener, screen, scale);
 	tmbr_desktop_recalculate(screen->focus);
 }
 
@@ -643,8 +659,8 @@ static tmbr_screen_t *tmbr_screen_new(tmbr_server_t *server, struct wlr_output *
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
-	tmbr_register(&output->events.mode, &screen->change, tmbr_screen_on_change);
-	tmbr_register(&output->events.scale, &screen->change, tmbr_screen_on_change);
+	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
+	tmbr_register(&output->events.scale, &screen->scale, tmbr_screen_on_scale);
 
 	return screen;
 }
