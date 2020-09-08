@@ -534,12 +534,10 @@ static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 {
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
-	if (screen->focus != desktop || screen->server->screen != screen) {
-		tmbr_desktop_focus_client(desktop, desktop->focus, 1);
-		wlr_output_damage_add_whole(screen->damage);
-		screen->focus = desktop;
-		screen->server->screen = screen;
-	}
+	tmbr_desktop_focus_client(desktop, desktop->focus, 1);
+	screen->focus = desktop;
+	screen->server->screen = screen;
+	wlr_output_damage_add_whole(screen->damage);
 }
 
 static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
