@@ -904,7 +904,7 @@ static tmbr_screen_t *tmbr_server_find_output(tmbr_server_t *server, const char 
 {
 	tmbr_screen_t *s;
 	wl_list_for_each(s, &server->screens, link)
-		if (strcmp(s->output->name, output))
+		if (!strcmp(s->output->name, output))
 			return s;
 	return NULL;
 }
