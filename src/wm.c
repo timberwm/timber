@@ -1191,7 +1191,7 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 	return 0;
 }
 
-static int tmbr_cmd_state_stop(tmbr_server_t *server)
+static int tmbr_cmd_state_quit(tmbr_server_t *server)
 {
 	tmbr_server_stop(server);
 	return 0;
@@ -1259,7 +1259,7 @@ static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *paylo
 		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(server, cmd); break;
 		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(server, cfd); persistent = 1; break;
 		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(server, cfd); break;
-		case TMBR_COMMAND_STATE_STOP: error = tmbr_cmd_state_stop(server); break;
+		case TMBR_COMMAND_STATE_QUIT: error = tmbr_cmd_state_quit(server); break;
 		case TMBR_COMMAND_BINDING_ADD: error = tmbr_cmd_binding_add(server, cmd); break;
 		case TMBR_COMMAND_LAST: error = ENOTSUP; break;
 	}

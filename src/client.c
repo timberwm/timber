@@ -64,7 +64,7 @@ static const struct {
 	{ "tree", "rotate",       0                             },
 	{ "state", "subscribe",   0                             },
 	{ "state", "query",       0                             },
-	{ "state", "stop",        0                             },
+	{ "state", "quit",        0                             },
 	{ "binding", "add",       TMBR_ARG_KEY|TMBR_ARG_CMD     }
 };
 
