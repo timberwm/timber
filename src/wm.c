@@ -731,19 +731,24 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	tmbr_keyboard_t *keyboard = wl_container_of(listener, keyboard, key);
 	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->device->keyboard);
 	struct wlr_event_keyboard_key *event = payload;
-	xkb_keysym_t keysym;
+	const xkb_keysym_t *keysyms;
+	xkb_layout_index_t layout;
 	tmbr_binding_t *binding;
+	int i, n;
 
-	keysym = xkb_state_key_get_one_sym(keyboard->device->keyboard->xkb_state, event->keycode + 8);
-	keysym = xkb_keysym_to_lower(keysym);
-	if (event->state != WLR_KEY_PRESSED || keysym == XKB_KEY_NoSymbol)
+	if (event->state != WLR_KEY_PRESSED)
 		goto unhandled;
 
+	layout = xkb_state_key_get_layout(keyboard->device->keyboard->xkb_state, event->keycode + 8);
+	n = xkb_keymap_key_get_syms_by_level(keyboard->device->keyboard->keymap, event->keycode + 8, layout, 0, &keysyms);
+
 	wl_list_for_each(binding, &keyboard->server->bindings, link) {
-		if (binding->keycode != keysym || binding->modifiers != modifiers)
-			continue;
-		tmbr_spawn("/bin/sh", (char * const[]){ "/bin/sh", "-c", binding->command, NULL });
-		return;
+		for (i = 0; i < n; i++) {
+			if (binding->keycode != keysyms[i] || binding->modifiers != modifiers)
+				continue;
+			tmbr_spawn("/bin/sh", (char * const[]){ "/bin/sh", "-c", binding->command, NULL });
+			return;
+		}
 	}
 
 unhandled:
