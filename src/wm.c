@@ -30,6 +30,7 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_gtk_primary_selection.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_damage.h>
@@ -1314,6 +1315,7 @@ int tmbr_wm(void)
 
 	if (wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
+	    wlr_gtk_primary_selection_device_manager_create(server.display) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
