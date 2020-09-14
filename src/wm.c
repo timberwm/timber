@@ -659,9 +659,9 @@ static tmbr_screen_t *tmbr_screen_new(tmbr_server_t *server, struct wlr_output *
 
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
-	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
 	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
 	tmbr_register(&output->events.scale, &screen->scale, tmbr_screen_on_scale);
+	tmbr_register(&screen->damage->events.frame, &screen->frame, tmbr_screen_on_frame);
 
 	return screen;
 }
