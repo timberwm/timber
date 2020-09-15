@@ -32,6 +32,8 @@
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_gtk_primary_selection.h>
+#include <wlr/types/wlr_idle.h>
+#include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_damage.h>
@@ -132,12 +134,14 @@ struct tmbr_server {
 	struct wl_display *display;
 	struct wlr_backend *backend;
 	struct wlr_compositor *compositor;
-	struct wlr_server_decoration_manager *decoration;
+	struct wlr_cursor *cursor;
+	struct wlr_idle *idle;
+	struct wlr_idle_timeout *idle_timeout;
 	struct wlr_output_layout *output_layout;
 	struct wlr_seat *seat;
-	struct wlr_xdg_shell *xdg_shell;
-	struct wlr_cursor *cursor;
+	struct wlr_server_decoration_manager *decoration;
 	struct wlr_xcursor_manager *xcursor;
+	struct wlr_xdg_shell *xdg_shell;
 
 	struct wl_listener new_input;
 	struct wl_listener new_output;
@@ -151,6 +155,8 @@ struct tmbr_server {
 	struct wl_listener request_set_cursor;
 	struct wl_listener request_set_selection;
 	struct wl_listener request_set_primary_selection;
+	struct wl_listener seat_idle;
+	struct wl_listener seat_resume;
 
 	int ctrlfd;
 	int subfds[16];
@@ -736,6 +742,7 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	tmbr_binding_t *binding;
 	int i, n;
 
+	wlr_idle_notify_activity(keyboard->server->idle, keyboard->server->seat);
 	if (event->state != WLR_KEY_PRESSED)
 		goto unhandled;
 
@@ -812,6 +819,7 @@ static void tmbr_server_on_cursor_axis(struct wl_listener *listener, void *paylo
 {
 	tmbr_server_t *server = wl_container_of(listener, server, cursor_axis);
 	struct wlr_event_pointer_axis *event = payload;
+	wlr_idle_notify_activity(server->idle, server->seat);
 	wlr_seat_pointer_notify_axis(server->seat, event->time_msec, event->orientation,
 				     event->delta, event->delta_discrete, event->source);
 }
@@ -820,6 +828,7 @@ static void tmbr_server_on_cursor_button(struct wl_listener *listener, void *pay
 {
 	tmbr_server_t *server = wl_container_of(listener, server, cursor_button);
 	struct wlr_event_pointer_button *event = payload;
+	wlr_idle_notify_activity(server->idle, server->seat);
 	wlr_seat_pointer_notify_button(server->seat, event->time_msec, event->button, event->state);
 }
 
@@ -836,6 +845,8 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	tmbr_client_t *client = NULL;
 	tmbr_screen_t *screen;
 	tmbr_tree_t *it, *t;
+
+	wlr_idle_notify_activity(server->idle, server->seat);
 
 	if ((output = wlr_output_layout_output_at(server->output_layout, x, y)) == NULL)
 		return;
@@ -914,6 +925,26 @@ static void tmbr_server_on_request_set_primary_selection(struct wl_listener *lis
 	tmbr_server_t *server = wl_container_of(listener, server, request_set_primary_selection);
 	struct wlr_seat_request_set_primary_selection_event *event = payload;
 	wlr_seat_set_primary_selection(server->seat, event->source, event->serial);
+}
+
+static void tmbr_server_on_idle(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, seat_idle);
+	tmbr_screen_t *s;
+	wl_list_for_each(s, &server->screens, link) {
+		wlr_output_enable(s->output, false);
+		wlr_output_commit(s->output);
+	}
+}
+
+static void tmbr_server_on_resume(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, seat_resume);
+	tmbr_screen_t *s;
+	wl_list_for_each(s, &server->screens, link) {
+		wlr_output_enable(s->output, true);
+		wlr_output_commit(s->output);
+	}
 }
 
 static tmbr_client_t *tmbr_server_focussed_client(tmbr_server_t *server)
@@ -1313,12 +1344,15 @@ int tmbr_wm(void)
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
 	    wlr_gtk_primary_selection_device_manager_create(server.display) == NULL ||
+	    wlr_idle_inhibit_v1_create(server.display) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
-	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
+	    (server.idle = wlr_idle_create(server.display)) == NULL ||
+	    (server.idle_timeout = wlr_idle_timeout_create(server.idle, server.seat, TMBR_SCREEN_DPMS_TIMEOUT)) == NULL ||
+	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(NULL, 24)) == NULL ||
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
@@ -1339,6 +1373,8 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.motion, &server.cursor_motion, tmbr_server_on_cursor_motion);
 	tmbr_register(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute, tmbr_server_on_cursor_motion_absolute);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_server_on_cursor_frame);
+	tmbr_register(&server.idle_timeout->events.idle, &server.seat_idle, tmbr_server_on_idle);
+	tmbr_register(&server.idle_timeout->events.resume, &server.seat_resume, tmbr_server_on_resume);
 
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");
