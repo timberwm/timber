@@ -16,7 +16,6 @@
  */
 
 #include <assert.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -160,8 +159,6 @@ struct tmbr_server {
 	struct wl_list screens;
 	tmbr_screen_t *screen;
 };
-
-static tmbr_server_t server;
 
 static void tmbr_spawn(const char *path, char * const argv[])
 {
@@ -1286,27 +1283,23 @@ out:
 	return 0;
 }
 
-static void tmbr_on_signal(int signal)
+static int tmbr_server_on_signal(int signal, void *payload)
 {
+	tmbr_server_t *server = payload;
 	switch (signal) {
 		case SIGCHLD: waitpid(-1, &signal, WNOHANG); break;
-		case SIGTERM: tmbr_server_stop(&server); break;
+		case SIGTERM: tmbr_server_stop(server); break;
 	}
+	return 0;
 }
 
 int tmbr_wm(void)
 {
-	struct sigaction sa;
-	struct stat st;
+	struct wl_event_loop *loop;
+	tmbr_server_t server;
 	const char *socket;
+	struct stat st;
 	char *cfg;
-
-	sa.sa_handler = tmbr_on_signal;
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	if (sigaction(SIGCHLD, &sa, NULL) < 0 ||
-	    sigaction(SIGTERM, &sa, NULL) < 0)
-		die("Could not setup signal handler: %s", strerror(errno));
 
 	wl_list_init(&server.bindings);
 	wl_list_init(&server.screens);
@@ -1353,8 +1346,11 @@ int tmbr_wm(void)
 	setenv("WAYLAND_DISPLAY", socket, 1);
 	if ((server.ctrlfd = tmbr_ctrl_connect(1)) < 0)
 		die("Unable to setup control socket");
-	wl_event_loop_add_fd(wl_display_get_event_loop(server.display), server.ctrlfd,
-			     WL_EVENT_READABLE, tmbr_server_on_command, &server);
+
+	loop = wl_display_get_event_loop(server.display);
+	wl_event_loop_add_fd(loop, server.ctrlfd, WL_EVENT_READABLE, tmbr_server_on_command, &server);
+	wl_event_loop_add_signal(loop, SIGCHLD, tmbr_server_on_signal, &server);
+	wl_event_loop_add_signal(loop, SIGTERM, tmbr_server_on_signal, &server);
 
 	if (!wlr_backend_start(server.backend))
 		die("Could not start backend");
