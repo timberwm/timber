@@ -30,16 +30,19 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_export_dmabuf_v1.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_gtk_primary_selection.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_damage.h>
 #include <wlr/types/wlr_output_layout.h>
-#include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
+#include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
@@ -1315,6 +1318,8 @@ int tmbr_wm(void)
 
 	if (wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
+	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
+	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
 	    wlr_gtk_primary_selection_device_manager_create(server.display) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
@@ -1323,7 +1328,8 @@ int tmbr_wm(void)
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(NULL, 24)) == NULL ||
-	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL)
+	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
+	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
 		die("Could not create backends");
 
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
