@@ -42,6 +42,7 @@
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
@@ -1327,7 +1328,8 @@ int tmbr_wm(void)
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(NULL, 24)) == NULL ||
-	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL)
+	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
+	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
 		die("Could not create backends");
 
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
