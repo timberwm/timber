@@ -171,8 +171,7 @@ static void tmbr_spawn(const char *path, char * const argv[])
 	if ((pid = fork()) < 0) {
 		die("Could not fork: %s", strerror(errno));
 	} else if (pid == 0) {
-		close(0);
-		for (i = 3; i < 1024; i++)
+		for (i = 0; i < 1024; i++)
 			close(i);
 		if (execv(path, argv) < 0)
 			die("Could not execute '%s': %s", path, strerror(errno));
