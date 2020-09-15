@@ -132,12 +132,12 @@ struct tmbr_server {
 	struct wl_display *display;
 	struct wlr_backend *backend;
 	struct wlr_compositor *compositor;
-	struct wlr_server_decoration_manager *decoration;
+	struct wlr_cursor *cursor;
 	struct wlr_output_layout *output_layout;
 	struct wlr_seat *seat;
-	struct wlr_xdg_shell *xdg_shell;
-	struct wlr_cursor *cursor;
+	struct wlr_server_decoration_manager *decoration;
 	struct wlr_xcursor_manager *xcursor;
+	struct wlr_xdg_shell *xdg_shell;
 
 	struct wl_listener new_input;
 	struct wl_listener new_output;
