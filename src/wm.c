@@ -1325,8 +1325,8 @@ static int tmbr_server_on_signal(int signal, void *payload)
 
 int tmbr_wm(void)
 {
+	tmbr_server_t server = { 0 };
 	struct wl_event_loop *loop;
-	tmbr_server_t server;
 	const char *socket;
 	struct stat st;
 	char *cfg;
