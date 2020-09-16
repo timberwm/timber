@@ -685,6 +685,7 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	if ((mode = wlr_output_preferred_mode(output)) != NULL)
 		wlr_output_set_mode(output, mode);
 	wlr_output_enable(output, true);
+	wlr_output_layout_add_auto(server->output_layout, output);
 	if (!wlr_output_commit(output))
 		return;
 
@@ -692,8 +693,6 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	wl_list_insert(&server->screens, &screen->link);
 	if (!server->screen)
 		server->screen = screen;
-
-	wlr_output_layout_add_auto(server->output_layout, output);
 }
 
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
