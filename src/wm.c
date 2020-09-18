@@ -136,6 +136,7 @@ struct tmbr_server {
 	struct wlr_compositor *compositor;
 	struct wlr_cursor *cursor;
 	struct wlr_idle *idle;
+	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wlr_idle_timeout *idle_timeout;
 	struct wlr_output_layout *output_layout;
 	struct wlr_seat *seat;
@@ -157,7 +158,10 @@ struct tmbr_server {
 	struct wl_listener request_set_primary_selection;
 	struct wl_listener seat_idle;
 	struct wl_listener seat_resume;
+	struct wl_listener inhibitor_new;
+	struct wl_listener inhibitor_destroy;
 
+	int inhibitors;
 	int ctrlfd;
 	int subfds[16];
 
@@ -947,6 +951,20 @@ static void tmbr_server_on_resume(struct wl_listener *listener, TMBR_UNUSED void
 	}
 }
 
+static void tmbr_server_on_new_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, inhibitor_new);
+	server->inhibitors++;
+	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors);
+}
+
+static void tmbr_server_on_destroy_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, inhibitor_destroy);
+	server->inhibitors--;
+	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors);
+}
+
 static tmbr_client_t *tmbr_server_focussed_client(tmbr_server_t *server)
 {
 	return server->screen->focus->focus;
@@ -1344,13 +1362,13 @@ int tmbr_wm(void)
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
 	    wlr_gtk_primary_selection_device_manager_create(server.display) == NULL ||
-	    wlr_idle_inhibit_v1_create(server.display) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
 	    (server.idle = wlr_idle_create(server.display)) == NULL ||
+	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
 	    (server.idle_timeout = wlr_idle_timeout_create(server.idle, server.seat, TMBR_SCREEN_DPMS_TIMEOUT)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(NULL, 24)) == NULL ||
@@ -1375,6 +1393,8 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_server_on_cursor_frame);
 	tmbr_register(&server.idle_timeout->events.idle, &server.seat_idle, tmbr_server_on_idle);
 	tmbr_register(&server.idle_timeout->events.resume, &server.seat_resume, tmbr_server_on_resume);
+	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.inhibitor_new, tmbr_server_on_new_inhibitor);
+	tmbr_register(&server.idle_inhibit->events.destroy, &server.inhibitor_destroy, tmbr_server_on_destroy_inhibitor);
 
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");
