@@ -1,22 +1,20 @@
-timber - tree-based window manager
-==================================
+timber - tree-based Wayland compositor
+======================================
 
 [![GitLab Build Status](https://gitlab.com/timberwm/timber/badges/master/pipeline.svg)](https://gitlab.com/timberwm/timber/-/commits/master)
 [![Coverity Status](https://scan.coverity.com/projects/17917/badge.svg)](https://scan.coverity.com/projects/timber)
 
-The timber window manager is a simple tiling window manager that
-is heavily inspired by dwm[1] and bspwm[2]. As with bspwm, timber
+The timber window manager is a simple Wayland compositor which is
+heavily inspired by dwm[1] and bspwm[2]. As with bspwm, timber
 uses binary trees to keep track of clients and manage their
-layouting. As timber strives for simplicity, it does not do any
-input handling. Instead, all commands need to be written into a
-named pipe via a hotkey manager like sxhkd [3].
+layouting.
 
 Requirements
 ------------
 
-In order to build timber you need to have the xcb, xcb-aux and
-xcb-ewmh header and library files installed. Furthermore, timber
-makes use of the meson build system.
+In order to build timber you need to have wlroots and xkbcommon
+header and library files installed. Furthermore, timber makes use
+of the meson build system.
 
 Installation
 ------------
@@ -43,21 +41,21 @@ You can start timber by simply executing it:
 
     $ exec timber
 
-In case you want to start it on a specific X display, you can set
-the DISPLAY variable:
+It will then use the next available Wayland socket in the
+`XDG_RUNTIME_DIR`. The directory must exist before timber is
+executed.
 
-    $ DISPLAY=:1 exec timber
+In case you want to start timber with an initialization script,
+you need to set the `TMBR_CONFIG_PATH` variable:
+
+    $ TMBR_CONFIG_PATH=/path/to/timberrc exec timber
 
 When timber is running, you can control it by using the commands
 provided by timber:
 
     $ timber client_focus next
 
-You can execute `timber -h` to get usage information. Usually,
-you would configure a hotkey manager like sxhkd to bind these
-commands to hotkeys.
-
+You can execute `timber -h` to get usage information.
 
 [1]: https://dwm.suckless.org
 [2]: https://github.com/baskerville/bspwm
-[3]: https://github.com/baskerville/sxhkd
