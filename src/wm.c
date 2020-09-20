@@ -678,23 +678,21 @@ static tmbr_screen_t *tmbr_screen_new(tmbr_server_t *server, struct wlr_output *
 static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
 {
 	struct wlr_output *output = payload;
+	struct wlr_output_mode *mode;
 	tmbr_server_t *server = wl_container_of(listener, server, new_output);
 	tmbr_screen_t *screen;
 
-	if (!wl_list_empty(&output->modes)) {
-		struct wlr_output_mode *mode = wlr_output_preferred_mode(output);
+	wlr_output_enable(output, true);
+	if ((mode = wlr_output_preferred_mode(output)) != NULL)
 		wlr_output_set_mode(output, mode);
-		wlr_output_enable(output, true);
-		if (!wlr_output_commit(output))
-			return;
-	}
+	wlr_output_layout_add_auto(server->output_layout, output);
+	if (!wlr_output_commit(output))
+		return;
 
 	screen = tmbr_screen_new(server, output);
 	wl_list_insert(&server->screens, &screen->link);
 	if (!server->screen)
 		server->screen = screen;
-
-	wlr_output_layout_add_auto(server->output_layout, output);
 }
 
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
