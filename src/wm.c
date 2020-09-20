@@ -233,7 +233,7 @@ static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, commit);
-	if (client->desktop)
+	if (client->desktop && client->desktop->screen->focus == client->desktop)
 		wlr_output_damage_add_whole(client->desktop->screen->damage);
 }
 
@@ -619,7 +619,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 
 	pixman_region32_init(&damage);
 	if (!wlr_output_damage_attach_render(screen->damage, &needs_frame, &damage))
-		return;
+		goto out;
 	if (needs_frame) {
 		struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
 
@@ -643,6 +643,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		wlr_output_rollback(screen->output);
 	}
 
+out:
 	pixman_region32_fini(&damage);
 }
 
