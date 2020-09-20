@@ -233,7 +233,7 @@ static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, commit);
-	if (client->desktop)
+	if (client->desktop && client->desktop->screen->focus == client->desktop)
 		wlr_output_damage_add_whole(client->desktop->screen->damage);
 }
 
