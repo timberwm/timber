@@ -17,7 +17,13 @@ timber \- tree-based window manager
 \fItimber\fR desktop new
 \fItimber\fR desktop swap (next|prev)
 \fItimber\fR screen focus (next|prev)
+\fItimber\fR screen scale <SCREEN> <NUMBER>
+\fItimber\fR screen mode <SCREEN> <WIDTH>x<HEIGHT>x<REFRESH>
 \fItimber\fR tree rotate
+\fItimber\fR state subscribe
+\fItimber\fR state query
+\fItimber\fR state quit
+\fItimber\fR binding add <KEY> <COMMAND>
 .fi
 .SH DESCRIPTION
 .sp
@@ -126,12 +132,47 @@ The current desktop will stay focussed, but the order of those two desktops will
 $ timber screen focus (next|prev)
 .sp
 Selects the screen relative to the currently focussed screen and makes it the new focussed one.
+.SS Screen: set scale
+.sp
+$ timber screen scale <SCREEN> <NUMBER>
+.sp
+Sets the scale of the screen to the given percentage.
+The default scale is 100.
+.SS Screen: set mode
+.sp
+$ timber screen mode <SCREEN> <WIDTH>x<HEIGHT>@<REFRESH>
+.sp
+Sets the mode of the screen to the given width, height and refresh rate.
 .SS Tree: rotate current node
 .sp
 $ timber tree rotate
 .sp
 Rotates the tree node that holds the currently selected client.
 If the previous orientation was a vertical split of the two clients contained by the current node, it will set it to horizontal instead and vice versa.
+.SS State: subscribe to notifications
+.sp
+$ timber state subscribe
+.sp
+Subscribe to notifications.
+The client will not exit, but instead receive event notifications in YAML format.
+.SS State: query current state
+.sp
+$ timber state query
+.sp
+Query current state of the window manager.
+The output is in YAML format.
+.SS State: quit the window manager
+.sp
+$ timber state quit
+.sp
+Gracefully stops the window manager.
+.SS Binding: add a new binding
+.sp
+$ timber binding add <KEY> <COMMAND>
+.sp
+Add new binding for a key combination.
+The key can be a combination of multiple keys recognized by xkbcommon, e.g. "ctrl+alt+a".
+If the given key combination is pressed, the associated command will be invoked via the system's shell.
 .SH AUTHOR
 .sp
 Patrick Steinhardt <ps at pks.im>
