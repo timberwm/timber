@@ -21,7 +21,7 @@ timber \- tree-based window manager
 .fi
 .SH DESCRIPTION
 .sp
-\fBtimber\fR is a tree-based window manager for X11 inspired by bspwm.
+\fBtimber\fR is a tree-based compositor for Wayland inspired by bspwm.
 .SH TERMS
 .SS Client
 .sp
@@ -56,10 +56,9 @@ Each monitor has its own screen that may hold one or more desktops.
 .sp
 $ timber
 .sp
-With no arguments, \fBtimber\fR will start as the window manager.
-By default, it will try to connect to the primary X11 display on :0.
-This can be changed by setting the environment variable \fBDISPLAY\fR.
-If another
+With no arguments, \fBtimber\fR will start the Wayland compositor.
+By default, it will create a new Wayland display "wayland-$n" inside the \fBXDG_RUNTIME_DIR\fR with a control socket "wayland-$n.s".
+If the \fBTMBR_CONFIG_PATH\fR environment variable is set to a script, it will be executed after the compositor has initialized.
 .SS Client: focus neighbouring client
 .sp
 $ timber client focus (next|prev)
