@@ -468,27 +468,6 @@ static tmbr_desktop_t *tmbr_desktop_find_sibling(tmbr_desktop_t *desktop, tmbr_s
 	return wl_container_of(sibling, desktop, link);
 }
 
-static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
-{
-	struct wlr_surface *current = desktop->screen->server->seat->keyboard_state.focused_surface;
-
-	if (!client) {
-		desktop->focus = NULL;
-		return;
-	}
-	if (current == client->surface->surface)
-		return;
-
-	if (inputfocus) {
-		if (desktop->focus)
-			tmbr_client_focus(desktop->focus, false);
-		tmbr_client_focus(client, true);
-	}
-
-	desktop->focus = client;
-	desktop->fullscreen = 0;
-}
-
 static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 {
 	int width, height;
@@ -500,11 +479,34 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 	wlr_output_damage_add_whole(desktop->screen->damage);
 }
 
+static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen)
+{
+	desktop->fullscreen = fullscreen;
+	if (desktop->focus)
+		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
+	tmbr_desktop_recalculate(desktop);
+}
+
+static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
+{
+	if (inputfocus) {
+		if (desktop->focus)
+			tmbr_client_focus(desktop->focus, false);
+		if (client)
+			tmbr_client_focus(client, true);
+	}
+	if (desktop->focus == client)
+		return;
+
+	desktop->focus = client;
+	tmbr_desktop_set_fullscreen(desktop, false);
+}
+
 static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client);
 	client->desktop = desktop;
-	desktop->fullscreen = 0;
+	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
 }
 
@@ -516,7 +518,7 @@ static void tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *c
 	}
 	tmbr_tree_remove(&desktop->clients, client->tree);
 
-	desktop->fullscreen = 0;
+	tmbr_desktop_set_fullscreen(desktop, false);
 	client->desktop = NULL;
 	client->tree = NULL;
 	tmbr_desktop_recalculate(desktop);
@@ -535,15 +537,6 @@ static void tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
 		pos = b;
 	wl_list_remove(a);
 	wl_list_insert(pos, a);
-}
-
-static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen)
-{
-	if (desktop->fullscreen != fullscreen) {
-		desktop->fullscreen = fullscreen;
-		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
-		tmbr_desktop_recalculate(desktop);
-	}
 }
 
 static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
