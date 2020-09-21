@@ -468,6 +468,26 @@ static tmbr_desktop_t *tmbr_desktop_find_sibling(tmbr_desktop_t *desktop, tmbr_s
 	return wl_container_of(sibling, desktop, link);
 }
 
+static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
+{
+	int width, height;
+	wlr_output_effective_resolution(desktop->screen->output, &width, &height);
+	if (desktop->fullscreen)
+		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
+	else
+		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
+	wlr_output_damage_add_whole(desktop->screen->damage);
+}
+
+static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen)
+{
+	if (desktop->fullscreen != fullscreen) {
+		desktop->fullscreen = fullscreen;
+		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
+		tmbr_desktop_recalculate(desktop);
+	}
+}
+
 static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
 {
 	struct wlr_surface *current = desktop->screen->server->seat->keyboard_state.focused_surface;
@@ -487,17 +507,6 @@ static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 
 	desktop->focus = client;
 	desktop->fullscreen = 0;
-}
-
-static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
-{
-	int width, height;
-	wlr_output_effective_resolution(desktop->screen->output, &width, &height);
-	if (desktop->fullscreen)
-		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
-	else
-		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
-	wlr_output_damage_add_whole(desktop->screen->damage);
 }
 
 static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
@@ -535,15 +544,6 @@ static void tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
 		pos = b;
 	wl_list_remove(a);
 	wl_list_insert(pos, a);
-}
-
-static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen)
-{
-	if (desktop->fullscreen != fullscreen) {
-		desktop->fullscreen = fullscreen;
-		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
-		tmbr_desktop_recalculate(desktop);
-	}
 }
 
 static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
