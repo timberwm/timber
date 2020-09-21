@@ -504,6 +504,9 @@ static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 		tmbr_client_focus(client, true);
 	}
 
+	if (desktop->focus == client)
+		return;
+
 	desktop->focus = client;
 	tmbr_desktop_set_fullscreen(desktop, false);
 }
