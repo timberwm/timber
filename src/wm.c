@@ -505,14 +505,14 @@ static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 	}
 
 	desktop->focus = client;
-	desktop->fullscreen = 0;
+	tmbr_desktop_set_fullscreen(desktop, false);
 }
 
 static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client);
 	client->desktop = desktop;
-	desktop->fullscreen = 0;
+	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
 }
 
@@ -524,7 +524,7 @@ static void tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *c
 	}
 	tmbr_tree_remove(&desktop->clients, client->tree);
 
-	desktop->fullscreen = 0;
+	tmbr_desktop_set_fullscreen(desktop, false);
 	client->desktop = NULL;
 	client->tree = NULL;
 	tmbr_desktop_recalculate(desktop);
