@@ -489,21 +489,12 @@ static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen
 
 static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
 {
-	struct wlr_surface *current = desktop->screen->server->seat->keyboard_state.focused_surface;
-
-	if (!client) {
-		desktop->focus = NULL;
-		return;
-	}
-	if (current == client->surface->surface)
-		return;
-
 	if (inputfocus) {
 		if (desktop->focus)
 			tmbr_client_focus(desktop->focus, false);
-		tmbr_client_focus(client, true);
+		if (client)
+			tmbr_client_focus(client, true);
 	}
-
 	if (desktop->focus == client)
 		return;
 
