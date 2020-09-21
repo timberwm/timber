@@ -481,11 +481,10 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 
 static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen)
 {
-	if (desktop->fullscreen != fullscreen) {
-		desktop->fullscreen = fullscreen;
+	desktop->fullscreen = fullscreen;
+	if (desktop->focus)
 		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
-		tmbr_desktop_recalculate(desktop);
-	}
+	tmbr_desktop_recalculate(desktop);
 }
 
 static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
