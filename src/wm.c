@@ -472,7 +472,7 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 {
 	int width, height;
 	wlr_output_effective_resolution(desktop->screen->output, &width, &height);
-	if (desktop->fullscreen)
+	if (desktop->fullscreen && desktop->focus)
 		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
