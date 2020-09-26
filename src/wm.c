@@ -865,7 +865,6 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	struct wlr_output *output;
 	tmbr_client_t *client = NULL;
 	tmbr_screen_t *screen;
-	tmbr_tree_t *it, *t;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 
@@ -883,6 +882,7 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	if (screen->focus->fullscreen) {
 		client = screen->focus->focus;
 	} else {
+		tmbr_tree_t *it, *t;
 		tmbr_tree_foreach_leaf(screen->focus->clients, it, t) {
 			if (t->client->x > x || t->client->x + t->client->w < x ||
 			    t->client->y > y || t->client->y + t->client->h < y)
@@ -902,11 +902,9 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 			wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
 			wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
 		}
-
-		return;
+	} else {
+		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 	}
-
-	wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 }
 
 static void tmbr_server_on_cursor_motion(struct wl_listener *listener, void *payload)
