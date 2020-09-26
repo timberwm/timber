@@ -875,7 +875,7 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	wl_list_for_each(screen, &server->screens, link)
 		if (screen->output == output)
 			break;
-	if (!screen)
+	if (&screen->link == &server->screens)
 		return;
 
 	tmbr_screen_focus_desktop(screen, screen->focus);
