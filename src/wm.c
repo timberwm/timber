@@ -330,7 +330,6 @@ static void tmbr_client_focus(tmbr_client_t *client, bool focus)
 		struct wlr_keyboard *keyboard;
 		if ((keyboard = wlr_seat_get_keyboard(seat)) != NULL)
 			wlr_seat_keyboard_notify_enter(seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
-		wlr_seat_pointer_notify_enter(seat, client->surface->surface, 0, 0);
 	}
 	tmbr_client_damage(client);
 }
