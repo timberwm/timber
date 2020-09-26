@@ -498,6 +498,7 @@ static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen
 	if (desktop->focus)
 		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
 	tmbr_desktop_recalculate(desktop);
+	wlr_output_damage_add_whole(desktop->screen->damage);
 }
 
 static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
@@ -556,10 +557,11 @@ static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 {
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
+	if (screen->focus != desktop)
+		wlr_output_damage_add_whole(screen->damage);
 	tmbr_desktop_focus_client(desktop, desktop->focus, 1);
 	screen->focus = desktop;
 	screen->server->screen = screen;
-	wlr_output_damage_add_whole(screen->damage);
 }
 
 static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
