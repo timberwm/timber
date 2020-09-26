@@ -78,6 +78,7 @@ struct tmbr_keyboard {
 	tmbr_server_t *server;
 	struct wlr_input_device *device;
 
+	struct wl_listener destroy;
 	struct wl_listener key;
 	struct wl_listener modifiers;
 };
@@ -740,6 +741,15 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 	tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 }
 
+static void tmbr_keyboard_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_keyboard_t *keyboard = wl_container_of(listener, keyboard, destroy);
+	wl_list_remove(&keyboard->destroy.link);
+	wl_list_remove(&keyboard->key.link);
+	wl_list_remove(&keyboard->modifiers.link);
+	free(keyboard);
+}
+
 static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 {
 	tmbr_keyboard_t *keyboard = wl_container_of(listener, keyboard, key);
@@ -778,7 +788,7 @@ static void tmbr_keyboard_on_modifiers(struct wl_listener *listener, TMBR_UNUSED
 	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->device->keyboard->modifiers);
 }
 
-static void tmbr_keyboard_setup(tmbr_server_t *server, struct wlr_input_device *device)
+static void tmbr_keyboard_new(tmbr_server_t *server, struct wlr_input_device *device)
 {
 	struct xkb_rule_names rules = {0};
 	struct xkb_context *context;
@@ -797,6 +807,7 @@ static void tmbr_keyboard_setup(tmbr_server_t *server, struct wlr_input_device *
 	wlr_keyboard_set_keymap(device->keyboard, keymap);
 	wlr_keyboard_set_repeat_info(device->keyboard, 25, 600);
 
+	tmbr_register(&device->keyboard->events.destroy, &keyboard->destroy, tmbr_keyboard_on_destroy);
 	tmbr_register(&device->keyboard->events.key, &keyboard->key, tmbr_keyboard_on_key);
 	tmbr_register(&device->keyboard->events.modifiers, &keyboard->modifiers, tmbr_keyboard_on_modifiers);
 
@@ -814,7 +825,7 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 			wlr_cursor_attach_input_device(server->cursor, device);
 			break;
 		case WLR_INPUT_DEVICE_KEYBOARD:
-			tmbr_keyboard_setup(server, device);
+			tmbr_keyboard_new(server, device);
 			break;
 		default:
 			break;
