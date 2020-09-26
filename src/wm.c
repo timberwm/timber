@@ -896,7 +896,6 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 		double sx, sy;
 
 		tmbr_desktop_focus_client(screen->focus, client, 1);
-		tmbr_client_damage(client);
 		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &sx, &sy)) != NULL) {
 			wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
 			wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
