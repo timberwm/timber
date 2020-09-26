@@ -330,7 +330,6 @@ static void tmbr_client_focus(tmbr_client_t *client, bool focus)
 		struct wlr_keyboard *keyboard;
 		if ((keyboard = wlr_seat_get_keyboard(seat)) != NULL)
 			wlr_seat_keyboard_notify_enter(seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
-		wlr_seat_pointer_notify_enter(seat, client->surface->surface, 0, 0);
 	}
 	tmbr_client_damage(client);
 }
@@ -865,7 +864,6 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	struct wlr_output *output;
 	tmbr_client_t *client = NULL;
 	tmbr_screen_t *screen;
-	tmbr_tree_t *it, *t;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 
@@ -875,7 +873,7 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	wl_list_for_each(screen, &server->screens, link)
 		if (screen->output == output)
 			break;
-	if (!screen)
+	if (&screen->link == &server->screens)
 		return;
 
 	tmbr_screen_focus_desktop(screen, screen->focus);
@@ -883,6 +881,7 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	if (screen->focus->fullscreen) {
 		client = screen->focus->focus;
 	} else {
+		tmbr_tree_t *it, *t;
 		tmbr_tree_foreach_leaf(screen->focus->clients, it, t) {
 			if (t->client->x > x || t->client->x + t->client->w < x ||
 			    t->client->y > y || t->client->y + t->client->h < y)
@@ -897,16 +896,13 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 		double sx, sy;
 
 		tmbr_desktop_focus_client(screen->focus, client, 1);
-		tmbr_client_damage(client);
 		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &sx, &sy)) != NULL) {
 			wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
 			wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
 		}
-
-		return;
+	} else {
+		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 	}
-
-	wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 }
 
 static void tmbr_server_on_cursor_motion(struct wl_listener *listener, void *payload)
