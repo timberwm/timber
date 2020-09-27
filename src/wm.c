@@ -1174,7 +1174,7 @@ static int tmbr_cmd_screen_mode(tmbr_server_t *server, const tmbr_command_t *cmd
 	if ((s = tmbr_server_find_output(server, cmd->screen)) == NULL)
 		return ENOENT;
 	wl_list_for_each(mode, &s->output->modes, link) {
-		if (cmd->mode.width !=  mode->width || cmd->mode.height != mode->height || cmd->mode.refresh != mode->refresh)
+		if (cmd->mode.width != mode->width || cmd->mode.height != mode->height || cmd->mode.refresh != mode->refresh)
 			continue;
 		wlr_output_set_mode(s->output, mode);
 		return 0;
