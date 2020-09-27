@@ -638,7 +638,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			tmbr_tree_foreach_leaf(screen->focus->clients, it, t)
 				tmbr_client_render(t->client, &damage);
 		}
-		wlr_output_render_software_cursors(screen->output, NULL);
+		wlr_output_render_software_cursors(screen->output, &damage);
 
 		wlr_renderer_end(renderer);
 		wlr_output_commit(screen->output);
