@@ -134,7 +134,6 @@ struct tmbr_screen {
 struct tmbr_server {
 	struct wl_display *display;
 	struct wlr_backend *backend;
-	struct wlr_compositor *compositor;
 	struct wlr_cursor *cursor;
 	struct wlr_idle *idle;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
@@ -148,7 +147,6 @@ struct tmbr_server {
 	struct wl_listener new_input;
 	struct wl_listener new_output;
 	struct wl_listener new_surface;
-
 	struct wl_listener cursor_axis;
 	struct wl_listener cursor_button;
 	struct wl_listener cursor_motion;
