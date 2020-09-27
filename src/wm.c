@@ -1133,7 +1133,7 @@ static int tmbr_cmd_desktop_kill(tmbr_server_t *server, TMBR_UNUSED const tmbr_c
 	tmbr_desktop_t *desktop = server->screen->focus;
 	if (desktop->clients)
 		return EEXIST;
-	if (!desktop->link.prev && !desktop->link.next)
+	if (tmbr_desktop_find_sibling(desktop, TMBR_SELECT_NEXT) == NULL)
 		return ENOENT;
 	tmbr_screen_remove_desktop(server->screen, desktop);
 	tmbr_desktop_free(desktop);
