@@ -41,6 +41,9 @@ executable(
     dependency('wlroots'),
     dependency('xkbcommon'),
   ],
-  c_args: '-DWLR_USE_UNSTABLE',
+  c_args: [
+    '-DWLR_USE_UNSTABLE',
+    '-D_POSIX_C_SOURCE=200809L',
+  ],
   install: true,
 )
