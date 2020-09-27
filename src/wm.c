@@ -134,7 +134,6 @@ struct tmbr_screen {
 struct tmbr_server {
 	struct wl_display *display;
 	struct wlr_backend *backend;
-	struct wlr_compositor *compositor;
 	struct wlr_cursor *cursor;
 	struct wlr_idle *idle;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
@@ -148,7 +147,6 @@ struct tmbr_server {
 	struct wl_listener new_input;
 	struct wl_listener new_output;
 	struct wl_listener new_surface;
-
 	struct wl_listener cursor_axis;
 	struct wl_listener cursor_button;
 	struct wl_listener cursor_motion;
@@ -500,7 +498,7 @@ static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen
 	wlr_output_damage_add_whole(desktop->screen->damage);
 }
 
-static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, int inputfocus)
+static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, bool inputfocus)
 {
 	if (inputfocus) {
 		if (desktop->focus)
@@ -520,21 +518,19 @@ static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *clie
 	tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client);
 	client->desktop = desktop;
 	tmbr_desktop_set_fullscreen(desktop, false);
-	tmbr_desktop_recalculate(desktop);
 }
 
 static void tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (desktop->focus == client) {
 		tmbr_tree_t *sibling = tmbr_tree_find_sibling(client->tree, TMBR_SELECT_NEAREST);
-		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, 1);
+		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, true);
 	}
 	tmbr_tree_remove(&desktop->clients, client->tree);
 
 	tmbr_desktop_set_fullscreen(desktop, false);
 	client->desktop = NULL;
 	client->tree = NULL;
-	tmbr_desktop_recalculate(desktop);
 }
 
 static void tmbr_desktop_swap(tmbr_desktop_t *_a, tmbr_desktop_t *_b)
@@ -558,7 +554,7 @@ static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 		die("Cannot focus desktop for different screen");
 	if (screen->focus != desktop)
 		wlr_output_damage_add_whole(screen->damage);
-	tmbr_desktop_focus_client(desktop, desktop->focus, 1);
+	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 	screen->focus = desktop;
 	screen->server->screen = screen;
 }
@@ -566,12 +562,12 @@ static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
 	if (desktop->clients)
-		die("Cannot remove desktop from screen which has clients");
+		die("Cannot remove non-empty desktop");
 
 	if (screen->focus == desktop) {
 		tmbr_desktop_t *sibling;
 		if ((sibling = tmbr_desktop_find_sibling(desktop, TMBR_SELECT_NEXT)) == NULL)
-			die("Cannot remove last screen's desktop");
+			die("Cannot remove screen's last desktop");
 		tmbr_screen_focus_desktop(screen, sibling);
 	}
 	wl_list_remove(&desktop->link);
@@ -642,7 +638,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			tmbr_tree_foreach_leaf(screen->focus->clients, it, t)
 				tmbr_client_render(t->client, &damage);
 		}
-		wlr_output_render_software_cursors(screen->output, NULL);
+		wlr_output_render_software_cursors(screen->output, &damage);
 
 		wlr_renderer_end(renderer);
 		wlr_output_commit(screen->output);
@@ -708,7 +704,7 @@ static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void
 	struct wlr_xdg_toplevel_set_fullscreen_event *event = payload;
 	tmbr_client_t *client = wl_container_of(listener, client, request_fullscreen);
 	if (client->desktop) {
-		tmbr_desktop_focus_client(client->server->screen->focus, client, 0);
+		tmbr_desktop_focus_client(client->server->screen->focus, client, false);
 		tmbr_desktop_set_fullscreen(client->desktop, event->fullscreen);
 	}
 }
@@ -717,7 +713,7 @@ static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *p
 {
 	tmbr_client_t *client = wl_container_of(listener, client, map);
 	tmbr_desktop_add_client(client->server->screen->focus, client);
-	tmbr_desktop_focus_client(client->server->screen->focus, client, 1);
+	tmbr_desktop_focus_client(client->server->screen->focus, client, true);
 }
 
 static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -895,7 +891,7 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 		struct wlr_surface *surface;
 		double sx, sy;
 
-		tmbr_desktop_focus_client(screen->focus, client, 1);
+		tmbr_desktop_focus_client(screen->focus, client, true);
 		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &sx, &sy)) != NULL) {
 			wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
 			wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
@@ -1005,7 +1001,7 @@ static int tmbr_cmd_client_focus(tmbr_server_t *server, const tmbr_command_t *cm
 	if ((focus = tmbr_server_focussed_client(server)) == NULL ||
 	    (next = tmbr_tree_find_sibling(focus->tree, cmd->sel)) == NULL)
 		return ENOENT;
-	tmbr_desktop_focus_client(focus->desktop, next->client, 1);
+	tmbr_desktop_focus_client(focus->desktop, next->client, true);
 
 	return 0;
 }
@@ -1080,7 +1076,7 @@ static int tmbr_cmd_client_to_desktop(tmbr_server_t *server, const tmbr_command_
 		return ENOENT;
 	tmbr_desktop_remove_client(focus->desktop, focus);
 	tmbr_desktop_add_client(target, focus);
-	tmbr_desktop_focus_client(target, focus, 0);
+	tmbr_desktop_focus_client(target, focus, false);
 
 	return 0;
 }
@@ -1095,7 +1091,7 @@ static int tmbr_cmd_client_to_screen(tmbr_server_t *server, const tmbr_command_t
 		return ENOENT;
 	tmbr_desktop_remove_client(client->desktop, client);
 	tmbr_desktop_add_client(screen->focus, client);
-	tmbr_desktop_focus_client(screen->focus, client, 0);
+	tmbr_desktop_focus_client(screen->focus, client, false);
 
 	return 0;
 }
@@ -1137,7 +1133,7 @@ static int tmbr_cmd_desktop_kill(tmbr_server_t *server, TMBR_UNUSED const tmbr_c
 	tmbr_desktop_t *desktop = server->screen->focus;
 	if (desktop->clients)
 		return EEXIST;
-	if (!desktop->link.prev && !desktop->link.next)
+	if (tmbr_desktop_find_sibling(desktop, TMBR_SELECT_NEXT) == NULL)
 		return ENOENT;
 	tmbr_screen_remove_desktop(server->screen, desktop);
 	tmbr_desktop_free(desktop);
@@ -1178,7 +1174,7 @@ static int tmbr_cmd_screen_mode(tmbr_server_t *server, const tmbr_command_t *cmd
 	if ((s = tmbr_server_find_output(server, cmd->screen)) == NULL)
 		return ENOENT;
 	wl_list_for_each(mode, &s->output->modes, link) {
-		if (cmd->mode.width !=  mode->width || cmd->mode.height != mode->height || cmd->mode.refresh != mode->refresh)
+		if (cmd->mode.width != mode->width || cmd->mode.height != mode->height || cmd->mode.refresh != mode->refresh)
 			continue;
 		wlr_output_set_mode(s->output, mode);
 		return 0;
