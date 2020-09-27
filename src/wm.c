@@ -562,12 +562,12 @@ static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
 {
 	if (desktop->clients)
-		die("Cannot remove desktop from screen which has clients");
+		die("Cannot remove non-empty desktop");
 
 	if (screen->focus == desktop) {
 		tmbr_desktop_t *sibling;
 		if ((sibling = tmbr_desktop_find_sibling(desktop, TMBR_SELECT_NEXT)) == NULL)
-			die("Cannot remove last screen's desktop");
+			die("Cannot remove screen's last desktop");
 		tmbr_screen_focus_desktop(screen, sibling);
 	}
 	wl_list_remove(&desktop->link);
