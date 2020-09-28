@@ -288,12 +288,17 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 
 static void tmbr_client_render(tmbr_client_t *c, pixman_region32_t *damage)
 {
+	struct wlr_output *output = c->desktop->screen->output;
+	const float s = output->scale;
 	pixman_box32_t geom = { .x1 = c->x, .x2 = c->x + c->w, .y1 = c->y, .y2 = c->y + c->h };
+	struct wlr_box scissor_box = { .x = c->x * s, .y = c->y * s, .width = c->w * s, .height = c->h * s };
+
 	if (!pixman_region32_contains_rectangle(damage, &geom))
 		return;
+
+	wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &scissor_box);
 	if (c->border) {
-		struct wlr_output *output = c->desktop->screen->output;
-		const float *color = TMBR_COLOR_INACTIVE, s = output->scale;
+		const float *color = TMBR_COLOR_INACTIVE;
 		struct wlr_box borders[4] = {
 			{ c->x * s, c->y * s, c->w * s, c->border * s },
 			{ c->x * s, c->y * s, c->border * s, c->h * s },
@@ -308,6 +313,7 @@ static void tmbr_client_render(tmbr_client_t *c, pixman_region32_t *damage)
 			wlr_render_rect(wlr_backend_get_renderer(output->backend), &borders[i], color, output->transform_matrix);
 	}
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_client_render_surface, c);
+	wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), NULL);
 }
 
 static void tmbr_client_set_box(tmbr_client_t *client, int x, int y, int w, int h, int border)
