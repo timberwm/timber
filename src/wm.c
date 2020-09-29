@@ -671,6 +671,7 @@ static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *
 static void tmbr_screen_on_scale(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_screen_t *screen = wl_container_of(listener, screen, scale);
+	wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
 	tmbr_desktop_recalculate(screen->focus);
 }
 
