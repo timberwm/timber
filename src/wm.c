@@ -330,10 +330,16 @@ static void tmbr_client_focus(tmbr_client_t *client, bool focus)
 {
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
 	if (focus) {
-		struct wlr_seat *seat = client->desktop->screen->server->seat;
+		tmbr_server_t *server = client->desktop->screen->server;
+		double x = server->cursor->x, y = server->cursor->y;
 		struct wlr_keyboard *keyboard;
-		if ((keyboard = wlr_seat_get_keyboard(seat)) != NULL)
-			wlr_seat_keyboard_notify_enter(seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+		struct wlr_surface *surface;
+
+		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y)) == NULL)
+			surface = client->surface->surface;
+		wlr_seat_pointer_notify_enter(server->seat, surface, x, y);
+		if ((keyboard = wlr_seat_get_keyboard(server->seat)) != NULL)
+			wlr_seat_keyboard_notify_enter(server->seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
 	}
 	tmbr_client_damage(client);
 }
@@ -894,14 +900,10 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	}
 
 	if (client) {
-		struct wlr_surface *surface;
 		double sx, sy;
-
 		tmbr_desktop_focus_client(screen->focus, client, true);
-		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &sx, &sy)) != NULL) {
-			wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
+		if ((wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &sx, &sy)) != NULL)
 			wlr_seat_pointer_notify_motion(server->seat, time, sx, sy);
-		}
 	} else {
 		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 	}
