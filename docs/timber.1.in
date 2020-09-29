@@ -173,6 +173,13 @@ $ timber binding add <KEY> <COMMAND>
 Add new binding for a key combination.
 The key can be a combination of multiple keys recognized by xkbcommon, e.g. "ctrl+alt+a".
 If the given key combination is pressed, the associated command will be invoked via the system's shell.
+.SH ENVIRONMENT VARIABLES
+The following environment variables can be set to modify behaviour of timber:
+.SS XCURSOR_PATH
+A colon-delimited list of directories containing cursor themes.
+.SS XCURSOR_THEME
+.sp
+The theme to use for the cursor.
 .SH AUTHOR
 .sp
 Patrick Steinhardt <ps at pks.im>
