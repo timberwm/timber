@@ -177,11 +177,19 @@ static void tmbr_spawn(const char *path, char * const argv[])
 	if ((pid = fork()) < 0) {
 		die("Could not fork: %s", strerror(errno));
 	} else if (pid == 0) {
+		sigset_t set;
+
+		if (setsid() < 0 || sigemptyset(&set) < 0 || sigprocmask(SIG_SETMASK, &set, NULL) < 0)
+			die("Could not prepare child process: %s", strerror(errno));
 		for (i = 0; i < 1024; i++)
 			close(i);
-		if (execv(path, argv) < 0)
+		if (fork() == 0 && execv(path, argv) < 0)
 			die("Could not execute '%s': %s", path, strerror(errno));
+
+		_exit(0);
 	}
+
+	waitpid(pid, NULL, 0);
 }
 
 static struct wl_list *tmbr_list_get(struct wl_list *head, struct wl_list *link, tmbr_select_t which)
@@ -1349,13 +1357,10 @@ out:
 	return 0;
 }
 
-static int tmbr_server_on_signal(int signal, void *payload)
+static int tmbr_server_on_term(TMBR_UNUSED int signal, void *payload)
 {
 	tmbr_server_t *server = payload;
-	switch (signal) {
-		case SIGCHLD: waitpid(-1, &signal, WNOHANG); break;
-		case SIGTERM: tmbr_server_stop(server); break;
-	}
+	tmbr_server_stop(server);
 	return 0;
 }
 
@@ -1422,8 +1427,7 @@ int tmbr_wm(void)
 
 	loop = wl_display_get_event_loop(server.display);
 	wl_event_loop_add_fd(loop, server.ctrlfd, WL_EVENT_READABLE, tmbr_server_on_command, &server);
-	wl_event_loop_add_signal(loop, SIGCHLD, tmbr_server_on_signal, &server);
-	wl_event_loop_add_signal(loop, SIGTERM, tmbr_server_on_signal, &server);
+	wl_event_loop_add_signal(loop, SIGTERM, tmbr_server_on_term, &server);
 
 	if (!wlr_backend_start(server.backend))
 		die("Could not start backend");
