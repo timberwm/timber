@@ -1369,7 +1369,6 @@ int tmbr_wm(void)
 	tmbr_server_t server = { 0 };
 	struct wl_event_loop *loop;
 	const char *socket;
-	struct stat st;
 	char *cfg;
 
 	wl_list_init(&server.bindings);
@@ -1434,7 +1433,7 @@ int tmbr_wm(void)
 
 	if ((cfg = getenv("TMBR_CONFIG_PATH")) == NULL)
 		cfg = TMBR_CONFIG_PATH;
-	if (stat(cfg, &st) == 0)
+	if (access(cfg, X_OK) == 0)
 		tmbr_spawn(cfg, (char * const[]){ cfg, NULL });
 	else if (errno != ENOENT)
 		die("Could not execute config file: %s", strerror(errno));
