@@ -21,11 +21,12 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <wayland-client.h>
 #include <wlr/types/wlr_keyboard.h>
 
 #include "client.h"
 #include "common.h"
-#include "config.h"
+#include "timber-client.h"
 
 #define ARRAY_FIND(array, i, cmp) \
 	for (i = 0; i < (ssize_t)ARRAY_SIZE(array); i++) \
@@ -45,28 +46,39 @@
 static const struct {
 	const char *cmd;
 	const char *subcmd;
+	int function;
 	int args;
 } commands[] = {
-	{ "client", "focus",      TMBR_ARG_SEL                  },
-	{ "client", "fullscreen", 0                             },
-	{ "client", "kill",       0                             },
-	{ "client", "resize",     TMBR_ARG_DIR|TMBR_ARG_INT     },
-	{ "client", "swap",       TMBR_ARG_SEL                  },
-	{ "client", "to_desktop", TMBR_ARG_SEL                  },
-	{ "client", "to_screen",  TMBR_ARG_SEL                  },
-	{ "desktop", "focus",     TMBR_ARG_SEL                  },
-	{ "desktop", "kill",      0                             },
-	{ "desktop", "new",       0                             },
-	{ "desktop", "swap",      TMBR_ARG_SEL                  },
-	{ "screen", "focus",      TMBR_ARG_SEL                  },
-	{ "screen", "scale",      TMBR_ARG_SCREEN|TMBR_ARG_INT  },
-	{ "screen", "mode",       TMBR_ARG_SCREEN|TMBR_ARG_MODE },
-	{ "tree", "rotate",       0                             },
-	{ "state", "subscribe",   0                             },
-	{ "state", "query",       0                             },
-	{ "state", "quit",        0                             },
-	{ "binding", "add",       TMBR_ARG_KEY|TMBR_ARG_CMD     }
+	{ "client", "focus",      TMBR_CTRL_CLIENT_FOCUS,      TMBR_ARG_SEL                  },
+	{ "client", "fullscreen", TMBR_CTRL_CLIENT_FULLSCREEN, 0                             },
+	{ "client", "kill",       TMBR_CTRL_CLIENT_KILL,       0                             },
+	{ "client", "resize",     TMBR_CTRL_CLIENT_RESIZE,     TMBR_ARG_DIR|TMBR_ARG_INT     },
+	{ "client", "swap",       TMBR_CTRL_CLIENT_SWAP,       TMBR_ARG_SEL                  },
+	{ "client", "to_desktop", TMBR_CTRL_CLIENT_TO_DESKTOP, TMBR_ARG_SEL                  },
+	{ "client", "to_screen",  TMBR_CTRL_CLIENT_TO_SCREEN,  TMBR_ARG_SEL                  },
+	{ "desktop", "focus",     TMBR_CTRL_DESKTOP_FOCUS,     TMBR_ARG_SEL                  },
+	{ "desktop", "kill",      TMBR_CTRL_DESKTOP_KILL,      0                             },
+	{ "desktop", "new",       TMBR_CTRL_DESKTOP_NEW,       0                             },
+	{ "desktop", "swap",      TMBR_CTRL_DESKTOP_SWAP,      TMBR_ARG_SEL                  },
+	{ "screen", "focus",      TMBR_CTRL_SCREEN_FOCUS,      TMBR_ARG_SEL                  },
+	{ "screen", "scale",      TMBR_CTRL_SCREEN_SCALE,      TMBR_ARG_SCREEN|TMBR_ARG_INT  },
+	{ "screen", "mode",       TMBR_CTRL_SCREEN_MODE,       TMBR_ARG_SCREEN|TMBR_ARG_MODE },
+	{ "tree", "rotate",       TMBR_CTRL_TREE_ROTATE,       0                             },
+	{ "state", "query",       TMBR_CTRL_STATE_QUERY,       0                             },
+	{ "state", "quit",        TMBR_CTRL_STATE_QUIT,        0                             },
+	{ "binding", "add",       TMBR_CTRL_BINDING_ADD,       TMBR_ARG_KEY|TMBR_ARG_CMD     }
 };
+
+typedef struct tmbr_arg {
+	int function;
+	enum tmbr_ctrl_selection sel;
+	enum tmbr_ctrl_direction dir;
+	int i;
+	struct { uint32_t modifiers; xkb_keysym_t keycode; } key;
+	struct { int height; int width; int refresh; } mode;
+	char command[128];
+	char screen[16];
+} tmbr_arg_t;
 
 static const struct {
 	const char *name;
@@ -85,36 +97,7 @@ static const struct {
 static const char *directions[] = { "north", "south", "east", "west" };
 static const char *selections[] = { "prev", "next" };
 
-typedef int (*tmbr_cmd_t)(int argc, const char *argv[]);
-
-static int tmbr_execute(const tmbr_command_t *cmd, int fd)
-{
-	tmbr_pkt_t pkt;
-	int error;
-
-	memset(&pkt, 0, sizeof(pkt));
-	pkt.type = TMBR_PKT_COMMAND;
-	pkt.u.command = *cmd;
-
-	if (tmbr_ctrl_write(fd, &pkt) < 0)
-		return -1;
-
-	while ((error = tmbr_ctrl_read(fd, &pkt)) == 0) {
-		if (pkt.type != TMBR_PKT_DATA)
-			break;
-		puts(pkt.u.data);
-	}
-	if (error < 0)
-		die("Could not read control packet");
-	if (pkt.type != TMBR_PKT_ERROR)
-		die("Received unexpected control packet from server");
-	if (pkt.u.error != 0)
-		die("Error executing command: %s", strerror(pkt.u.error));
-
-	return 0;
-}
-
-static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
+static void tmbr_parse(tmbr_arg_t *out, int argc, char **argv)
 {
 	ssize_t c, i;
 
@@ -126,7 +109,7 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 	ARRAY_FIND(commands, c, !strcmp(commands[c].cmd, argv[0]) && !strcmp(commands[c].subcmd, argv[1]));
 	if (c < 0)
 		die("Unknown command '%s %s'", argv[0], argv[1]);
-	cmd->type = (tmbr_command_type_t) c;
+	out->function = commands[c].function;
 
 	argc -= 2;
 	argv += 2;
@@ -135,9 +118,9 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 		size_t len;
 		if (!argc)
 			die("Command is missing screen");
-		if ((len = strlen(argv[0])) >= sizeof(cmd->screen))
+		if ((len = strlen(argv[0])) >= sizeof(out->screen))
 			die("Screen length exceeds maximum");
-		memcpy(cmd->screen, argv[0], len + 1);
+		memcpy(out->screen, argv[0], len + 1);
 		argc--;
 		argv++;
 	}
@@ -148,7 +131,7 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 		ARRAY_FIND(selections, i, !strcmp(argv[0], selections[i]));
 		if (i < 0)
 			die("Unknown selection '%s'", argv[0]);
-		cmd->sel = (tmbr_select_t) i;
+		out->sel = (enum tmbr_ctrl_selection) i;
 		argc--;
 		argv++;
 	}
@@ -159,7 +142,7 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 		ARRAY_FIND(directions, i, !strcmp(argv[0], directions[i]));
 		if (i < 0)
 			die("Unknown direction '%s'", argv[0]);
-		cmd->dir = (tmbr_dir_t) i;
+		out->dir = (enum tmbr_ctrl_direction) i;
 		argc--;
 		argv++;
 	}
@@ -167,7 +150,7 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 	if (commands[c].args & TMBR_ARG_INT) {
 		if (!argc)
 			die("Command is missing integer");
-		cmd->i = atoi(argv[0]);
+		out->i = atoi(argv[0]);
 		argc--;
 		argv++;
 	}
@@ -181,14 +164,14 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 		for (key = strtok(argv[0], "+"); key; key = strtok(NULL, "+")) {
 			ARRAY_FIND(modmasks, i, !strcmp(key, modmasks[i].name));
 			if (i >= 0) {
-				cmd->key.modifiers |= modmasks[i].modifier;
+				out->key.modifiers |= modmasks[i].modifier;
 				continue;
 			}
 
-			if ((cmd->key.keycode = xkb_keysym_from_name(key, 0)) == 0)
+			if ((out->key.keycode = xkb_keysym_from_name(key, 0)) == 0)
 				die("Unable to parse key '%s'", key);
 		}
-		if (!cmd->key.keycode)
+		if (!out->key.keycode)
 			die("Binding requires a key");
 
 		argc--;
@@ -199,9 +182,9 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 		size_t len;
 		if (!argc)
 			die("Command is missing command line");
-		if ((len = strlen(argv[0])) >= sizeof(cmd->command))
+		if ((len = strlen(argv[0])) >= sizeof(out->command))
 			die("Command length exceeds maximum");
-		memcpy(cmd->command, argv[0], len + 1);
+		memcpy(out->command, argv[0], len + 1);
 		argc--;
 		argv++;
 	}
@@ -209,7 +192,7 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 	if (commands[c].args & TMBR_ARG_MODE) {
 		if (!argc)
 			die("Command is missing mode");
-		if (sscanf(argv[0], "%dx%d@%d", &cmd->mode.width, &cmd->mode.height, &cmd->mode.refresh) != 3)
+		if (sscanf(argv[0], "%dx%d@%d", &out->mode.width, &out->mode.height, &out->mode.refresh) != 3)
 			die("Invalid mode '%s'", argv[0]);
 		argc--;
 		argv++;
@@ -217,6 +200,15 @@ static void tmbr_parse(tmbr_command_t *cmd, int argc, char **argv)
 
 	if (argc)
 		die("Command has trailing arguments");
+}
+
+static void tmbr_client_on_global(void *data, struct wl_registry *registry, uint32_t id, const char *interface, uint32_t version)
+{
+	if (!strcmp(interface, tmbr_ctrl_interface.name)) {
+		struct tmbr_ctrl **cmd = data;
+		if ((*cmd = wl_registry_bind(registry, id, &tmbr_ctrl_interface, version)) == NULL)
+			die("Could not bind timber control");
+	}
 }
 
 static void __attribute__((noreturn)) usage(const char *executable)
@@ -239,23 +231,53 @@ static void __attribute__((noreturn)) usage(const char *executable)
 
 int tmbr_client(int argc, char *argv[])
 {
-	tmbr_command_t cmd;
-	int error, fd, i;
+	const struct wl_registry_listener listener = {
+		.global = tmbr_client_on_global,
+	};
+	struct wl_display *display;
+	struct tmbr_ctrl *ctrl = NULL;
+	tmbr_arg_t args = { 0 };
+	uint32_t error = 0;
 
-	for (i = 1; i < argc; i++)
-		if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help"))
-			usage(argv[0]);
+	if (argc < 3)
+		usage(argv[0]);
+	tmbr_parse(&args, argc - 1, argv + 1);
 
-	memset(&cmd, 0, sizeof(cmd));
-	tmbr_parse(&cmd, argc - 1, argv + 1);
+	if ((display = wl_display_connect(NULL)) == NULL)
+		die("Could not connect to display");
 
-	if ((fd = tmbr_ctrl_connect(0)) < 0)
-		die("Unable to connect to control socket");
+	wl_registry_add_listener(wl_display_get_registry(display), &listener, &ctrl);
+	if (wl_display_roundtrip(display) < 0 || !ctrl)
+		die("Could not discover timber control");
 
-	if ((error = tmbr_execute(&cmd, fd)) < 0)
-		die("Failed to dispatch command");
+	switch (args.function) {
+		case TMBR_CTRL_CLIENT_FOCUS: tmbr_ctrl_client_focus(ctrl, args.sel); break;
+		case TMBR_CTRL_CLIENT_FULLSCREEN: tmbr_ctrl_client_fullscreen(ctrl); break;
+		case TMBR_CTRL_CLIENT_KILL: tmbr_ctrl_client_kill(ctrl); break;
+		case TMBR_CTRL_CLIENT_RESIZE: tmbr_ctrl_client_resize(ctrl, args.dir, args.i); break;
+		case TMBR_CTRL_CLIENT_SWAP: tmbr_ctrl_client_swap(ctrl, args.sel); break;
+		case TMBR_CTRL_CLIENT_TO_DESKTOP: tmbr_ctrl_client_to_desktop(ctrl, args.sel); break;
+		case TMBR_CTRL_CLIENT_TO_SCREEN: tmbr_ctrl_client_to_screen(ctrl, args.sel); break;
+		case TMBR_CTRL_DESKTOP_FOCUS: tmbr_ctrl_desktop_focus(ctrl, args.sel); break;
+		case TMBR_CTRL_DESKTOP_KILL: tmbr_ctrl_desktop_kill(ctrl); break;
+		case TMBR_CTRL_DESKTOP_NEW: tmbr_ctrl_desktop_new(ctrl); break;
+		case TMBR_CTRL_DESKTOP_SWAP: tmbr_ctrl_desktop_swap(ctrl, args.sel); break;
+		case TMBR_CTRL_SCREEN_FOCUS: tmbr_ctrl_screen_focus(ctrl, args.sel); break;
+		case TMBR_CTRL_SCREEN_SCALE: tmbr_ctrl_screen_scale(ctrl, args.screen, args.i); break;
+		case TMBR_CTRL_SCREEN_MODE: tmbr_ctrl_screen_mode(ctrl, args.screen, args.mode.height, args.mode.width, args.mode.refresh); break;
+		case TMBR_CTRL_TREE_ROTATE: tmbr_ctrl_tree_rotate(ctrl); break;
+		case TMBR_CTRL_STATE_QUERY: tmbr_ctrl_state_query(ctrl, STDOUT_FILENO); break;
+		case TMBR_CTRL_STATE_QUIT: tmbr_ctrl_state_quit(ctrl); break;
+		case TMBR_CTRL_BINDING_ADD: tmbr_ctrl_binding_add(ctrl, args.key.keycode, args.key.modifiers, args.command); break;
+	}
 
-	close(fd);
+	if (wl_display_roundtrip(display) < 0) {
+		if (errno != EPROTO)
+			die("Could not send request: %s", strerror(errno));
+		error = wl_display_get_protocol_error(display, NULL, NULL);
+	}
+
+	wl_display_disconnect(display);
 
 	return error;
 }
