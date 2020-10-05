@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="timber">
+
+  <copyright>
+    Copyright (C) Patrick Steinhardt, 2019-2020
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see https://www.gnu.org/licenses/.
+  </copyright>
+
+  <interface name="tmbr_ctrl" version="1">
+    <description summary="control the timber window manager">
+        This interface allows to control the timber window manager.
+    </description>
+
+    <enum name="selection">
+        <entry name="prev" value="0"/>
+        <entry name="next" value="1"/>
+    </enum>
+
+    <enum name="direction">
+        <entry name="north" value="0"/>
+        <entry name="south" value="1"/>
+        <entry name="east" value="2"/>
+        <entry name="west" value="3"/>
+    </enum>
+
+    <enum name="error">
+        <entry name="client_not_found" value="1" summary="client not found"/>
+        <entry name="desktop_not_found" value="2" summary="desktop not found"/>
+        <entry name="screen_not_found" value="3" summary="screen not found"/>
+        <entry name="desktop_not_empty" value="4" summary="desktop not empty"/>
+        <entry name="invalid_param" value="5" summary="invalid ratio"/>
+    </enum>
+
+    <request name="client_focus">
+      <description summary="focus client">
+          Focus client relative to the currently focussed one.
+      </description>
+      <arg name="selection" type="uint" enum="selection"/>
+    </request>
+
+    <request name="client_fullscreen">
+        <description summary="set client to fullscreen">
+            Set currently focussed client to fullscreen mode.
+        </description>
+    </request>
+
+    <request name="client_kill">
+        <description summary="kill client">
+            Kill the currently focussed client.
+        </description>
+    </request>
+
+    <request name="client_resize">
+        <description summary="resize client">
+            Resize the currently focussed client. This will adjust the client's
+            ratio in the given direction.
+        </description>
+        <arg name="direction" type="uint" enum="direction"/>
+        <arg name="ratio" type="uint"/>
+    </request>
+
+    <request name="client_swap">
+        <description summary="swap clients">
+            Swap the currently focussed client with a neighboring one.
+        </description>
+        <arg name="selection" type="uint" enum="selection"/>
+    </request>
+
+    <request name="client_to_desktop">
+        <description summary="send client to desktop">
+            Send the currently focussed client to a neighboring desktop.
+        </description>
+        <arg name="selection" type="uint" enum="selection"/>
+    </request>
+
+    <request name="client_to_screen">
+        <description summary="send client to screen">
+            Send the currently focussed client to a neighboring screen.
+        </description>
+        <arg name="selection" type="uint" enum="selection"/>
+    </request>
+
+    <request name="desktop_focus">
+        <description summary="focus desktop">
+            Focus desktop relative to the currently focussed one.
+        </description>
+        <arg name="selection" type="uint" enum="selection"/>
+    </request>
+
+    <request name="desktop_kill">
+        <description summary="kill desktop">
+            Kill the currently focussed desktop. Only empty desktops may be
+            killed.
+        </description>
+    </request>
+
+    <request name="desktop_new">
+        <description summary="create new desktop">
+            Create a new desktop.
+        </description>
+    </request>
+
+    <request name="desktop_swap">
+        <description summary="swap desktop">
+            Swap the currently focussed desktop with a neighboring one.
+        </description>
+        <arg name="selection" type="uint" enum="selection"/>
+    </request>
+
+    <request name="screen_focus">
+        <description summary="focus screen">
+            Focus screen relative to the currently focussed one.
+        </description>
+        <arg name="selection" type="uint" enum="selection"/>
+    </request>
+
+    <request name="screen_mode">
+        <description summary="set screen mode">
+            Set the mode of the currently focussed screen.
+        </description>
+        <arg name="screen" type="string"/>
+        <arg name="height" type="int"/>
+        <arg name="width" type="int"/>
+        <arg name="refresh" type="int"/>
+    </request>
+
+    <request name="screen_scale">
+        <description summary="scale screen">
+            Set the scale of the currently focussed screen.
+        </description>
+        <arg name="screen" type="string"/>
+        <arg name="scale" type="uint"/>
+    </request>
+
+    <request name="tree_rotate">
+        <description summary="rotate tree">
+            Rotate the tree of the currently focussed client.
+        </description>
+    </request>
+
+    <request name="state_query">
+        <description summary="query current state">
+            Query the state of the window manager.
+        </description>
+        <arg name="fd" type="fd"/>
+    </request>
+
+    <request name="state_quit">
+        <description summary="quit">
+            Cause the window manager to quit.
+        </description>
+    </request>
+
+    <request name="binding_add">
+        <description summary="add a key binding">
+            Add a new key binding.
+        </description>
+        <arg name="keycode" type="uint"/>
+        <arg name="modifiers" type="uint"/>
+        <arg name="command" type="string"/>
+    </request>
+
+  </interface>
+
+</protocol>

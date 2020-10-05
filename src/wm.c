@@ -49,9 +49,13 @@
 
 #include "common.h"
 #include "config.h"
+#include "timber-server.h"
 #include "wm.h"
 
 #define TMBR_UNUSED __attribute__((unused))
+
+#define tmbr_return_error(resource, code, msg) \
+	do { wl_resource_post_error((resource), (code), (msg)); return; } while (0)
 
 typedef struct tmbr_binding tmbr_binding_t;
 typedef struct tmbr_client tmbr_client_t;
@@ -161,8 +165,6 @@ struct tmbr_server {
 	struct wl_listener inhibitor_destroy;
 
 	int inhibitors;
-	int ctrlfd;
-	int subfds[16];
 
 	struct wl_list bindings;
 	struct wl_list screens;
@@ -192,11 +194,11 @@ static void tmbr_spawn(const char *path, char * const argv[])
 	waitpid(pid, NULL, 0);
 }
 
-static struct wl_list *tmbr_list_get(struct wl_list *head, struct wl_list *link, tmbr_select_t which)
+static struct wl_list *tmbr_list_get(struct wl_list *head, struct wl_list *link, enum tmbr_ctrl_selection which)
 {
-	struct wl_list *sibling = (which == TMBR_SELECT_PREV) ? link->prev : link->next;
+	struct wl_list *sibling = (which == TMBR_CTRL_SELECTION_PREV) ? link->prev : link->next;
 	if (sibling == head)
-		sibling = (which == TMBR_SELECT_PREV) ? head->prev : head->next;
+		sibling = (which == TMBR_CTRL_SELECTION_PREV) ? head->prev : head->next;
 	return (sibling == link) ? NULL : sibling;
 }
 
@@ -204,26 +206,6 @@ static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener
 {
 	listener->notify = callback;
 	wl_signal_add(signal, listener);
-}
-
-static __attribute__((format(printf, 2, 3))) void tmbr_notify(tmbr_server_t *server, const char *fmt, ...)
-{
-	char buf[TMBR_PKT_MESSAGELEN];
-	unsigned i;
-	va_list ap;
-
-	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
-	va_end(ap);
-
-	for (i = 0; i < ARRAY_SIZE(server->subfds); i++) {
-		if (server->subfds[i] <= 0)
-			continue;
-		if (tmbr_ctrl_write_data(server->subfds[i], "%s", buf) < 0) {
-			close(server->subfds[i]);
-			server->subfds[i] = 0;
-		}
-	}
 }
 
 static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -409,20 +391,15 @@ static void tmbr_tree_insert(tmbr_tree_t **tree, tmbr_client_t *client)
 	}
 }
 
-static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, tmbr_select_t which)
+static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, enum tmbr_ctrl_selection which)
 {
-	return (which == TMBR_SELECT_PREV) ? tree->left : tree->right;
+	return (which == TMBR_CTRL_SELECTION_PREV) ? tree->left : tree->right;
 }
 
-static tmbr_tree_t *tmbr_tree_find_sibling(tmbr_tree_t *tree, tmbr_select_t which)
+static tmbr_tree_t *tmbr_tree_find_sibling(tmbr_tree_t *tree, enum tmbr_ctrl_selection which)
 {
-	tmbr_select_t upwards, downwards;
+	enum tmbr_ctrl_selection upwards = which, downwards = !which;
 	tmbr_tree_t *t = tree;
-
-	if (which == TMBR_SELECT_NEAREST)
-		which = (t && t->parent && t->parent->left == t) ? TMBR_SELECT_NEXT : TMBR_SELECT_PREV;
-	upwards = which;
-	downwards = !which;
 
 	while (t && t->parent) {
 		if (t != tmbr_tree_get_child(t->parent, upwards)) {
@@ -466,7 +443,7 @@ static void tmbr_tree_swap(tmbr_tree_t *a, tmbr_tree_t *b)
 
 #define tmbr_tree_foreach_leaf(t, i, n) \
 	i = NULL, n = t; \
-	while ((!i && n && n->client && (i = n)) || ((n = tmbr_tree_find_sibling(n, TMBR_SELECT_NEXT)) != NULL && ((!i && (i = n)) || i != n)))
+	while ((!i && n && n->client && (i = n)) || ((n = tmbr_tree_find_sibling(n, TMBR_CTRL_SELECTION_NEXT)) != NULL && ((!i && (i = n)) || i != n)))
 
 static void tmbr_tree_remove(tmbr_tree_t **tree, tmbr_tree_t *node)
 {
@@ -491,7 +468,7 @@ static void tmbr_desktop_free(tmbr_desktop_t *desktop)
 	free(desktop);
 }
 
-static tmbr_desktop_t *tmbr_desktop_find_sibling(tmbr_desktop_t *desktop, tmbr_select_t which)
+static tmbr_desktop_t *tmbr_desktop_find_sibling(tmbr_desktop_t *desktop, enum tmbr_ctrl_selection which)
 {
 	struct wl_list *sibling;
 	if ((sibling = tmbr_list_get(&desktop->screen->desktops, &desktop->link, which)) == NULL)
@@ -543,7 +520,9 @@ static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *clie
 static void tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (desktop->focus == client) {
-		tmbr_tree_t *sibling = tmbr_tree_find_sibling(client->tree, TMBR_SELECT_NEAREST);
+		enum tmbr_ctrl_selection sel = (client->tree->parent && client->tree->parent->left == client->tree)
+			? TMBR_CTRL_SELECTION_NEXT : TMBR_CTRL_SELECTION_PREV;
+		tmbr_tree_t *sibling = tmbr_tree_find_sibling(client->tree, sel);
 		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, true);
 	}
 	tmbr_tree_remove(&desktop->clients, client->tree);
@@ -586,7 +565,7 @@ static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *de
 
 	if (screen->focus == desktop) {
 		tmbr_desktop_t *sibling;
-		if ((sibling = tmbr_desktop_find_sibling(desktop, TMBR_SELECT_NEXT)) == NULL)
+		if ((sibling = tmbr_desktop_find_sibling(desktop, TMBR_CTRL_SELECTION_NEXT)) == NULL)
 			die("Cannot remove screen's last desktop");
 		tmbr_screen_focus_desktop(screen, sibling);
 	}
@@ -600,7 +579,7 @@ static void tmbr_screen_add_desktop(tmbr_screen_t *screen, tmbr_desktop_t *deskt
 	tmbr_screen_focus_desktop(screen, desktop);
 }
 
-static tmbr_screen_t *tmbr_screen_find_sibling(tmbr_screen_t *screen, tmbr_select_t which)
+static tmbr_screen_t *tmbr_screen_find_sibling(tmbr_screen_t *screen, enum tmbr_ctrl_selection which)
 {
 	struct wl_list *sibling;
 	if ((sibling = tmbr_list_get(&screen->server->screens, &screen->link, which)) == NULL)
@@ -610,7 +589,7 @@ static tmbr_screen_t *tmbr_screen_find_sibling(tmbr_screen_t *screen, tmbr_selec
 
 static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	tmbr_screen_t *screen = wl_container_of(listener, screen, destroy), *sibling = tmbr_screen_find_sibling(screen, TMBR_SELECT_NEXT);
+	tmbr_screen_t *screen = wl_container_of(listener, screen, destroy), *sibling = tmbr_screen_find_sibling(screen, TMBR_CTRL_SELECTION_NEXT);
 	tmbr_desktop_t *desktop, *tmp;
 
 	if (sibling) {
@@ -1005,60 +984,64 @@ static tmbr_screen_t *tmbr_server_find_output(tmbr_server_t *server, const char 
 	return NULL;
 }
 
-static void tmbr_server_stop(tmbr_server_t *server)
+static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
 {
-	wl_display_terminate(server->display);
-}
-
-static int tmbr_cmd_client_focus(tmbr_server_t *server, const tmbr_command_t *cmd)
-{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_client_t *focus;
 	tmbr_tree_t *next;
 
 	if ((focus = tmbr_server_focussed_client(server)) == NULL ||
-	    (next = tmbr_tree_find_sibling(focus->tree, cmd->sel)) == NULL)
-		return ENOENT;
+	    (next = tmbr_tree_find_sibling(focus->tree, selection)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
 	tmbr_desktop_focus_client(focus->desktop, next->client, true);
-
-	return 0;
 }
 
-static int tmbr_cmd_client_kill(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
+static void tmbr_cmd_client_fullscreen(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_client_t *focus;
 	if ((focus = tmbr_server_focussed_client(server)) == NULL)
-		return ENOENT;
-	tmbr_client_kill(focus);
-	return 0;
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
+	tmbr_desktop_set_fullscreen(focus->desktop, !focus->desktop->fullscreen);
 }
 
-static int tmbr_cmd_client_resize(tmbr_server_t *server, const tmbr_command_t *cmd)
+static void tmbr_cmd_client_kill(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
-	tmbr_client_t *client;
-	tmbr_select_t select;
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
+	tmbr_client_t *focus;
+	if ((focus = tmbr_server_focussed_client(server)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
+	tmbr_client_kill(focus);
+}
+
+static void tmbr_cmd_client_resize(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t dir, uint32_t ratio)
+{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
+	tmbr_client_t *focus;
+	enum tmbr_ctrl_selection select;
 	tmbr_split_t split;
 	tmbr_tree_t *tree;
 	int i;
 
-	if ((client = tmbr_server_focussed_client(server)) == NULL)
-		return ENOENT;
+	if ((focus = tmbr_server_focussed_client(server)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
 
-	switch (cmd->dir) {
-	    case TMBR_DIR_NORTH:
-		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_SELECT_NEXT; i = cmd->i * -1; break;
-	    case TMBR_DIR_SOUTH:
-		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_SELECT_PREV; i = cmd->i; break;
-	    case TMBR_DIR_EAST:
-		split = TMBR_SPLIT_VERTICAL; select = TMBR_SELECT_PREV; i = cmd->i; break;
-	    case TMBR_DIR_WEST:
-		split = TMBR_SPLIT_VERTICAL; select = TMBR_SELECT_NEXT; i = cmd->i * -1; break;
-	    case TMBR_DIR_LAST:
+	switch (dir) {
+	    case TMBR_CTRL_DIRECTION_NORTH:
+		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_CTRL_SELECTION_NEXT; i = ratio * -1; break;
+	    case TMBR_CTRL_DIRECTION_SOUTH:
+		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_CTRL_SELECTION_PREV; i = ratio; break;
+	    case TMBR_CTRL_DIRECTION_EAST:
+		split = TMBR_SPLIT_VERTICAL; select = TMBR_CTRL_SELECTION_PREV; i = ratio; break;
+	    case TMBR_CTRL_DIRECTION_WEST:
+		split = TMBR_SPLIT_VERTICAL; select = TMBR_CTRL_SELECTION_NEXT; i = ratio * -1; break;
+	    default:
 		assert(0); break;
 	}
 
-	for (tree = client->tree; tree; tree = tree->parent) {
+	for (tree = focus->tree; tree; tree = tree->parent) {
 		if (!tree->parent)
-			return ENOENT;
+			tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client has no parent");
 		if (tmbr_tree_get_child(tree->parent, select) != tree ||
 		    tree->parent->split != split)
 			continue;
@@ -1067,147 +1050,135 @@ static int tmbr_cmd_client_resize(tmbr_server_t *server, const tmbr_command_t *c
 	}
 
 	if ((i < 0 && i >= tree->ratio) || (i > 0 && i + tree->ratio >= 100))
-		return EINVAL;
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_INVALID_PARAM, "invalid ratio");
 	tree->ratio += i;
-	tmbr_desktop_recalculate(client->desktop);
-
-	return 0;
+	tmbr_desktop_recalculate(focus->desktop);
 }
 
-static int tmbr_cmd_client_fullscreen(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
+static void tmbr_cmd_client_swap(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
 {
-	tmbr_client_t *focus;
-	if ((focus = tmbr_server_focussed_client(server)) == NULL)
-		return ENOENT;
-	tmbr_desktop_set_fullscreen(focus->desktop, !focus->desktop->fullscreen);
-	return 0;
-}
-
-static int tmbr_cmd_client_to_desktop(tmbr_server_t *server, const tmbr_command_t *cmd)
-{
-	tmbr_desktop_t *target;
-	tmbr_client_t *focus;
-
-	if ((focus = tmbr_server_focussed_client(server)) == NULL ||
-	    (target = tmbr_desktop_find_sibling(focus->desktop, cmd->sel)) == NULL)
-		return ENOENT;
-	tmbr_desktop_remove_client(focus->desktop, focus);
-	tmbr_desktop_add_client(target, focus);
-	tmbr_desktop_focus_client(target, focus, false);
-
-	return 0;
-}
-
-static int tmbr_cmd_client_to_screen(tmbr_server_t *server, const tmbr_command_t *cmd)
-{
-	tmbr_screen_t *screen;
-	tmbr_client_t *client;
-
-	if ((client = tmbr_server_focussed_client(server)) == NULL ||
-	    (screen = tmbr_screen_find_sibling(client->desktop->screen, cmd->sel)) == NULL)
-		return ENOENT;
-	tmbr_desktop_remove_client(client->desktop, client);
-	tmbr_desktop_add_client(screen->focus, client);
-	tmbr_desktop_focus_client(screen->focus, client, false);
-
-	return 0;
-}
-
-static int tmbr_cmd_client_swap(tmbr_server_t *server, const tmbr_command_t *cmd)
-{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_client_t *focus;
 	tmbr_tree_t *next;
 
 	if ((focus = tmbr_server_focussed_client(server)) == NULL ||
-	    (next = tmbr_tree_find_sibling(focus->tree, cmd->sel)) == NULL)
-		return ENOENT;
+	    (next = tmbr_tree_find_sibling(focus->tree, selection)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
 	tmbr_tree_swap(focus->tree, next);
 	tmbr_desktop_recalculate(focus->desktop);
-
-	return 0;
 }
 
-static int tmbr_cmd_desktop_focus(tmbr_server_t *server, const tmbr_command_t *cmd)
+static void tmbr_cmd_client_to_desktop(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
 {
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
+	tmbr_desktop_t *target;
+	tmbr_client_t *focus;
+
+	if ((focus = tmbr_server_focussed_client(server)) == NULL ||
+	    (target = tmbr_desktop_find_sibling(focus->desktop, selection)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
+	tmbr_desktop_remove_client(focus->desktop, focus);
+	tmbr_desktop_add_client(target, focus);
+	tmbr_desktop_focus_client(target, focus, false);
+}
+
+static void tmbr_cmd_client_to_screen(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
+{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
+	tmbr_screen_t *screen;
+	tmbr_client_t *focus;
+
+	if ((focus = tmbr_server_focussed_client(server)) == NULL ||
+	    (screen = tmbr_screen_find_sibling(focus->desktop->screen, selection)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_SCREEN_NOT_FOUND, "screen not found");
+	tmbr_desktop_remove_client(focus->desktop, focus);
+	tmbr_desktop_add_client(screen->focus, focus);
+	tmbr_desktop_focus_client(screen->focus, focus, false);
+}
+
+static void tmbr_cmd_desktop_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
+{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_desktop_t *sibling;
-	if ((sibling = tmbr_desktop_find_sibling(server->screen->focus, cmd->sel)) == NULL)
-		return ENOENT;
+	if ((sibling = tmbr_desktop_find_sibling(server->screen->focus, selection)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_DESKTOP_NOT_FOUND, "desktop not found");
 	tmbr_screen_focus_desktop(server->screen, sibling);
-	return 0;
 }
 
-static int tmbr_cmd_desktop_swap(tmbr_server_t *server, const tmbr_command_t *cmd)
+static void tmbr_cmd_desktop_kill(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
-	tmbr_desktop_t *sibling;
-	if ((sibling = tmbr_desktop_find_sibling(server->screen->focus, cmd->sel)) == NULL)
-		return ENOENT;
-	tmbr_desktop_swap(server->screen->focus, sibling);
-	return 0;
-}
-
-static int tmbr_cmd_desktop_kill(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
-{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_desktop_t *desktop = server->screen->focus;
 	if (desktop->clients)
-		return EEXIST;
-	if (tmbr_desktop_find_sibling(desktop, TMBR_SELECT_NEXT) == NULL)
-		return ENOENT;
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_DESKTOP_NOT_EMPTY, "desktop not empty");
+	if (tmbr_desktop_find_sibling(desktop, TMBR_CTRL_SELECTION_NEXT) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_DESKTOP_NOT_FOUND, "desktop not found");
 	tmbr_screen_remove_desktop(server->screen, desktop);
 	tmbr_desktop_free(desktop);
-	return 0;
 }
 
-static int tmbr_cmd_desktop_new(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
+static void tmbr_cmd_desktop_new(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_screen_add_desktop(server->screen, tmbr_desktop_new());
-	return 0;
 }
 
-static int tmbr_cmd_screen_focus(tmbr_server_t *server, const tmbr_command_t *cmd)
+static void tmbr_cmd_desktop_swap(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
 {
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
+	tmbr_desktop_t *sibling;
+	if ((sibling = tmbr_desktop_find_sibling(server->screen->focus, selection)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_DESKTOP_NOT_FOUND, "desktop not found");
+	tmbr_desktop_swap(server->screen->focus, sibling);
+}
+
+static void tmbr_cmd_screen_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
+{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_screen_t *sibling;
-	if ((sibling = tmbr_screen_find_sibling(server->screen, cmd->sel)) == NULL)
-		return ENOENT;
+	if ((sibling = tmbr_screen_find_sibling(server->screen, selection)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_SCREEN_NOT_FOUND, "screen not found");
 	tmbr_screen_focus_desktop(sibling, sibling->focus);
-	return 0;
 }
 
-static int tmbr_cmd_screen_scale(tmbr_server_t *server, const tmbr_command_t *cmd)
+static void tmbr_cmd_screen_mode(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, const char *screen, int32_t height, int32_t width, int32_t refresh)
 {
-	tmbr_screen_t *s;
-	if (cmd->i <= 0 || cmd->i >= 10000 || cmd->screen[sizeof(cmd->screen) - 1])
-		return EINVAL;
-	if ((s = tmbr_server_find_output(server, cmd->screen)) == NULL)
-		return ENOENT;
-	wlr_output_set_scale(s->output, cmd->i / 100.0);
-	return 0;
-}
-
-static int tmbr_cmd_screen_mode(tmbr_server_t *server, const tmbr_command_t *cmd)
-{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	struct wlr_output_mode *mode;
 	tmbr_screen_t *s;
 
-	if ((s = tmbr_server_find_output(server, cmd->screen)) == NULL)
-		return ENOENT;
+	if ((s = tmbr_server_find_output(server, screen)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_SCREEN_NOT_FOUND, "screen not found");
 	wl_list_for_each(mode, &s->output->modes, link) {
-		if (cmd->mode.width != mode->width || cmd->mode.height != mode->height || cmd->mode.refresh != mode->refresh)
+		if (width != mode->width || height != mode->height || refresh != mode->refresh)
 			continue;
 		wlr_output_set_mode(s->output, mode);
-		return 0;
+		return;
 	}
 
-	return ENOENT;
+	tmbr_return_error(resource, TMBR_CTRL_ERROR_INVALID_PARAM, "invalid mode");
 }
 
-static int tmbr_cmd_tree_rotate(tmbr_server_t *server, TMBR_UNUSED const tmbr_command_t *cmd)
+static void tmbr_cmd_screen_scale(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, const char *screen, uint32_t scale)
 {
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
+	tmbr_screen_t *s;
+	if (scale <= 0 || scale >= 10000)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_INVALID_PARAM, "invalid scale");
+	if ((s = tmbr_server_find_output(server, screen)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_SCREEN_NOT_FOUND, "screen not found");
+	wlr_output_set_scale(s->output, scale / 100.0);
+}
+
+static void tmbr_cmd_tree_rotate(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
+{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_client_t *focus;
 	tmbr_tree_t *p;
 
 	if ((focus = tmbr_server_focussed_client(server)) == NULL ||
 	    (p = focus->tree->parent) == NULL)
-		return ENOENT;
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
 
 	if (p->split == TMBR_SPLIT_HORIZONTAL) {
 		tmbr_tree_t *l = p->left;
@@ -1216,27 +1187,18 @@ static int tmbr_cmd_tree_rotate(tmbr_server_t *server, TMBR_UNUSED const tmbr_co
 	}
 	p->split ^= 1;
 	tmbr_desktop_recalculate(focus->desktop);
-
-	return 0;
 }
 
-static int tmbr_cmd_state_subscribe(tmbr_server_t *server, int fd)
+static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUSED struct wl_resource *resource, int fd)
 {
-	unsigned i;
-	for (i = 0; i < ARRAY_SIZE(server->subfds); i++) {
-		if (server->subfds[i] != 0)
-			continue;
-		server->subfds[i] = dup(fd);
-		return 0;
-	}
-	return ENOSPC;
-}
-
-static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
-{
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_screen_t *s;
+	FILE *f;
 
-	tmbr_ctrl_write_data(fd, "screens:");
+	if ((f = fdopen(fd, "w")) == NULL)
+		return;
+
+	fprintf(f, "screens:\n");
 	wl_list_for_each(s, &server->screens, link) {
 		struct wlr_output_mode *mode;
 		tmbr_desktop_t *d;
@@ -1245,47 +1207,48 @@ static int tmbr_cmd_state_query(tmbr_server_t *server, int fd)
 
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		wlr_output_effective_resolution(s->output, &w, &h);
-		tmbr_ctrl_write_data(fd, "- name: %s", s->output->name);
-		tmbr_ctrl_write_data(fd, "  geom: {x: %u, y: %u, width: %u, height: %u}", (int)x, (int)y, w, h);
-		tmbr_ctrl_write_data(fd, "  selected: %s", s == server->screen ? "true" : "false");
-		tmbr_ctrl_write_data(fd, "  modes:");
+		fprintf(f, "- name: %s\n", s->output->name);
+		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", (int)x, (int)y, w, h);
+		fprintf(f, "  selected: %s\n", s == server->screen ? "true" : "false");
+		fprintf(f, "  modes:\n");
 		wl_list_for_each(mode, &s->output->modes, link)
-			tmbr_ctrl_write_data(fd, "  - %dx%d@%d", mode->width, mode->height, mode->refresh);
-		tmbr_ctrl_write_data(fd, "  desktops:");
+			fprintf(f, "  - %dx%d@%d\n", mode->width, mode->height, mode->refresh);
+		fprintf(f, "  desktops:\n");
 
 		wl_list_for_each(d, &s->desktops, link) {
 			tmbr_tree_t *it, *tree;
 
-			tmbr_ctrl_write_data(fd, "  - selected: %s", d == s->focus ? "true" : "false");
-			tmbr_ctrl_write_data(fd, "    clients:");
+			fprintf(f, "  - selected: %s\n", d == s->focus ? "true" : "false");
+			fprintf(f, "    clients:\n");
 
 			tmbr_tree_foreach_leaf(d->clients, it, tree) {
 				tmbr_client_t *c = tree->client;
-				tmbr_ctrl_write_data(fd, "    - title: %s", c->surface->toplevel->title);
-				tmbr_ctrl_write_data(fd, "      geom: {x: %u, y: %u, width: %u, height: %u}", c->x, c->y, c->w, c->h);
-				tmbr_ctrl_write_data(fd, "      selected: %s", c == d->focus ? "true" : "false");
+				fprintf(f, "    - title: %s\n", c->surface->toplevel->title);
+				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n", c->x, c->y, c->w, c->h);
+				fprintf(f, "      selected: %s\n", c == d->focus ? "true" : "false");
 			}
 		}
 	}
 
-	return 0;
+	fclose(f);
 }
 
-static int tmbr_cmd_state_quit(tmbr_server_t *server)
+static void tmbr_cmd_state_quit(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
-	tmbr_server_stop(server);
-	return 0;
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
+	wl_display_terminate(server->display);
 }
 
-static int tmbr_cmd_binding_add(tmbr_server_t *server, const tmbr_command_t *cmd)
+static void tmbr_cmd_binding_add(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t keycode, uint32_t modifiers, const char *command)
 {
+	tmbr_server_t *server = wl_resource_get_user_data(resource);
 	tmbr_binding_t *binding;
 
-	if (!cmd->key.keycode)
-		return EINVAL;
+	if (!keycode)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_INVALID_PARAM, "invalid keycode");
 
 	wl_list_for_each(binding, &server->bindings, link)
-		if (binding->keycode == cmd->key.keycode && binding->modifiers == cmd->key.modifiers)
+		if (binding->keycode == keycode && binding->modifiers == modifiers)
 			break;
 
 	if (&binding->link == &server->bindings) {
@@ -1295,79 +1258,53 @@ static int tmbr_cmd_binding_add(tmbr_server_t *server, const tmbr_command_t *cmd
 		free(binding->command);
 	}
 
-	binding->modifiers = cmd->key.modifiers;
-	binding->keycode = cmd->key.keycode;
-	if ((binding->command = strndup(cmd->command, sizeof(cmd->command))) == NULL)
+	binding->modifiers = modifiers;
+	binding->keycode = keycode;
+	if ((binding->command = strdup(command)) == NULL)
 		die("Could not allocate binding command");
-
-	return 0;
-}
-
-static int tmbr_server_on_command(int fd, TMBR_UNUSED uint32_t mask, void *payload)
-{
-	tmbr_server_t *server = payload;
-	tmbr_command_t *cmd;
-	tmbr_pkt_t pkt;
-	int error, cfd, persistent = 0;
-
-	if ((cfd = accept(fd, NULL, NULL)) < 0)
-		return 0;
-	if (tmbr_ctrl_read(cfd, &pkt) < 0 || pkt.type != TMBR_PKT_COMMAND)
-		goto out;
-	cmd = &pkt.u.command;
-
-	if (cmd->type >= TMBR_COMMAND_LAST || cmd->sel >= TMBR_SELECT_LAST || cmd->dir >= TMBR_DIR_LAST) {
-		error = EINVAL;
-		goto out;
-	}
-
-	switch (cmd->type) {
-		case TMBR_COMMAND_CLIENT_FOCUS: error = tmbr_cmd_client_focus(server, cmd); break;
-		case TMBR_COMMAND_CLIENT_KILL: error = tmbr_cmd_client_kill(server, cmd); break;
-		case TMBR_COMMAND_CLIENT_RESIZE: error = tmbr_cmd_client_resize(server, cmd); break;
-		case TMBR_COMMAND_CLIENT_SWAP: error = tmbr_cmd_client_swap(server, cmd); break;
-		case TMBR_COMMAND_CLIENT_FULLSCREEN: error = tmbr_cmd_client_fullscreen(server, cmd); break;
-		case TMBR_COMMAND_CLIENT_TO_DESKTOP: error = tmbr_cmd_client_to_desktop(server, cmd); break;
-		case TMBR_COMMAND_CLIENT_TO_SCREEN: error = tmbr_cmd_client_to_screen(server, cmd); break;
-		case TMBR_COMMAND_DESKTOP_FOCUS: error = tmbr_cmd_desktop_focus(server, cmd); break;
-		case TMBR_COMMAND_DESKTOP_SWAP: error = tmbr_cmd_desktop_swap(server, cmd); break;
-		case TMBR_COMMAND_DESKTOP_KILL: error = tmbr_cmd_desktop_kill(server, cmd); break;
-		case TMBR_COMMAND_DESKTOP_NEW: error = tmbr_cmd_desktop_new(server, cmd); break;
-		case TMBR_COMMAND_SCREEN_FOCUS: error = tmbr_cmd_screen_focus(server, cmd); break;
-		case TMBR_COMMAND_SCREEN_SCALE: error = tmbr_cmd_screen_scale(server, cmd); break;
-		case TMBR_COMMAND_SCREEN_MODE: error = tmbr_cmd_screen_mode(server, cmd); break;
-		case TMBR_COMMAND_TREE_ROTATE: error = tmbr_cmd_tree_rotate(server, cmd); break;
-		case TMBR_COMMAND_STATE_SUBSCRIBE: error = tmbr_cmd_state_subscribe(server, cfd); persistent = 1; break;
-		case TMBR_COMMAND_STATE_QUERY: error = tmbr_cmd_state_query(server, cfd); break;
-		case TMBR_COMMAND_STATE_QUIT: error = tmbr_cmd_state_quit(server); break;
-		case TMBR_COMMAND_BINDING_ADD: error = tmbr_cmd_binding_add(server, cmd); break;
-		case TMBR_COMMAND_LAST: error = ENOTSUP; break;
-	}
-
-	if (!error && persistent)
-		return 0;
-
-	tmbr_notify(server, "{type: command, error: %d}", error);
-	memset(&pkt, 0, sizeof(pkt));
-	pkt.type = TMBR_PKT_ERROR;
-	pkt.u.error = error;
-	tmbr_ctrl_write(cfd, &pkt);
-out:
-	close(cfd);
-	return 0;
 }
 
 static int tmbr_server_on_term(TMBR_UNUSED int signal, void *payload)
 {
 	tmbr_server_t *server = payload;
-	tmbr_server_stop(server);
+	wl_display_terminate(server->display);
 	return 0;
+}
+
+static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_t version, uint32_t id)
+{
+	static const struct tmbr_ctrl_interface impl = {
+		.client_focus = tmbr_cmd_client_focus,
+		.client_fullscreen = tmbr_cmd_client_fullscreen,
+		.client_kill = tmbr_cmd_client_kill,
+		.client_resize = tmbr_cmd_client_resize,
+		.client_swap = tmbr_cmd_client_swap,
+		.client_to_desktop = tmbr_cmd_client_to_desktop,
+		.client_to_screen = tmbr_cmd_client_to_screen,
+		.desktop_focus = tmbr_cmd_desktop_focus,
+		.desktop_kill = tmbr_cmd_desktop_kill,
+		.desktop_new = tmbr_cmd_desktop_new,
+		.desktop_swap = tmbr_cmd_desktop_swap,
+		.screen_focus = tmbr_cmd_screen_focus,
+		.screen_mode = tmbr_cmd_screen_mode,
+		.screen_scale = tmbr_cmd_screen_scale,
+		.tree_rotate = tmbr_cmd_tree_rotate,
+		.state_query = tmbr_cmd_state_query,
+		.state_quit = tmbr_cmd_state_quit,
+		.binding_add = tmbr_cmd_binding_add,
+	};
+	struct wl_resource *resource;
+
+	if ((resource = wl_resource_create(client, &tmbr_ctrl_interface, version, id)) == NULL) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(resource, &impl, payload, NULL);
 }
 
 int tmbr_wm(void)
 {
 	tmbr_server_t server = { 0 };
-	struct wl_event_loop *loop;
 	const char *socket;
 	char *cfg;
 
@@ -1379,7 +1316,8 @@ int tmbr_wm(void)
 		die("Could not create backend");
 	wlr_renderer_init_wl_display(wlr_backend_get_renderer(server.backend), server.display);
 
-	if (wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
+	if (wl_global_create(server.display, &tmbr_ctrl_interface, 1, &server, tmbr_server_on_bind) == NULL ||
+	    wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
@@ -1421,12 +1359,8 @@ int tmbr_wm(void)
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");
 	setenv("WAYLAND_DISPLAY", socket, 1);
-	if ((server.ctrlfd = tmbr_ctrl_connect(1)) < 0)
-		die("Unable to setup control socket");
 
-	loop = wl_display_get_event_loop(server.display);
-	wl_event_loop_add_fd(loop, server.ctrlfd, WL_EVENT_READABLE, tmbr_server_on_command, &server);
-	wl_event_loop_add_signal(loop, SIGTERM, tmbr_server_on_term, &server);
+	wl_event_loop_add_signal(wl_display_get_event_loop(server.display), SIGTERM, tmbr_server_on_term, &server);
 
 	if (!wlr_backend_start(server.backend))
 		die("Could not start backend");
@@ -1439,7 +1373,6 @@ int tmbr_wm(void)
 		die("Could not execute config file: %s", strerror(errno));
 
 	wl_display_run(server.display);
-
 	wl_display_destroy_clients(server.display);
 	wl_display_destroy(server.display);
 	return 0;
