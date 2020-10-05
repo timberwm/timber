@@ -26,7 +26,6 @@
     <enum name="selection">
         <entry name="prev" value="0"/>
         <entry name="next" value="1"/>
-        <entry name="nearest" value="2"/>
     </enum>
 
     <enum name="direction">

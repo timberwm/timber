@@ -398,13 +398,8 @@ static tmbr_tree_t *tmbr_tree_get_child(tmbr_tree_t *tree, enum tmbr_ctrl_select
 
 static tmbr_tree_t *tmbr_tree_find_sibling(tmbr_tree_t *tree, enum tmbr_ctrl_selection which)
 {
-	enum tmbr_ctrl_selection upwards, downwards;
+	enum tmbr_ctrl_selection upwards = which, downwards = !which;
 	tmbr_tree_t *t = tree;
-
-	if (which == TMBR_CTRL_SELECTION_NEAREST)
-		which = (t && t->parent && t->parent->left == t) ? TMBR_CTRL_SELECTION_NEXT : TMBR_CTRL_SELECTION_PREV;
-	upwards = which;
-	downwards = !which;
 
 	while (t && t->parent) {
 		if (t != tmbr_tree_get_child(t->parent, upwards)) {
@@ -525,7 +520,9 @@ static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *clie
 static void tmbr_desktop_remove_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
 {
 	if (desktop->focus == client) {
-		tmbr_tree_t *sibling = tmbr_tree_find_sibling(client->tree, TMBR_CTRL_SELECTION_NEAREST);
+		enum tmbr_ctrl_selection sel = (client->tree->parent && client->tree->parent->left == client->tree)
+			? TMBR_CTRL_SELECTION_NEXT : TMBR_CTRL_SELECTION_PREV;
+		tmbr_tree_t *sibling = tmbr_tree_find_sibling(client->tree, sel);
 		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, true);
 	}
 	tmbr_tree_remove(&desktop->clients, client->tree);
