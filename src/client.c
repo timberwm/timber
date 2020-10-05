@@ -76,8 +76,8 @@ typedef struct tmbr_arg {
 	int i;
 	struct { uint32_t modifiers; xkb_keysym_t keycode; } key;
 	struct { int height; int width; int refresh; } mode;
-	char command[128];
-	char screen[16];
+	const char *command;
+	const char *screen;
 } tmbr_arg_t;
 
 static const struct {
@@ -115,12 +115,9 @@ static void tmbr_parse(tmbr_arg_t *out, int argc, char **argv)
 	argv += 2;
 
 	if (commands[c].args & TMBR_ARG_SCREEN) {
-		size_t len;
 		if (!argc)
 			die("Command is missing screen");
-		if ((len = strlen(argv[0])) >= sizeof(out->screen))
-			die("Screen length exceeds maximum");
-		memcpy(out->screen, argv[0], len + 1);
+		out->screen = argv[0];
 		argc--;
 		argv++;
 	}
@@ -179,12 +176,9 @@ static void tmbr_parse(tmbr_arg_t *out, int argc, char **argv)
 	}
 
 	if (commands[c].args & TMBR_ARG_CMD) {
-		size_t len;
 		if (!argc)
 			die("Command is missing command line");
-		if ((len = strlen(argv[0])) >= sizeof(out->command))
-			die("Command length exceeds maximum");
-		memcpy(out->command, argv[0], len + 1);
+		out->command = argv[0];
 		argc--;
 		argv++;
 	}
