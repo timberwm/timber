@@ -40,7 +40,7 @@
         <entry name="desktop_not_found" value="2" summary="desktop not found"/>
         <entry name="screen_not_found" value="3" summary="screen not found"/>
         <entry name="desktop_not_empty" value="4" summary="desktop not empty"/>
-        <entry name="invalid_param" value="5" summary="invalid ratio"/>
+        <entry name="invalid_param" value="5" summary="invalid parameter"/>
     </enum>
 
     <request name="client_focus">
