@@ -1035,7 +1035,7 @@ static void tmbr_cmd_client_resize(TMBR_UNUSED struct wl_client *client, struct 
 	    case TMBR_CTRL_DIRECTION_WEST:
 		split = TMBR_SPLIT_VERTICAL; select = TMBR_CTRL_SELECTION_NEXT; i = ratio * -1; break;
 	    default:
-		assert(0); break;
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_INVALID_PARAM, "invalid direction");
 	}
 
 	for (tree = focus->tree; tree; tree = tree->parent) {
