@@ -508,6 +508,7 @@ static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *cl
 	if (desktop->focus == client)
 		return;
 	desktop->focus = client;
+	tmbr_desktop_recalculate(client->desktop);
 }
 
 static void tmbr_desktop_add_client(tmbr_desktop_t *desktop, tmbr_client_t *client)
