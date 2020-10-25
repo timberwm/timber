@@ -287,6 +287,8 @@ static void tmbr_client_render(tmbr_client_t *c, pixman_region32_t *damage)
 		return;
 
 	wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &scissor_box);
+	if (c->surface->geometry.width < c->w - 2 * c->border || c->surface->geometry.height < c->h - 2 * c->border)
+		wlr_renderer_clear(wlr_backend_get_renderer(output->backend), (float[4]){0.0, 0.0, 0.0, 1.0});
 	if (c->border) {
 		const float *color = TMBR_COLOR_INACTIVE;
 		struct wlr_box borders[4] = {
