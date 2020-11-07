@@ -815,10 +815,8 @@ static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void
 {
 	struct wlr_xdg_toplevel_set_fullscreen_event *event = payload;
 	tmbr_client_t *client = wl_container_of(listener, client, request_fullscreen);
-	if (client->desktop) {
-		tmbr_desktop_focus_client(client->server->screen->focus, client, false);
+	if (client->desktop && client == tmbr_server_focussed_client(client->server))
 		tmbr_desktop_set_fullscreen(client->desktop, event->fullscreen);
-	}
 }
 
 static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
