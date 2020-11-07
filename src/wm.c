@@ -758,6 +758,20 @@ static void tmbr_keyboard_new(tmbr_server_t *server, struct wlr_input_device *de
 	xkb_context_unref(context);
 }
 
+static tmbr_client_t *tmbr_server_focussed_client(tmbr_server_t *server)
+{
+	return server->screen->focus->focus;
+}
+
+static tmbr_screen_t *tmbr_server_find_output(tmbr_server_t *server, const char *output)
+{
+	tmbr_screen_t *s;
+	wl_list_for_each(s, &server->screens, link)
+		if (!strcmp(s->output->name, output))
+			return s;
+	return NULL;
+}
+
 static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload)
 {
 	tmbr_server_t *server = wl_container_of(listener, server, new_input);
@@ -973,20 +987,6 @@ static void tmbr_server_on_destroy_inhibitor(struct wl_listener *listener, TMBR_
 	tmbr_server_t *server = wl_container_of(listener, server, inhibitor_destroy);
 	server->inhibitors--;
 	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors);
-}
-
-static tmbr_client_t *tmbr_server_focussed_client(tmbr_server_t *server)
-{
-	return server->screen->focus->focus;
-}
-
-static tmbr_screen_t *tmbr_server_find_output(tmbr_server_t *server, const char *output)
-{
-	tmbr_screen_t *s;
-	wl_list_for_each(s, &server->screens, link)
-		if (!strcmp(s->output->name, output))
-			return s;
-	return NULL;
 }
 
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
