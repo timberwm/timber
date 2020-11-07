@@ -502,8 +502,9 @@ static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen
 static void tmbr_desktop_focus_client(tmbr_desktop_t *desktop, tmbr_client_t *client, bool inputfocus)
 {
 	if (inputfocus) {
-		if (desktop->focus)
-			tmbr_client_focus(desktop->focus, false);
+		tmbr_client_t *current_focus = desktop->screen->server->screen->focus->focus;
+		if (current_focus && current_focus != client)
+			tmbr_client_focus(current_focus, false);
 		if (client)
 			tmbr_client_focus(client, true);
 	}
@@ -558,9 +559,9 @@ static void tmbr_screen_focus_desktop(tmbr_screen_t *screen, tmbr_desktop_t *des
 		die("Cannot focus desktop for different screen");
 	if (screen->focus != desktop)
 		wlr_output_damage_add_whole(screen->damage);
-	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 	screen->focus = desktop;
 	screen->server->screen = screen;
+	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 }
 
 static void tmbr_screen_remove_desktop(tmbr_screen_t *screen, tmbr_desktop_t *desktop)
@@ -684,65 +685,6 @@ static tmbr_screen_t *tmbr_screen_new(tmbr_server_t *server, struct wlr_output *
 	return screen;
 }
 
-static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
-{
-	struct wlr_output *output = payload;
-	struct wlr_output_mode *mode;
-	tmbr_server_t *server = wl_container_of(listener, server, new_output);
-	tmbr_screen_t *screen;
-
-	wlr_output_enable(output, true);
-	if ((mode = wlr_output_preferred_mode(output)) != NULL)
-		wlr_output_set_mode(output, mode);
-	wlr_output_layout_add_auto(server->output_layout, output);
-	if (!wlr_output_commit(output))
-		return;
-
-	screen = tmbr_screen_new(server, output);
-	wl_list_insert(&server->screens, &screen->link);
-	if (!server->screen)
-		server->screen = screen;
-}
-
-static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
-{
-	struct wlr_xdg_toplevel_set_fullscreen_event *event = payload;
-	tmbr_client_t *client = wl_container_of(listener, client, request_fullscreen);
-	if (client->desktop) {
-		tmbr_desktop_focus_client(client->server->screen->focus, client, false);
-		tmbr_desktop_set_fullscreen(client->desktop, event->fullscreen);
-	}
-}
-
-static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	tmbr_client_t *client = wl_container_of(listener, client, map);
-	tmbr_desktop_add_client(client->server->screen->focus, client);
-	tmbr_desktop_focus_client(client->server->screen->focus, client, true);
-}
-
-static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	tmbr_client_t *client = wl_container_of(listener, client, unmap);
-	if (client->desktop)
-		tmbr_desktop_remove_client(client->desktop, client);
-}
-
-static void tmbr_server_on_new_surface(struct wl_listener *listener, void *payload)
-{
-	tmbr_server_t *server = wl_container_of(listener, server, new_surface);
-	struct wlr_xdg_surface *surface = payload;
-	tmbr_client_t *client;
-
-	if (surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
-		return;
-
-	client = tmbr_client_new(server, surface);
-	tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
-	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
-	tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
-}
-
 static void tmbr_keyboard_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_keyboard_t *keyboard = wl_container_of(listener, keyboard, destroy);
@@ -817,6 +759,20 @@ static void tmbr_keyboard_new(tmbr_server_t *server, struct wlr_input_device *de
 	xkb_context_unref(context);
 }
 
+static tmbr_client_t *tmbr_server_focussed_client(tmbr_server_t *server)
+{
+	return server->screen->focus->focus;
+}
+
+static tmbr_screen_t *tmbr_server_find_output(tmbr_server_t *server, const char *output)
+{
+	tmbr_screen_t *s;
+	wl_list_for_each(s, &server->screens, link)
+		if (!strcmp(s->output->name, output))
+			return s;
+	return NULL;
+}
+
 static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload)
 {
 	tmbr_server_t *server = wl_container_of(listener, server, new_input);
@@ -834,6 +790,63 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 	}
 
 	wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER|WL_SEAT_CAPABILITY_KEYBOARD);
+}
+
+static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
+{
+	struct wlr_output *output = payload;
+	struct wlr_output_mode *mode;
+	tmbr_server_t *server = wl_container_of(listener, server, new_output);
+	tmbr_screen_t *screen;
+
+	wlr_output_enable(output, true);
+	if ((mode = wlr_output_preferred_mode(output)) != NULL)
+		wlr_output_set_mode(output, mode);
+	wlr_output_layout_add_auto(server->output_layout, output);
+	if (!wlr_output_commit(output))
+		return;
+
+	screen = tmbr_screen_new(server, output);
+	wl_list_insert(&server->screens, &screen->link);
+	if (!server->screen)
+		server->screen = screen;
+}
+
+static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
+{
+	struct wlr_xdg_toplevel_set_fullscreen_event *event = payload;
+	tmbr_client_t *client = wl_container_of(listener, client, request_fullscreen);
+	if (client->desktop && client == tmbr_server_focussed_client(client->server))
+		tmbr_desktop_set_fullscreen(client->desktop, event->fullscreen);
+}
+
+static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_client_t *client = wl_container_of(listener, client, map);
+	tmbr_desktop_add_client(client->server->screen->focus, client);
+	tmbr_desktop_focus_client(client->server->screen->focus, client, true);
+}
+
+static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_client_t *client = wl_container_of(listener, client, unmap);
+	if (client->desktop)
+		tmbr_desktop_remove_client(client->desktop, client);
+}
+
+static void tmbr_server_on_new_surface(struct wl_listener *listener, void *payload)
+{
+	tmbr_server_t *server = wl_container_of(listener, server, new_surface);
+	struct wlr_xdg_surface *surface = payload;
+	tmbr_client_t *client;
+
+	if (surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
+		return;
+
+	client = tmbr_client_new(server, surface);
+	tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
+	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
+	tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 }
 
 static void tmbr_server_on_cursor_axis(struct wl_listener *listener, void *payload)
@@ -973,20 +986,6 @@ static void tmbr_server_on_destroy_inhibitor(struct wl_listener *listener, TMBR_
 	tmbr_server_t *server = wl_container_of(listener, server, inhibitor_destroy);
 	server->inhibitors--;
 	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors);
-}
-
-static tmbr_client_t *tmbr_server_focussed_client(tmbr_server_t *server)
-{
-	return server->screen->focus->focus;
-}
-
-static tmbr_screen_t *tmbr_server_find_output(tmbr_server_t *server, const char *output)
-{
-	tmbr_screen_t *s;
-	wl_list_for_each(s, &server->screens, link)
-		if (!strcmp(s->output->name, output))
-			return s;
-	return NULL;
 }
 
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
