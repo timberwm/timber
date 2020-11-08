@@ -42,7 +42,7 @@ executable(
     dependency('pixman-1'),
     dependency('wayland-client'),
     dependency('wayland-server'),
-    dependency('wlroots'),
+    dependency('wlroots', version: '>=0.11.0'),
     dependency('xkbcommon'),
   ],
   c_args: [
