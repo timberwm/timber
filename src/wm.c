@@ -336,8 +336,11 @@ static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, commit);
-	if (client->desktop && client->desktop->screen->focus == client->desktop)
+	if (client->desktop && client->desktop->screen->focus == client->desktop) {
 		tmbr_client_damage(client);
+		if (client == client->desktop->focus)
+			tmbr_client_notify_pointer(client, 0);
+	}
 }
 
 static tmbr_client_t *tmbr_client_new(tmbr_server_t *server, struct wlr_xdg_surface *surface)
@@ -502,8 +505,6 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
-	if (desktop->focus && tmbr_server_find_focus(desktop->screen->server) == desktop->focus)
-		tmbr_client_notify_pointer(desktop->focus, 0);
 }
 
 static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen)
