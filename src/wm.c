@@ -323,21 +323,31 @@ static void tmbr_client_set_box(tmbr_client_t *client, int x, int y, int w, int 
 	}
 }
 
+static void tmbr_client_notify_pointer(tmbr_client_t *client, uint32_t time)
+{
+	tmbr_server_t *server = client->desktop->screen->server;
+	double x = server->cursor->x, y = server->cursor->y;
+	struct wlr_surface *surface;
+
+	if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y)) != NULL) {
+		wlr_seat_pointer_notify_enter(server->seat, surface, x, y);
+		if (time)
+			wlr_seat_pointer_notify_motion(server->seat, time, x, y);
+	} else {
+		wlr_seat_pointer_notify_clear_focus(server->seat);
+	}
+}
+
 static void tmbr_client_focus(tmbr_client_t *client, bool focus)
 {
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
 	if (focus) {
 		tmbr_server_t *server = client->desktop->screen->server;
-		double x = server->cursor->x, y = server->cursor->y;
 		struct wlr_keyboard *keyboard;
-		struct wlr_surface *surface;
 
-		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y)) != NULL)
-			wlr_seat_pointer_notify_enter(server->seat, surface, x, y);
-		else
-			wlr_seat_pointer_notify_clear_focus(server->seat);
 		if ((keyboard = wlr_seat_get_keyboard(server->seat)) != NULL)
 			wlr_seat_keyboard_notify_enter(server->seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+		tmbr_client_notify_pointer(client, 0);
 	}
 	tmbr_client_damage(client);
 }
@@ -907,14 +917,8 @@ static void tmbr_server_handle_cursor_motion(tmbr_server_t *server, uint32_t tim
 	}
 
 	if (client) {
-		struct wlr_surface *surface;
 		tmbr_desktop_focus_client(screen->focus, client, true);
-		if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y)) != NULL) {
-			wlr_seat_pointer_notify_enter(server->seat, surface, x, y);
-			wlr_seat_pointer_notify_motion(server->seat, time, x, y);
-		} else {
-			wlr_seat_pointer_notify_clear_focus(server->seat);
-		}
+		tmbr_client_notify_pointer(client, time);
 	} else {
 		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 	}
