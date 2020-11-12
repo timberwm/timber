@@ -213,40 +213,10 @@ static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener
 	wl_signal_add(signal, listener);
 }
 
-static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	tmbr_client_t *client = wl_container_of(listener, client, destroy);
-	wl_list_remove(&client->destroy.link);
-	wl_list_remove(&client->commit.link);
-	wl_list_remove(&client->map.link);
-	wl_list_remove(&client->unmap.link);
-	wl_list_remove(&client->request_fullscreen.link);
-	free(client);
-}
-
 static void tmbr_client_damage(tmbr_client_t *client)
 {
 	struct wlr_box box = { .x = client->x, .y = client->y, .width = client->w, .height = client->h };
 	wlr_output_damage_add_box(client->desktop->screen->damage, &box);
-}
-
-static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	tmbr_client_t *client = wl_container_of(listener, client, commit);
-	if (client->desktop && client->desktop->screen->focus == client->desktop)
-		tmbr_client_damage(client);
-}
-
-static tmbr_client_t *tmbr_client_new(tmbr_server_t *server, struct wlr_xdg_surface *surface)
-{
-	tmbr_client_t *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
-	client->server = server;
-	client->surface = surface;
-
-	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_client_on_destroy);
-	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_client_on_commit);
-
-	return client;
 }
 
 static void tmbr_client_kill(tmbr_client_t *client)
@@ -350,6 +320,39 @@ static void tmbr_client_focus(tmbr_client_t *client, bool focus)
 		tmbr_client_notify_pointer(client, 0);
 	}
 	tmbr_client_damage(client);
+}
+
+static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_client_t *client = wl_container_of(listener, client, destroy);
+	wl_list_remove(&client->destroy.link);
+	wl_list_remove(&client->commit.link);
+	wl_list_remove(&client->map.link);
+	wl_list_remove(&client->unmap.link);
+	wl_list_remove(&client->request_fullscreen.link);
+	free(client);
+}
+
+static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	tmbr_client_t *client = wl_container_of(listener, client, commit);
+	if (client->desktop && client->desktop->screen->focus == client->desktop) {
+		tmbr_client_damage(client);
+		if (client == client->desktop->focus)
+			tmbr_client_notify_pointer(client, 0);
+	}
+}
+
+static tmbr_client_t *tmbr_client_new(tmbr_server_t *server, struct wlr_xdg_surface *surface)
+{
+	tmbr_client_t *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
+	client->server = server;
+	client->surface = surface;
+
+	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_client_on_destroy);
+	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_client_on_commit);
+
+	return client;
 }
 
 static void tmbr_tree_recalculate(tmbr_tree_t *tree, int x, int y, int w, int h)
@@ -502,8 +505,6 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
-	if (desktop->focus && tmbr_server_find_focus(desktop->screen->server) == desktop->focus)
-		tmbr_client_notify_pointer(desktop->focus, 0);
 }
 
 static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen)
