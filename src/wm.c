@@ -502,6 +502,8 @@ static void tmbr_desktop_recalculate(tmbr_desktop_t *desktop)
 		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
+	if (desktop->focus && tmbr_server_find_focus(desktop->screen->server) == desktop->focus)
+		tmbr_client_notify_pointer(desktop->focus, 0);
 }
 
 static void tmbr_desktop_set_fullscreen(tmbr_desktop_t *desktop, bool fullscreen)
