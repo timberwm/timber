@@ -23,7 +23,7 @@ build:
 
 coverity:
   stage: analyze
-  image: ubuntu:20.04
+  image: ubuntu:20.10
   before_script:
     - *setup
   script:
@@ -33,8 +33,6 @@ coverity:
     - cov-analysis-linux64-*/bin/cov-build --dir cov-int ninja -C build all
     - tar czf cov-int.tar.gz cov-int
     - curl https://scan.coverity.com/builds?project=$COVERITY_PROJECT --form token=$COVERITY_TOKEN --form email=$GITLAB_USER_EMAIL --form file=@cov-int.tar.gz --form version=$CI_COMMIT_SHA --form description="$CI_COMMIT_SHA / $CI_COMMIT_TITLE / $CI_COMMIT_REF_NAME:$CI_PIPELINE_ID"
-  variables:
-    IMAGE: ubuntu:20.04
   only:
     refs:
       - master
