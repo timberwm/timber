@@ -665,6 +665,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		wlr_output_render_software_cursors(screen->output, &damage);
 
 		wlr_renderer_end(renderer);
+		wlr_output_set_damage(screen->output, &screen->damage->current);
 		wlr_output_commit(screen->output);
 	} else {
 		wlr_output_rollback(screen->output);
