@@ -123,11 +123,9 @@ struct tmbr_screen {
 	tmbr_server_t *server;
 
 	struct wlr_output *output;
+	struct wlr_output_damage *damage;
 	struct wl_list desktops;
 	tmbr_desktop_t *focus;
-
-	struct timespec render_time;
-	struct wlr_output_damage *damage;
 
 	struct wl_listener destroy;
 	struct wl_listener frame;
@@ -224,6 +222,11 @@ static void tmbr_client_kill(tmbr_client_t *client)
 	wlr_xdg_toplevel_send_close(client->surface);
 }
 
+static void tmbr_client_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, TMBR_UNUSED void *payload)
+{
+	wlr_surface_send_frame_done(surface, (struct timespec *)payload);
+}
+
 static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	tmbr_client_t *client = payload;
@@ -248,7 +251,6 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 
 	wlr_matrix_project_box(matrix, &box, wlr_output_transform_invert(surface->current.transform), 0, output->transform_matrix);
 	wlr_render_texture_with_matrix(wlr_backend_get_renderer(output->backend), texture, matrix, 1);
-	wlr_surface_send_frame_done(surface, &client->desktop->screen->render_time);
 }
 
 static void tmbr_client_render(tmbr_client_t *c, pixman_region32_t *damage)
@@ -642,6 +644,8 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 {
 	tmbr_screen_t *screen = wl_container_of(listener, screen, frame);
 	pixman_region32_t damage;
+	tmbr_tree_t *it, *tree;
+	struct timespec time;
 	bool needs_frame;
 
 	pixman_region32_init(&damage);
@@ -650,7 +654,6 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	if (needs_frame) {
 		struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
 
-		clock_gettime(CLOCK_MONOTONIC, &screen->render_time);
 		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
 
 		if (!screen->focus->focus) {
@@ -673,6 +676,12 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 
 out:
 	pixman_region32_fini(&damage);
+
+	clock_gettime(CLOCK_MONOTONIC, &time);
+	tmbr_tree_foreach_leaf(screen->focus->clients, it, tree) {
+		wlr_xdg_surface_for_each_surface(tree->client->surface,
+						 tmbr_client_send_frame_done, &time);
+	}
 }
 
 static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
