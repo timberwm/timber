@@ -256,22 +256,14 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 static void tmbr_client_render(tmbr_client_t *c, pixman_region32_t *output_damage)
 {
 	struct wlr_output *output = c->desktop->screen->output;
-	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, output->scale), scissor_box;
+	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, output->scale);
 	pixman_region32_t damage;
-	pixman_box32_t *rects;
-	int i, nrects;
 
 	pixman_region32_init(&damage);
 	pixman_region32_union_rect(&damage, &damage, box.x, box.y, box.width, box.height);
 	pixman_region32_intersect(&damage, &damage, output_damage);
 	if (!pixman_region32_not_empty(&damage))
 		goto out;
-
-	for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
-		wlr_box_from_pixman_box32(&scissor_box, rects[i]);
-		wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &scissor_box);
-		wlr_renderer_clear(wlr_backend_get_renderer(output->backend), (float[4]){0.0, 0.0, 0.0, 1.0});
-	}
 
 	if (c->border) {
 		const float *color = TMBR_COLOR_INACTIVE;
@@ -284,7 +276,7 @@ static void tmbr_client_render(tmbr_client_t *c, pixman_region32_t *output_damag
 
 		if (c->desktop->focus == c && c->desktop->screen == c->server->screen)
 			color = TMBR_COLOR_ACTIVE;
-		for (i = 0; i < (int) ARRAY_SIZE(borders); i++) {
+		for (int i = 0; i < (int) ARRAY_SIZE(borders); i++) {
 			wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &borders[i]);
 			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
 		}
@@ -656,6 +648,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_screen_t *screen = wl_container_of(listener, screen, frame);
+	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
 	pixman_region32_t damage;
 	tmbr_tree_t *it, *tree;
 	struct timespec time;
@@ -665,17 +658,27 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	if (!wlr_output_damage_attach_render(screen->damage, &needs_frame, &damage))
 		goto out;
 	if (needs_frame) {
-		struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
-
 		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
 
 		if (!screen->focus->focus) {
 			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
-		} else if (pixman_region32_not_empty(&damage) && !screen->focus->fullscreen) {
-			tmbr_tree_foreach_leaf(screen->focus->clients, it, tree)
-				tmbr_client_render(tree->client, &damage);
 		} else if (pixman_region32_not_empty(&damage)) {
-			tmbr_client_render(screen->focus->focus, &damage);
+			pixman_box32_t *rects;
+			int i, nrects;
+
+			for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
+				struct wlr_box scissor_box;
+				wlr_box_from_pixman_box32(&scissor_box, rects[i]);
+				wlr_renderer_scissor(renderer, &scissor_box);
+				wlr_renderer_clear(renderer, (float[4]){0.0, 0.0, 0.0, 1.0});
+			}
+
+			if (screen->focus->fullscreen) {
+				tmbr_client_render(screen->focus->focus, &damage);
+			} else {
+				tmbr_tree_foreach_leaf(screen->focus->clients, it, tree)
+					tmbr_client_render(tree->client, &damage);
+			}
 		}
 
 		wlr_output_render_software_cursors(screen->output, &damage);
