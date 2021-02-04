@@ -661,9 +661,8 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		} else if (screen->focus->fullscreen) {
 			tmbr_client_render(screen->focus->focus, &damage);
 		} else {
-			tmbr_tree_t *it, *t;
-			tmbr_tree_foreach_leaf(screen->focus->clients, it, t)
-				tmbr_client_render(t->client, &damage);
+			tmbr_tree_foreach_leaf(screen->focus->clients, it, tree)
+				tmbr_client_render(tree->client, &damage);
 		}
 		wlr_output_render_software_cursors(screen->output, &damage);
 
