@@ -213,10 +213,10 @@ static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener
 	wl_signal_add(signal, listener);
 }
 
-static void tmbr_client_damage(tmbr_client_t *client)
+static void tmbr_client_damage(tmbr_client_t *c)
 {
-	struct wlr_box box = { .x = client->x, .y = client->y, .width = client->w, .height = client->h };
-	wlr_output_damage_add_box(client->desktop->screen->damage, &box);
+	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
+	wlr_output_damage_add_box(c->desktop->screen->damage, &box);
 }
 
 static void tmbr_client_kill(tmbr_client_t *client)
@@ -256,13 +256,13 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 static void tmbr_client_render(tmbr_client_t *c, pixman_region32_t *damage)
 {
 	struct wlr_output *output = c->desktop->screen->output;
-	pixman_box32_t geom = { .x1 = c->x, .x2 = c->x + c->w, .y1 = c->y, .y2 = c->y + c->h };
-	struct wlr_box scissor_box = wlr_box_scaled(c->x, c->y, c->w, c->h, output->scale);
+	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, output->scale);
+	pixman_box32_t rect = { .x1 = box.x, .x2 = box.x + box.width, .y1 = box.y, .y2 = box.y + box.height };
 
-	if (!pixman_region32_contains_rectangle(damage, &geom))
+	if (!pixman_region32_contains_rectangle(damage, &rect))
 		return;
 
-	wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &scissor_box);
+	wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &box);
 	if (c->surface->geometry.width < c->w - 2 * c->border || c->surface->geometry.height < c->h - 2 * c->border)
 		wlr_renderer_clear(wlr_backend_get_renderer(output->backend), (float[4]){0.0, 0.0, 0.0, 1.0});
 	if (c->border) {
