@@ -46,6 +46,7 @@
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
+#include <wlr/util/region.h>
 
 #include "common.h"
 #include "config.h"
@@ -346,11 +347,24 @@ static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	free(client);
 }
 
+static void tmbr_client_damage_surface(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, TMBR_UNUSED void *payload)
+{
+	tmbr_client_t *client = payload;
+	pixman_region32_t damage;
+
+	pixman_region32_init(&damage);
+	wlr_surface_get_effective_damage(surface, &damage);
+	pixman_region32_translate(&damage, client->x + sx, client->y + sy);
+	wlr_region_scale(&damage, &damage, client->desktop->screen->output->scale);
+	wlr_output_damage_add(client->desktop->screen->damage, &damage);
+	pixman_region32_fini(&damage);
+}
+
 static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	tmbr_client_t *client = wl_container_of(listener, client, commit);
 	if (client->desktop && client->desktop->screen->focus == client->desktop) {
-		tmbr_client_damage(client);
+		wlr_xdg_surface_for_each_surface(client->surface, tmbr_client_damage_surface, client);
 		if (client == client->desktop->focus)
 			tmbr_client_notify_pointer(client, 0);
 	}
