@@ -57,6 +57,8 @@
 #define tmbr_return_error(resource, code, msg) \
 	do { wl_resource_post_error((resource), (code), (msg)); return; } while (0)
 
+#define wlr_box_scaled(vx, vy, vw, vh, s) (struct wlr_box){ .x = (vx)*(s), .y = (vy)*(s), .width = (vw)*(s), .height = (vh)*(s) }
+
 typedef struct tmbr_binding tmbr_binding_t;
 typedef struct tmbr_client tmbr_client_t;
 typedef struct tmbr_keyboard tmbr_keyboard_t;
@@ -231,8 +233,11 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 {
 	tmbr_client_t *client = payload;
 	struct wlr_output *output = client->desktop->screen->output;
+	struct wlr_box box = wlr_box_scaled(
+		client->x + client->border + sx, client->y + client->border + sy,
+		surface->current.width, surface->current.height, output->scale
+	);
 	struct wlr_texture *texture;
-	struct wlr_box box;
 	float matrix[9];
 
 	if ((texture = wlr_surface_get_texture(surface)) == NULL)
@@ -244,11 +249,6 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 		glTexParameteri(attribs.target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	}
 
-	box.x = (client->x + client->border + sx) * output->scale;
-	box.y = (client->y + client->border + sy) * output->scale;
-	box.width = surface->current.width * output->scale;
-	box.height = surface->current.height * output->scale;
-
 	wlr_matrix_project_box(matrix, &box, wlr_output_transform_invert(surface->current.transform), 0, output->transform_matrix);
 	wlr_render_texture_with_matrix(wlr_backend_get_renderer(output->backend), texture, matrix, 1);
 }
@@ -256,9 +256,8 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 static void tmbr_client_render(tmbr_client_t *c, pixman_region32_t *damage)
 {
 	struct wlr_output *output = c->desktop->screen->output;
-	const float s = output->scale;
 	pixman_box32_t geom = { .x1 = c->x, .x2 = c->x + c->w, .y1 = c->y, .y2 = c->y + c->h };
-	struct wlr_box scissor_box = { .x = c->x * s, .y = c->y * s, .width = c->w * s, .height = c->h * s };
+	struct wlr_box scissor_box = wlr_box_scaled(c->x, c->y, c->w, c->h, output->scale);
 
 	if (!pixman_region32_contains_rectangle(damage, &geom))
 		return;
@@ -269,10 +268,10 @@ static void tmbr_client_render(tmbr_client_t *c, pixman_region32_t *damage)
 	if (c->border) {
 		const float *color = TMBR_COLOR_INACTIVE;
 		struct wlr_box borders[4] = {
-			{ c->x * s, c->y * s, c->w * s, c->border * s },
-			{ c->x * s, c->y * s, c->border * s, c->h * s },
-			{ (c->x + c->w - c->border) * s, c->y * s, c->border * s, c->h * s },
-			{ c->x * s, (c->y + c->h - c->border) * s, c->w * s, c->border * s },
+			wlr_box_scaled(c->x, c->y, c->w, c->border, output->scale),
+			wlr_box_scaled(c->x, c->y, c->border, c->h, output->scale),
+			wlr_box_scaled(c->x + c->w - c->border, c->y, c->border, c->h, output->scale),
+			wlr_box_scaled(c->x, c->y + c->h - c->border, c->w, c->border, output->scale),
 		};
 		size_t i;
 
