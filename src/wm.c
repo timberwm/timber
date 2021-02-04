@@ -658,14 +658,14 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 
 		if (!screen->focus->focus) {
 			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
-		} else if (screen->focus->fullscreen) {
-			tmbr_client_render(screen->focus->focus, &damage);
-		} else {
+		} else if (pixman_region32_not_empty(&damage) && !screen->focus->fullscreen) {
 			tmbr_tree_foreach_leaf(screen->focus->clients, it, tree)
 				tmbr_client_render(tree->client, &damage);
+		} else if (pixman_region32_not_empty(&damage)) {
+			tmbr_client_render(screen->focus->focus, &damage);
 		}
-		wlr_output_render_software_cursors(screen->output, &damage);
 
+		wlr_output_render_software_cursors(screen->output, &damage);
 		wlr_renderer_end(renderer);
 		wlr_output_set_damage(screen->output, &screen->damage->current);
 		wlr_output_commit(screen->output);
