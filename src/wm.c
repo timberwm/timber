@@ -248,14 +248,11 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 	pixman_region32_t damage;
 	float matrix[9];
 
-	if ((texture = wlr_surface_get_texture(surface)) == NULL)
-		goto out;
 	pixman_region32_init(&damage);
 	pixman_region32_union_rect(&damage, &damage, box.x, box.y, box.width, box.height);
 	pixman_region32_intersect(&damage, &damage, data->output_damage);
-	if (!pixman_region32_not_empty(&damage))
+	if (!pixman_region32_not_empty(&damage) || (texture = wlr_surface_get_texture(surface)) == NULL)
 		goto out;
-
 	if (wlr_texture_is_gles2(texture)) {
 		struct wlr_gles2_texture_attribs attribs;
 		wlr_gles2_texture_get_attribs(texture, &attribs);
