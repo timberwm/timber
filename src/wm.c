@@ -351,7 +351,7 @@ static void tmbr_client_damage_surface(struct wlr_surface *surface, TMBR_UNUSED 
 
 	pixman_region32_init(&damage);
 	wlr_surface_get_effective_damage(surface, &damage);
-	pixman_region32_translate(&damage, client->x + sx, client->y + sy);
+	pixman_region32_translate(&damage, client->x + client->border + sx, client->y + client->border + sy);
 	wlr_region_scale(&damage, &damage, client->desktop->screen->output->scale);
 	wlr_output_damage_add(client->desktop->screen->damage, &damage);
 	pixman_region32_fini(&damage);
