@@ -246,7 +246,9 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 	);
 	struct wlr_texture *texture;
 	pixman_region32_t damage;
+	pixman_box32_t *rects;
 	float matrix[9];
+	int i, nrects;
 
 	pixman_region32_init(&damage);
 	pixman_region32_union_rect(&damage, &damage, box.x, box.y, box.width, box.height);
@@ -259,9 +261,14 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 		glBindTexture(attribs.target, attribs.tex);
 		glTexParameteri(attribs.target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	}
-
 	wlr_matrix_project_box(matrix, &box, wlr_output_transform_invert(surface->current.transform), 0, output->transform_matrix);
-	wlr_render_texture_with_matrix(wlr_backend_get_renderer(output->backend), texture, matrix, 1);
+
+	for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
+		struct wlr_box scissor_box = { .x = rects[i].x1, .y = rects[i].y1, .width = rects[i].x2 - rects[i].x1, .height = rects[i].y2 - rects[i].y1 };
+		wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &scissor_box);
+		wlr_render_texture_with_matrix(wlr_backend_get_renderer(output->backend), texture, matrix, 1);
+	}
+
 out:
 	pixman_region32_fini(&damage);
 }
