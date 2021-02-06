@@ -69,7 +69,7 @@ static const struct {
 	{ "binding", "add",       TMBR_CTRL_BINDING_ADD,       TMBR_ARG_KEY|TMBR_ARG_CMD     }
 };
 
-typedef struct tmbr_arg {
+struct tmbr_arg {
 	int function;
 	enum tmbr_ctrl_selection sel;
 	enum tmbr_ctrl_direction dir;
@@ -78,7 +78,7 @@ typedef struct tmbr_arg {
 	struct { int height; int width; int refresh; } mode;
 	const char *command;
 	const char *screen;
-} tmbr_arg_t;
+};
 
 static const struct {
 	const char *name;
@@ -97,7 +97,7 @@ static const struct {
 static const char *directions[] = { "north", "south", "east", "west" };
 static const char *selections[] = { "prev", "next" };
 
-static void tmbr_parse(tmbr_arg_t *out, int argc, char **argv)
+static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 {
 	ssize_t c, i;
 
@@ -230,7 +230,7 @@ int tmbr_client(int argc, char *argv[])
 	};
 	struct wl_display *display;
 	struct tmbr_ctrl *ctrl = NULL;
-	tmbr_arg_t args = { 0 };
+	struct tmbr_arg args = { 0 };
 	uint32_t error = 0;
 
 	if (argc < 3)
