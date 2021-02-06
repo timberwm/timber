@@ -834,9 +834,9 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 
 static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
 {
+	struct tmbr_server *server = wl_container_of(listener, server, new_output);
 	struct wlr_output *output = payload;
 	struct wlr_output_mode *mode;
-	struct tmbr_server *server = wl_container_of(listener, server, new_output);
 	struct tmbr_screen *screen;
 
 	wlr_output_enable(output, true);
@@ -913,9 +913,9 @@ static void tmbr_server_on_cursor_frame(struct wl_listener *listener, TMBR_UNUSE
 static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, uint32_t time)
 {
 	double x = server->cursor->x, y = server->cursor->y;
-	struct wlr_output *output;
 	struct tmbr_client *client = NULL;
 	struct tmbr_screen *screen;
+	struct wlr_output *output;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 
