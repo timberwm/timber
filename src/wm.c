@@ -466,22 +466,13 @@ static struct tmbr_tree *tmbr_tree_find_sibling(struct tmbr_tree *tree, enum tmb
 
 static void tmbr_tree_swap(struct tmbr_tree *a, struct tmbr_tree *b)
 {
-	struct tmbr_tree *l = a->left, *r = a->right;
-	struct tmbr_client *c = a->client;
-
-	if ((a->client = b->client) != NULL)
-		a->client->tree = a;
-	if ((a->left = b->left) != NULL)
-		a->left->parent = a;
-	if ((a->right = b->right) != NULL)
-		a->right->parent = a;
-
-	if ((b->client = c) != NULL)
-		b->client->tree = b;
-	if ((b->left = l) != NULL)
-		b->left->parent = b;
-	if ((b->right = r) != NULL)
-		b->right->parent = b;
+	struct tmbr_tree tmp = *a;
+	if ((a->client = b->client)  != NULL) a->client->tree = a;
+	if ((a->left = b->left)      != NULL) a->left->parent = a;
+	if ((a->right = b->right)    != NULL) a->right->parent = a;
+	if ((b->client = tmp.client) != NULL) b->client->tree = b;
+	if ((b->left = tmp.left)     != NULL) b->left->parent = b;
+	if ((b->right = tmp.right)   != NULL) b->right->parent = b;
 }
 
 #define tmbr_tree_foreach_leaf(t, i, n) \
