@@ -98,7 +98,7 @@ struct tmbr_client {
 
 struct tmbr_client_render_data {
 	struct tmbr_client *c;
-	pixman_region32_t *output_damage;
+	struct pixman_region32 *output_damage;
 };
 
 struct tmbr_tree {
@@ -236,8 +236,8 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 		surface->current.width, surface->current.height, output->scale
 	);
 	struct wlr_texture *texture;
-	pixman_region32_t damage;
-	pixman_box32_t *rects;
+	struct pixman_region32 damage;
+	struct pixman_box32 *rects;
 	float matrix[9];
 	int i, nrects;
 
@@ -264,7 +264,7 @@ out:
 	pixman_region32_fini(&damage);
 }
 
-static void tmbr_client_render(struct tmbr_client *c, pixman_region32_t *output_damage)
+static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage)
 {
 	struct wlr_output *output = c->desktop->screen->output;
 	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, output->scale);
@@ -345,7 +345,7 @@ static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_client_damage_surface(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, TMBR_UNUSED void *payload)
 {
 	struct tmbr_client *client = payload;
-	pixman_region32_t damage;
+	struct pixman_region32 damage;
 
 	pixman_region32_init(&damage);
 	wlr_surface_get_effective_damage(surface, &damage);
@@ -664,7 +664,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
 	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
-	pixman_region32_t damage;
+	struct pixman_region32 damage;
 	struct tmbr_tree *it, *tree;
 	struct timespec time;
 	bool needs_frame;
@@ -678,7 +678,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		if (!screen->focus->focus) {
 			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
 		} else if (pixman_region32_not_empty(&damage)) {
-			pixman_box32_t *rects;
+			struct pixman_box32 *rects;
 			int i, nrects;
 
 			for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
