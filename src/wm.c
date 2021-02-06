@@ -543,7 +543,6 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 		return;
 	desktop->focus = client;
 	tmbr_desktop_set_fullscreen(desktop, false);
-	tmbr_desktop_recalculate(desktop);
 }
 
 static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_client *client)
