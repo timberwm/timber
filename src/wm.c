@@ -475,9 +475,8 @@ static void tmbr_tree_swap(struct tmbr_tree *a, struct tmbr_tree *b)
 	if ((b->right = tmp.right)   != NULL) b->right->parent = b;
 }
 
-#define tmbr_tree_foreach_leaf(t, i, n) \
-	i = NULL, n = t; \
-	while ((!i && n && n->client && (i = n)) || ((n = tmbr_tree_find_sibling(n, TMBR_CTRL_SELECTION_NEXT)) != NULL && ((!i && (i = n)) || i != n)))
+#define tmbr_tree_for_each(t, n) \
+	for (struct tmbr_tree *i = NULL, *n = t; (!i && n && n->client && (i = n)) || ((n = tmbr_tree_find_sibling(n, TMBR_CTRL_SELECTION_NEXT)) != NULL && ((!i && (i = n)) || i != n));)
 
 static void tmbr_tree_remove(struct tmbr_tree **tree, struct tmbr_tree *node)
 {
@@ -635,9 +634,8 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 			tmbr_screen_add_desktop(sibling, desktop);
 		wl_list_init(&screen->desktops);
 	} else {
-		struct tmbr_tree *it, *t;
 		wl_list_for_each(desktop, &screen->desktops, link) {
-			tmbr_tree_foreach_leaf(desktop->clients, it, t)
+			tmbr_tree_for_each(desktop->clients, t)
 				tmbr_desktop_remove_client(desktop, t->client);
 		}
 		wl_display_terminate(screen->server->display);
@@ -656,7 +654,6 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
 	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
 	struct pixman_region32 damage;
-	struct tmbr_tree *it, *tree;
 	struct timespec time;
 	bool needs_frame;
 
@@ -682,7 +679,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			if (screen->focus->fullscreen) {
 				tmbr_client_render(screen->focus->focus, &damage);
 			} else {
-				tmbr_tree_foreach_leaf(screen->focus->clients, it, tree)
+				tmbr_tree_for_each(screen->focus->clients, tree)
 					tmbr_client_render(tree->client, &damage);
 			}
 		}
@@ -699,10 +696,9 @@ out:
 	pixman_region32_fini(&damage);
 
 	clock_gettime(CLOCK_MONOTONIC, &time);
-	tmbr_tree_foreach_leaf(screen->focus->clients, it, tree) {
+	tmbr_tree_for_each(screen->focus->clients, tree)
 		wlr_xdg_surface_for_each_surface(tree->client->surface,
 						 tmbr_client_send_frame_done, &time);
-	}
 }
 
 static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -940,8 +936,7 @@ static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, uint32_
 	if (screen->focus->fullscreen) {
 		client = screen->focus->focus;
 	} else {
-		struct tmbr_tree *it, *t;
-		tmbr_tree_foreach_leaf(screen->focus->clients, it, t) {
+		tmbr_tree_for_each(screen->focus->clients, t) {
 			if (t->client->x > x || t->client->x + t->client->w < x ||
 			    t->client->y > y || t->client->y + t->client->h < y)
 				continue;
@@ -1263,12 +1258,9 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 		fprintf(f, "  desktops:\n");
 
 		wl_list_for_each(d, &s->desktops, link) {
-			struct tmbr_tree *it, *tree;
-
 			fprintf(f, "  - selected: %s\n", d == s->focus ? "true" : "false");
 			fprintf(f, "    clients:\n");
-
-			tmbr_tree_foreach_leaf(d->clients, it, tree) {
+			tmbr_tree_for_each(d->clients, tree) {
 				struct tmbr_client *c = tree->client;
 				fprintf(f, "    - title: %s\n", c->surface->toplevel->title);
 				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n", c->x, c->y, c->w, c->h);
