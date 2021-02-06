@@ -878,15 +878,13 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_surface);
 	struct wlr_xdg_surface *surface = payload;
-	struct tmbr_client *client;
 
-	if (surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
-		return;
-
-	client = tmbr_client_new(server, surface);
-	tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
-	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
-	tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
+	if (surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+		struct tmbr_client *client = tmbr_client_new(server, surface);
+		tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
+		tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
+		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
+	}
 }
 
 static void tmbr_server_on_cursor_axis(struct wl_listener *listener, void *payload)
