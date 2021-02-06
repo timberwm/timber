@@ -466,27 +466,17 @@ static struct tmbr_tree *tmbr_tree_find_sibling(struct tmbr_tree *tree, enum tmb
 
 static void tmbr_tree_swap(struct tmbr_tree *a, struct tmbr_tree *b)
 {
-	struct tmbr_tree *l = a->left, *r = a->right;
-	struct tmbr_client *c = a->client;
-
-	if ((a->client = b->client) != NULL)
-		a->client->tree = a;
-	if ((a->left = b->left) != NULL)
-		a->left->parent = a;
-	if ((a->right = b->right) != NULL)
-		a->right->parent = a;
-
-	if ((b->client = c) != NULL)
-		b->client->tree = b;
-	if ((b->left = l) != NULL)
-		b->left->parent = b;
-	if ((b->right = r) != NULL)
-		b->right->parent = b;
+	struct tmbr_tree tmp = *a;
+	if ((a->client = b->client)  != NULL) a->client->tree = a;
+	if ((a->left = b->left)      != NULL) a->left->parent = a;
+	if ((a->right = b->right)    != NULL) a->right->parent = a;
+	if ((b->client = tmp.client) != NULL) b->client->tree = b;
+	if ((b->left = tmp.left)     != NULL) b->left->parent = b;
+	if ((b->right = tmp.right)   != NULL) b->right->parent = b;
 }
 
-#define tmbr_tree_foreach_leaf(t, i, n) \
-	i = NULL, n = t; \
-	while ((!i && n && n->client && (i = n)) || ((n = tmbr_tree_find_sibling(n, TMBR_CTRL_SELECTION_NEXT)) != NULL && ((!i && (i = n)) || i != n)))
+#define tmbr_tree_for_each(t, n) \
+	for (struct tmbr_tree *i = NULL, *n = t; (!i && n && n->client && (i = n)) || ((n = tmbr_tree_find_sibling(n, TMBR_CTRL_SELECTION_NEXT)) != NULL && ((!i && (i = n)) || i != n));)
 
 static void tmbr_tree_remove(struct tmbr_tree **tree, struct tmbr_tree *node)
 {
@@ -553,7 +543,6 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 		return;
 	desktop->focus = client;
 	tmbr_desktop_set_fullscreen(desktop, false);
-	tmbr_desktop_recalculate(desktop);
 }
 
 static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_client *client)
@@ -644,9 +633,8 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 			tmbr_screen_add_desktop(sibling, desktop);
 		wl_list_init(&screen->desktops);
 	} else {
-		struct tmbr_tree *it, *t;
 		wl_list_for_each(desktop, &screen->desktops, link) {
-			tmbr_tree_foreach_leaf(desktop->clients, it, t)
+			tmbr_tree_for_each(desktop->clients, t)
 				tmbr_desktop_remove_client(desktop, t->client);
 		}
 		wl_display_terminate(screen->server->display);
@@ -665,7 +653,6 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
 	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
 	struct pixman_region32 damage;
-	struct tmbr_tree *it, *tree;
 	struct timespec time;
 	bool needs_frame;
 
@@ -691,7 +678,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			if (screen->focus->fullscreen) {
 				tmbr_client_render(screen->focus->focus, &damage);
 			} else {
-				tmbr_tree_foreach_leaf(screen->focus->clients, it, tree)
+				tmbr_tree_for_each(screen->focus->clients, tree)
 					tmbr_client_render(tree->client, &damage);
 			}
 		}
@@ -708,10 +695,9 @@ out:
 	pixman_region32_fini(&damage);
 
 	clock_gettime(CLOCK_MONOTONIC, &time);
-	tmbr_tree_foreach_leaf(screen->focus->clients, it, tree) {
+	tmbr_tree_for_each(screen->focus->clients, tree)
 		wlr_xdg_surface_for_each_surface(tree->client->surface,
 						 tmbr_client_send_frame_done, &time);
-	}
 }
 
 static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -848,9 +834,9 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 
 static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
 {
+	struct tmbr_server *server = wl_container_of(listener, server, new_output);
 	struct wlr_output *output = payload;
 	struct wlr_output_mode *mode;
-	struct tmbr_server *server = wl_container_of(listener, server, new_output);
 	struct tmbr_screen *screen;
 
 	wlr_output_enable(output, true);
@@ -892,15 +878,13 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_surface);
 	struct wlr_xdg_surface *surface = payload;
-	struct tmbr_client *client;
 
-	if (surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
-		return;
-
-	client = tmbr_client_new(server, surface);
-	tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
-	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
-	tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
+	if (surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+		struct tmbr_client *client = tmbr_client_new(server, surface);
+		tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
+		tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
+		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
+	}
 }
 
 static void tmbr_server_on_cursor_axis(struct wl_listener *listener, void *payload)
@@ -929,9 +913,9 @@ static void tmbr_server_on_cursor_frame(struct wl_listener *listener, TMBR_UNUSE
 static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, uint32_t time)
 {
 	double x = server->cursor->x, y = server->cursor->y;
-	struct wlr_output *output;
 	struct tmbr_client *client = NULL;
 	struct tmbr_screen *screen;
+	struct wlr_output *output;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 
@@ -949,8 +933,7 @@ static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, uint32_
 	if (screen->focus->fullscreen) {
 		client = screen->focus->focus;
 	} else {
-		struct tmbr_tree *it, *t;
-		tmbr_tree_foreach_leaf(screen->focus->clients, it, t) {
+		tmbr_tree_for_each(screen->focus->clients, t) {
 			if (t->client->x > x || t->client->x + t->client->w < x ||
 			    t->client->y > y || t->client->y + t->client->h < y)
 				continue;
@@ -1029,15 +1012,13 @@ static void tmbr_server_on_resume(struct wl_listener *listener, TMBR_UNUSED void
 static void tmbr_server_on_new_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, inhibitor_new);
-	server->inhibitors++;
-	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors);
+	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors++);
 }
 
 static void tmbr_server_on_destroy_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, inhibitor_destroy);
-	server->inhibitors--;
-	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors);
+	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors--);
 }
 
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
@@ -1272,12 +1253,9 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 		fprintf(f, "  desktops:\n");
 
 		wl_list_for_each(d, &s->desktops, link) {
-			struct tmbr_tree *it, *tree;
-
 			fprintf(f, "  - selected: %s\n", d == s->focus ? "true" : "false");
 			fprintf(f, "    clients:\n");
-
-			tmbr_tree_foreach_leaf(d->clients, it, tree) {
+			tmbr_tree_for_each(d->clients, tree) {
 				struct tmbr_client *c = tree->client;
 				fprintf(f, "    - title: %s\n", c->surface->toplevel->title);
 				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n", c->x, c->y, c->w, c->h);
