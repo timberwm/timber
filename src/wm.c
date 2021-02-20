@@ -1011,9 +1011,11 @@ static void tmbr_server_on_destroy_inhibitor(struct wl_listener *listener, TMBR_
 	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors--);
 }
 
-static void tmbr_server_on_new_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
+static void tmbr_server_on_new_inhibitor(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, inhibitor_new);
+	struct wlr_idle_inhibitor_v1 *inhibitor = payload;
+	tmbr_register(&inhibitor->events.destroy, &server->inhibitor_destroy, tmbr_server_on_destroy_inhibitor);
 	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors++);
 }
 
@@ -1384,7 +1386,6 @@ int tmbr_wm(void)
 	tmbr_register(&server.idle_timeout->events.idle, &server.seat_idle, tmbr_server_on_idle);
 	tmbr_register(&server.idle_timeout->events.resume, &server.seat_resume, tmbr_server_on_resume);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.inhibitor_new, tmbr_server_on_new_inhibitor);
-	tmbr_register(&server.idle_inhibit->events.destroy, &server.inhibitor_destroy, tmbr_server_on_destroy_inhibitor);
 
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");
