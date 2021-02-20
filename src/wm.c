@@ -1008,7 +1008,7 @@ static void tmbr_server_on_resume(struct wl_listener *listener, TMBR_UNUSED void
 static void tmbr_server_on_destroy_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, inhibitor_destroy);
-	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors--);
+	wlr_idle_set_enabled(server->idle, server->seat, !--server->inhibitors);
 }
 
 static void tmbr_server_on_new_inhibitor(struct wl_listener *listener, void *payload)
@@ -1016,7 +1016,7 @@ static void tmbr_server_on_new_inhibitor(struct wl_listener *listener, void *pay
 	struct tmbr_server *server = wl_container_of(listener, server, inhibitor_new);
 	struct wlr_idle_inhibitor_v1 *inhibitor = payload;
 	tmbr_register(&inhibitor->events.destroy, &server->inhibitor_destroy, tmbr_server_on_destroy_inhibitor);
-	wlr_idle_set_enabled(server->idle, server->seat, !!server->inhibitors++);
+	wlr_idle_set_enabled(server->idle, server->seat, !++server->inhibitors);
 }
 
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
