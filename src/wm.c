@@ -850,6 +850,7 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	wl_list_insert(&server->screens, &screen->link);
 	if (!server->screen)
 		server->screen = screen;
+	output->data = screen;
 }
 
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
@@ -919,13 +920,8 @@ static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, uint32_
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 
-	if ((output = wlr_output_layout_output_at(server->output_layout, x, y)) == NULL)
-		return;
-
-	wl_list_for_each(screen, &server->screens, link)
-		if (screen->output == output)
-			break;
-	if (&screen->link == &server->screens)
+	if ((output = wlr_output_layout_output_at(server->output_layout, x, y)) == NULL ||
+	    (screen = output->data) == NULL)
 		return;
 
 	tmbr_screen_focus_desktop(screen, screen->focus);
