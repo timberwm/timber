@@ -119,6 +119,7 @@ struct tmbr_desktop {
 };
 
 struct tmbr_screen {
+	int w, h;
 	struct wl_list link;
 	struct tmbr_server *server;
 
@@ -511,12 +512,10 @@ static struct tmbr_desktop *tmbr_desktop_find_sibling(struct tmbr_desktop *deskt
 
 static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 {
-	int width, height;
-	wlr_output_effective_resolution(desktop->screen->output, &width, &height);
 	if (desktop->fullscreen && desktop->focus)
-		tmbr_client_set_box(desktop->focus, 0, 0, width, height, 0);
+		tmbr_client_set_box(desktop->focus, 0, 0, desktop->screen->w, desktop->screen->h, 0);
 	else
-		tmbr_tree_recalculate(desktop->clients, 0, 0, width, height);
+		tmbr_tree_recalculate(desktop->clients, 0, 0, desktop->screen->w, desktop->screen->h);
 }
 
 static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fullscreen)
@@ -700,17 +699,25 @@ out:
 						 tmbr_client_send_frame_done, &time);
 }
 
+static void tmbr_screen_recalculate(struct tmbr_screen *s)
+{
+	struct tmbr_desktop *d;
+	wlr_output_effective_resolution(s->output, &s->w, &s->h);
+	wl_list_for_each(d, &s->desktops, link)
+		tmbr_desktop_recalculate(d);
+}
+
 static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, mode);
-	tmbr_desktop_recalculate(screen->focus);
+	tmbr_screen_recalculate(screen);
 }
 
 static void tmbr_screen_on_scale(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, scale);
 	wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
-	tmbr_desktop_recalculate(screen->focus);
+	tmbr_screen_recalculate(screen);
 }
 
 static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wlr_output *output)
@@ -720,6 +727,7 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	screen->server = server;
 	screen->damage = wlr_output_damage_create(output);
 	wl_list_init(&screen->desktops);
+	tmbr_screen_recalculate(screen);
 
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
@@ -1238,12 +1246,10 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 		struct wlr_output_mode *mode;
 		struct tmbr_desktop *d;
 		double x = 0, y = 0;
-		int w, h;
 
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
-		wlr_output_effective_resolution(s->output, &w, &h);
 		fprintf(f, "- name: %s\n", s->output->name);
-		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", (int)x, (int)y, w, h);
+		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", (int)x, (int)y, s->w, s->h);
 		fprintf(f, "  selected: %s\n", s == server->screen ? "true" : "false");
 		fprintf(f, "  modes:\n");
 		wl_list_for_each(mode, &s->output->modes, link)
