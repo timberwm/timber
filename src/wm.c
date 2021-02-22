@@ -34,6 +34,7 @@
 #include <wlr/types/wlr_gtk_primary_selection.h>
 #include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_damage.h>
@@ -128,12 +129,22 @@ struct tmbr_screen {
 	struct wlr_output *output;
 	struct wlr_output_damage *damage;
 	struct wl_list desktops;
+	struct wl_list layer_clients;
 	struct tmbr_desktop *focus;
 
 	struct wl_listener destroy;
 	struct wl_listener frame;
 	struct wl_listener scale;
 	struct wl_listener mode;
+};
+
+struct tmbr_layer_client {
+	struct wlr_layer_surface_v1 *surface;
+	struct tmbr_screen *screen;
+	int h, w, x, y;
+	struct wl_list link;
+	struct wl_listener destroy;
+	struct wl_listener commit;
 };
 
 struct tmbr_server {
@@ -143,6 +154,7 @@ struct tmbr_server {
 	struct wlr_idle *idle;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wlr_idle_timeout *idle_timeout;
+	struct wlr_layer_shell_v1 *layer_shell;
 	struct wlr_output_layout *output_layout;
 	struct wlr_seat *seat;
 	struct wlr_server_decoration_manager *decoration;
@@ -152,6 +164,7 @@ struct tmbr_server {
 	struct wl_listener new_input;
 	struct wl_listener new_output;
 	struct wl_listener new_surface;
+	struct wl_listener new_layer_shell_surface;
 	struct wl_listener cursor_axis;
 	struct wl_listener cursor_button;
 	struct wl_listener cursor_motion;
@@ -637,6 +650,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, destroy), *sibling = tmbr_screen_find_sibling(screen, TMBR_CTRL_SELECTION_NEXT);
 	struct tmbr_desktop *desktop, *tmp;
+	struct tmbr_layer_client *c, *ctmp;
 
 	if (sibling) {
 		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
@@ -649,6 +663,8 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		}
 		wl_display_terminate(screen->server->display);
 	}
+	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link)
+		wlr_layer_surface_v1_close(c->surface);
 
 	wl_list_remove(&screen->destroy.link);
 	wl_list_remove(&screen->frame.link);
@@ -656,6 +672,18 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	wl_list_remove(&screen->scale.link);
 	wl_list_remove(&screen->link);
 	free(screen);
+}
+
+static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_region32 *output_damage, struct timespec time, enum zwlr_layer_shell_v1_layer layer)
+{
+		struct tmbr_layer_client *c;
+		wl_list_for_each(c, &screen->layer_clients, link) {
+			struct tmbr_render_data data = {
+				output_damage, screen->output, wlr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale), time,
+			};
+			if (c->surface->current.layer == layer)
+				wlr_layer_surface_v1_for_each_surface(c->surface, tmbr_surface_render, &data);
+		}
 }
 
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -673,7 +701,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		clock_gettime(CLOCK_MONOTONIC, &time);
 		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
 
-		if (!screen->focus->focus) {
+		if (!screen->focus->focus && wl_list_empty(&screen->layer_clients)) {
 			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
 		} else if (pixman_region32_not_empty(&damage)) {
 			struct pixman_box32 *rects;
@@ -689,8 +717,12 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			if (screen->focus->fullscreen) {
 				tmbr_client_render(screen->focus->focus, &damage, time);
 			} else {
+				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
+				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
 				tmbr_tree_for_each(screen->focus->clients, tree)
 					tmbr_client_render(tree->client, &damage, time);
+				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
+				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
 			}
 		}
 
@@ -707,10 +739,111 @@ out:
 	pixman_region32_fini(&damage);
 }
 
+static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
+{
+	for (int l = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY; l >= ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND; l--) {
+		struct tmbr_layer_client *c;
+
+		wl_list_for_each(c, &s->layer_clients, link) {
+			struct wlr_layer_surface_v1_state *state = &c->surface->current;
+			struct wlr_box box = { .x = 0, .y = 0, .width = state->desired_width, .height = state->desired_height };
+
+			struct {
+				uint32_t singular_anchor, anchor_triplet;
+				int *positive_axis, *negative_axis, margin;
+			} edges[] = {
+				{
+					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
+					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
+					.positive_axis = &s->box.y,
+					.negative_axis = &s->box.height,
+					.margin = state->margin.top,
+				},
+				{
+					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
+					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
+					.negative_axis = &s->box.height,
+					.margin = state->margin.bottom,
+				},
+				{
+					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT,
+					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
+					.positive_axis = &s->box.x,
+					.negative_axis = &s->box.width,
+					.margin = state->margin.left,
+				},
+				{
+					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT,
+					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
+					.negative_axis = &s->box.width,
+					.margin = state->margin.right,
+				},
+			};
+
+			if ((int)state->layer != l || exclusive == !state->exclusive_zone)
+				continue;
+
+			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x, box.width = s->box.width; break;
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x = s->box.x; break;
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x + s->box.width - box.width; break;
+				default: box.x = s->box.x + s->box.width / 2 - box.width / 2; break;
+			}
+
+			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
+				case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM): box.y = s->box.y, box.height = s->box.height; break;
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y = s->box.y; break;
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y = s->box.y + s->box.height - box.height; break;
+				default: box.y = s->box.y + s->box.height / 2 - box.height / 2; break;
+			}
+
+			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.left; box.width -= state->margin.left + state->margin.right; break;
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x += state->margin.left; break;
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.right; break;
+			}
+
+			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.top; box.height -= state->margin.top + state->margin.bottom; break;
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y += state->margin.top; break;
+				case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.bottom; break;
+			}
+
+			if (box.width < 0 || box.height < 0) {
+				wlr_layer_surface_v1_close(c->surface);
+				continue;
+			}
+
+			if (c->w != box.width || c->h != box.height)
+				wlr_layer_surface_v1_configure(c->surface, box.width, box.height);
+			if (c->w != box.width || c->h != box.height || c->x != box.x || c->y != box.y) {
+				c->w = box.width; c->h = box.height; c->x = box.x; c->y = box.y;
+				wlr_output_damage_add_whole(c->screen->damage);
+			}
+
+			for (size_t i = 0; exclusive && i < sizeof(edges) / sizeof(edges[0]); i++) {
+				if ((state->anchor  == edges[i].singular_anchor || state->anchor == edges[i].anchor_triplet) &&
+				    state->exclusive_zone + edges[i].margin > 0) {
+					if (edges[i].positive_axis)
+						*edges[i].positive_axis += state->exclusive_zone + edges[i].margin;
+					if (edges[i].negative_axis)
+						*edges[i].negative_axis -= state->exclusive_zone + edges[i].margin;
+					break;
+				}
+			}
+		}
+	}
+}
+
 static void tmbr_screen_recalculate(struct tmbr_screen *s)
 {
 	struct tmbr_desktop *d;
+
+	s->box.x = s->box.y = 0;
 	wlr_output_effective_resolution(s->output, &s->box.width, &s->box.height);
+
+	tmbr_screen_recalculate_layers(s, true);
+	tmbr_screen_recalculate_layers(s, false);
 	wl_list_for_each(d, &s->desktops, link)
 		tmbr_desktop_recalculate(d);
 }
@@ -735,6 +868,7 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	screen->server = server;
 	screen->damage = wlr_output_damage_create(output);
 	wl_list_init(&screen->desktops);
+	wl_list_init(&screen->layer_clients);
 	tmbr_screen_recalculate(screen);
 
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
@@ -820,6 +954,32 @@ static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_input_devic
 	xkb_context_unref(context);
 }
 
+static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_layer_client *client = wl_container_of(listener, client, destroy);
+	wl_list_remove(&client->link);
+	wl_list_remove(&client->destroy.link);
+	wl_list_remove(&client->commit.link);
+	tmbr_screen_recalculate(client->screen);
+	free(client);
+}
+
+static void tmbr_layer_client_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
+{
+	struct tmbr_layer_client *client = payload;
+	tmbr_surface_damage(surface, client->screen->damage, client->x + sx, client->y + sy, client->screen->output->scale);
+}
+
+static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_layer_client *client = wl_container_of(listener, client, commit);
+	struct wlr_layer_surface_v1_state *c = &client->surface->current, *p = &client->surface->client_pending;
+	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
+	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
+		tmbr_screen_recalculate(client->screen);
+	wlr_layer_surface_v1_for_each_surface(client->surface, tmbr_layer_client_damage_surface, client);
+}
+
 static struct tmbr_screen *tmbr_server_find_output(struct tmbr_server *server, const char *output)
 {
 	struct tmbr_screen *s;
@@ -902,6 +1062,29 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 		tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 	}
+}
+
+static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, new_layer_shell_surface);
+	struct wlr_layer_surface_v1 *surface = payload;
+	struct wlr_layer_surface_v1_state current_state = surface->current;
+	struct tmbr_layer_client *client;
+
+	if (!surface->output)
+		surface->output = server->focussed_screen->output;
+	client = tmbr_alloc(sizeof(*client), "Could not allocate layer shell client");
+	client->surface = surface;
+	client->screen = surface->output->data;
+
+	wl_list_insert(&server->focussed_screen->layer_clients, &client->link);
+
+	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_layer_client_on_destroy);
+	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_layer_client_on_commit);
+
+	surface->current = surface->client_pending;
+	tmbr_screen_recalculate(server->focussed_screen);
+	surface->current = current_state;
 }
 
 static void tmbr_server_on_cursor_axis(struct wl_listener *listener, void *payload)
@@ -1370,6 +1553,7 @@ int tmbr_wm(void)
 	    (server.idle = wlr_idle_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
 	    (server.idle_timeout = wlr_idle_timeout_create(server.idle, server.seat, TMBR_SCREEN_DPMS_TIMEOUT)) == NULL ||
+	    (server.layer_shell = wlr_layer_shell_v1_create(server.display)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
@@ -1383,6 +1567,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.backend->events.new_input, &server.new_input, tmbr_server_on_new_input);
 	tmbr_register(&server.backend->events.new_output, &server.new_output, tmbr_server_on_new_output);
 	tmbr_register(&server.xdg_shell->events.new_surface, &server.new_surface, tmbr_server_on_new_surface);
+	tmbr_register(&server.layer_shell->events.new_surface, &server.new_layer_shell_surface, tmbr_server_on_new_layer_shell_surface);
 	tmbr_register(&server.seat->events.request_set_cursor, &server.request_set_cursor, tmbr_server_on_request_set_cursor);
 	tmbr_register(&server.seat->events.request_set_selection, &server.request_set_selection, tmbr_server_on_request_set_selection);
 	tmbr_register(&server.seat->events.request_set_primary_selection, &server.request_set_primary_selection, tmbr_server_on_request_set_primary_selection);
