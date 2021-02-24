@@ -269,7 +269,6 @@ out:
 static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage)
 {
 	struct wlr_output *output = c->desktop->screen->output;
-	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, output->scale);
 	struct tmbr_client_render_data payload = {
 		output_damage, output, wlr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale)
 	};
@@ -290,10 +289,7 @@ static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *ou
 			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
 		}
 	}
-
-	wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &box);
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_client_render_surface, &payload);
-	wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), NULL);
 }
 
 static void tmbr_client_set_box(struct tmbr_client *client, int x, int y, int w, int h, int border)
