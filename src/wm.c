@@ -97,8 +97,9 @@ struct tmbr_client {
 };
 
 struct tmbr_client_render_data {
-	struct tmbr_client *c;
-	struct pixman_region32 *output_damage;
+	struct pixman_region32 *damage;
+	struct wlr_output *output;
+	struct wlr_box box;
 };
 
 struct tmbr_tree {
@@ -231,11 +232,10 @@ static void tmbr_client_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED
 static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	struct tmbr_client_render_data *data = payload;
-	struct wlr_output *output = data->c->desktop->screen->output;
-	struct wlr_box box = wlr_box_scaled(
-		data->c->x + data->c->border + sx, data->c->y + data->c->border + sy,
-		surface->current.width, surface->current.height, output->scale
-	);
+	struct wlr_box bounds = data->box, extents = {
+		.x = bounds.x + sx * data->output->scale, .y = bounds.y + sy * data->output->scale,
+		.width = surface->current.width * data->output->scale, .height = surface->current.height * data->output->scale,
+	};
 	struct wlr_texture *texture;
 	struct pixman_region32 damage;
 	struct pixman_box32 *rects;
@@ -243,8 +243,8 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 	int i, nrects;
 
 	pixman_region32_init(&damage);
-	pixman_region32_union_rect(&damage, &damage, box.x, box.y, box.width, box.height);
-	pixman_region32_intersect(&damage, &damage, data->output_damage);
+	pixman_region32_union_rect(&damage, &damage, extents.x, extents.y, extents.width, extents.height);
+	pixman_region32_intersect(&damage, &damage, data->damage);
 	if (!pixman_region32_not_empty(&damage) || (texture = wlr_surface_get_texture(surface)) == NULL)
 		goto out;
 	if (wlr_texture_is_gles2(texture)) {
@@ -253,12 +253,12 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 		glBindTexture(attribs.target, attribs.tex);
 		glTexParameteri(attribs.target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	}
-	wlr_matrix_project_box(matrix, &box, wlr_output_transform_invert(surface->current.transform), 0, output->transform_matrix);
+	wlr_matrix_project_box(matrix, &extents, wlr_output_transform_invert(surface->current.transform), 0, data->output->transform_matrix);
 
 	for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
 		struct wlr_box scissor_box = { .x = rects[i].x1, .y = rects[i].y1, .width = rects[i].x2 - rects[i].x1, .height = rects[i].y2 - rects[i].y1 };
-		wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &scissor_box);
-		wlr_render_texture_with_matrix(wlr_backend_get_renderer(output->backend), texture, matrix, 1);
+		wlr_renderer_scissor(wlr_backend_get_renderer(data->output->backend), &scissor_box);
+		wlr_render_texture_with_matrix(wlr_backend_get_renderer(data->output->backend), texture, matrix, 1);
 	}
 
 out:
@@ -269,7 +269,9 @@ static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *ou
 {
 	struct wlr_output *output = c->desktop->screen->output;
 	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, output->scale);
-	struct tmbr_client_render_data payload = { c, output_damage };
+	struct tmbr_client_render_data payload = {
+		output_damage, output, wlr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale)
+	};
 
 	if (c->border) {
 		const float *color = TMBR_COLOR_INACTIVE;
