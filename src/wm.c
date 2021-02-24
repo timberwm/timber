@@ -96,7 +96,7 @@ struct tmbr_client {
 	struct wl_listener request_fullscreen;
 };
 
-struct tmbr_client_render_data {
+struct tmbr_render_data {
 	struct pixman_region32 *damage;
 	struct wlr_output *output;
 	struct wlr_box box;
@@ -225,9 +225,9 @@ static void tmbr_client_kill(struct tmbr_client *client)
 	wlr_xdg_toplevel_send_close(client->surface);
 }
 
-static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
+static void tmbr_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
-	struct tmbr_client_render_data *data = payload;
+	struct tmbr_render_data *data = payload;
 	struct wlr_box bounds = data->box, extents = {
 		.x = bounds.x + sx * data->output->scale, .y = bounds.y + sy * data->output->scale,
 		.width = surface->current.width * data->output->scale, .height = surface->current.height * data->output->scale,
@@ -266,7 +266,7 @@ out:
 static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage, struct timespec time)
 {
 	struct wlr_output *output = c->desktop->screen->output;
-	struct tmbr_client_render_data payload = {
+	struct tmbr_render_data payload = {
 		output_damage, output, wlr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale), time,
 	};
 
@@ -286,7 +286,7 @@ static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *ou
 			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
 		}
 	}
-	wlr_xdg_surface_for_each_surface(c->surface, tmbr_client_render_surface, &payload);
+	wlr_xdg_surface_for_each_surface(c->surface, tmbr_render_surface, &payload);
 }
 
 static void tmbr_client_set_box(struct tmbr_client *client, int x, int y, int w, int h, int border)
