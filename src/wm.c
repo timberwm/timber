@@ -100,6 +100,7 @@ struct tmbr_client_render_data {
 	struct pixman_region32 *damage;
 	struct wlr_output *output;
 	struct wlr_box box;
+	struct timespec time;
 };
 
 struct tmbr_tree {
@@ -224,11 +225,6 @@ static void tmbr_client_kill(struct tmbr_client *client)
 	wlr_xdg_toplevel_send_close(client->surface);
 }
 
-static void tmbr_client_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, TMBR_UNUSED void *payload)
-{
-	wlr_surface_send_frame_done(surface, (struct timespec *)payload);
-}
-
 static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	struct tmbr_client_render_data *data = payload;
@@ -263,14 +259,15 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 	}
 
 out:
+	wlr_surface_send_frame_done(surface, &data->time);
 	pixman_region32_fini(&damage);
 }
 
-static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage)
+static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage, struct timespec time)
 {
 	struct wlr_output *output = c->desktop->screen->output;
 	struct tmbr_client_render_data payload = {
-		output_damage, output, wlr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale)
+		output_damage, output, wlr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale), time,
 	};
 
 	if (c->border) {
@@ -658,6 +655,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	if (!wlr_output_damage_attach_render(screen->damage, &needs_frame, &damage))
 		goto out;
 	if (needs_frame) {
+		clock_gettime(CLOCK_MONOTONIC, &time);
 		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
 
 		if (!screen->focus->focus) {
@@ -675,10 +673,10 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			}
 
 			if (screen->focus->fullscreen) {
-				tmbr_client_render(screen->focus->focus, &damage);
+				tmbr_client_render(screen->focus->focus, &damage, time);
 			} else {
 				tmbr_tree_for_each(screen->focus->clients, tree)
-					tmbr_client_render(tree->client, &damage);
+					tmbr_client_render(tree->client, &damage, time);
 			}
 		}
 
@@ -692,11 +690,6 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 
 out:
 	pixman_region32_fini(&damage);
-
-	clock_gettime(CLOCK_MONOTONIC, &time);
-	tmbr_tree_for_each(screen->focus->clients, tree)
-		wlr_xdg_surface_for_each_surface(tree->client->surface,
-						 tmbr_client_send_frame_done, &time);
 }
 
 static void tmbr_screen_recalculate(struct tmbr_screen *s)
