@@ -244,6 +244,7 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 
 	pixman_region32_init(&damage);
 	pixman_region32_union_rect(&damage, &damage, extents.x, extents.y, extents.width, extents.height);
+	pixman_region32_intersect_rect(&damage, &damage, bounds.x, bounds.y, bounds.width, bounds.height);
 	pixman_region32_intersect(&damage, &damage, data->damage);
 	if (!pixman_region32_not_empty(&damage) || (texture = wlr_surface_get_texture(surface)) == NULL)
 		goto out;
