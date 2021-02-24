@@ -96,9 +96,11 @@ struct tmbr_client {
 	struct wl_listener request_fullscreen;
 };
 
-struct tmbr_client_render_data {
-	struct tmbr_client *c;
-	struct pixman_region32 *output_damage;
+struct tmbr_render_data {
+	struct pixman_region32 *damage;
+	struct wlr_output *output;
+	struct wlr_box box;
+	struct timespec time;
 };
 
 struct tmbr_tree {
@@ -223,19 +225,13 @@ static void tmbr_client_kill(struct tmbr_client *client)
 	wlr_xdg_toplevel_send_close(client->surface);
 }
 
-static void tmbr_client_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, TMBR_UNUSED void *payload)
+static void tmbr_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
-	wlr_surface_send_frame_done(surface, (struct timespec *)payload);
-}
-
-static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
-{
-	struct tmbr_client_render_data *data = payload;
-	struct wlr_output *output = data->c->desktop->screen->output;
-	struct wlr_box box = wlr_box_scaled(
-		data->c->x + data->c->border + sx, data->c->y + data->c->border + sy,
-		surface->current.width, surface->current.height, output->scale
-	);
+	struct tmbr_render_data *data = payload;
+	struct wlr_box bounds = data->box, extents = {
+		.x = bounds.x + sx * data->output->scale, .y = bounds.y + sy * data->output->scale,
+		.width = surface->current.width * data->output->scale, .height = surface->current.height * data->output->scale,
+	};
 	struct wlr_texture *texture;
 	struct pixman_region32 damage;
 	struct pixman_box32 *rects;
@@ -243,8 +239,9 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 	int i, nrects;
 
 	pixman_region32_init(&damage);
-	pixman_region32_union_rect(&damage, &damage, box.x, box.y, box.width, box.height);
-	pixman_region32_intersect(&damage, &damage, data->output_damage);
+	pixman_region32_union_rect(&damage, &damage, extents.x, extents.y, extents.width, extents.height);
+	pixman_region32_intersect_rect(&damage, &damage, bounds.x, bounds.y, bounds.width, bounds.height);
+	pixman_region32_intersect(&damage, &damage, data->damage);
 	if (!pixman_region32_not_empty(&damage) || (texture = wlr_surface_get_texture(surface)) == NULL)
 		goto out;
 	if (wlr_texture_is_gles2(texture)) {
@@ -253,23 +250,25 @@ static void tmbr_client_render_surface(struct wlr_surface *surface, int sx, int 
 		glBindTexture(attribs.target, attribs.tex);
 		glTexParameteri(attribs.target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	}
-	wlr_matrix_project_box(matrix, &box, wlr_output_transform_invert(surface->current.transform), 0, output->transform_matrix);
+	wlr_matrix_project_box(matrix, &extents, wlr_output_transform_invert(surface->current.transform), 0, data->output->transform_matrix);
 
 	for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
 		struct wlr_box scissor_box = { .x = rects[i].x1, .y = rects[i].y1, .width = rects[i].x2 - rects[i].x1, .height = rects[i].y2 - rects[i].y1 };
-		wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &scissor_box);
-		wlr_render_texture_with_matrix(wlr_backend_get_renderer(output->backend), texture, matrix, 1);
+		wlr_renderer_scissor(wlr_backend_get_renderer(data->output->backend), &scissor_box);
+		wlr_render_texture_with_matrix(wlr_backend_get_renderer(data->output->backend), texture, matrix, 1);
 	}
 
 out:
+	wlr_surface_send_frame_done(surface, &data->time);
 	pixman_region32_fini(&damage);
 }
 
-static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage)
+static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage, struct timespec time)
 {
 	struct wlr_output *output = c->desktop->screen->output;
-	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, output->scale);
-	struct tmbr_client_render_data payload = { c, output_damage };
+	struct tmbr_render_data payload = {
+		output_damage, output, wlr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale), time,
+	};
 
 	if (c->border) {
 		const float *color = TMBR_COLOR_INACTIVE;
@@ -287,10 +286,7 @@ static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *ou
 			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
 		}
 	}
-
-	wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &box);
-	wlr_xdg_surface_for_each_surface(c->surface, tmbr_client_render_surface, &payload);
-	wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), NULL);
+	wlr_xdg_surface_for_each_surface(c->surface, tmbr_render_surface, &payload);
 }
 
 static void tmbr_client_set_box(struct tmbr_client *client, int x, int y, int w, int h, int border)
@@ -659,9 +655,11 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	if (!wlr_output_damage_attach_render(screen->damage, &needs_frame, &damage))
 		goto out;
 	if (needs_frame) {
+		clock_gettime(CLOCK_MONOTONIC, &time);
 		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
 
 		if (!screen->focus->focus) {
+			wlr_renderer_scissor(renderer, NULL);
 			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
 		} else if (pixman_region32_not_empty(&damage)) {
 			struct pixman_box32 *rects;
@@ -675,10 +673,10 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			}
 
 			if (screen->focus->fullscreen) {
-				tmbr_client_render(screen->focus->focus, &damage);
+				tmbr_client_render(screen->focus->focus, &damage, time);
 			} else {
 				tmbr_tree_for_each(screen->focus->clients, tree)
-					tmbr_client_render(tree->client, &damage);
+					tmbr_client_render(tree->client, &damage, time);
 			}
 		}
 
@@ -692,11 +690,6 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 
 out:
 	pixman_region32_fini(&damage);
-
-	clock_gettime(CLOCK_MONOTONIC, &time);
-	tmbr_tree_for_each(screen->focus->clients, tree)
-		wlr_xdg_surface_for_each_surface(tree->client->surface,
-						 tmbr_client_send_frame_done, &time);
 }
 
 static void tmbr_screen_recalculate(struct tmbr_screen *s)
