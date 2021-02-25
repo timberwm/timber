@@ -659,7 +659,6 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
 
 		if (!screen->focus->focus) {
-			wlr_renderer_scissor(renderer, NULL);
 			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
 		} else if (pixman_region32_not_empty(&damage)) {
 			struct pixman_box32 *rects;
@@ -680,6 +679,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			}
 		}
 
+		wlr_renderer_scissor(renderer, NULL);
 		wlr_output_render_software_cursors(screen->output, &damage);
 		wlr_renderer_end(renderer);
 		wlr_output_set_damage(screen->output, &screen->damage->current);
