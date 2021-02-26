@@ -17,6 +17,8 @@ executable(
       timber_client_header,
       timber_server_header,
       timber_private_code,
+      layer_shell_protocol_h,
+      layer_shell_protocol_c,
       xdg_shell_protocol_h,
       xdg_shell_protocol_c,
   ],
