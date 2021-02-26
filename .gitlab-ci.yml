@@ -19,7 +19,7 @@ build:
   parallel:
     matrix:
       - CC: [ "clang", "gcc" ]
-        IMAGE: [ "alpine:edge", "archlinux:latest", "ubuntu:groovy" ]
+        IMAGE: [ "alpine:edge", "archlinux:latest", "ubuntu:20.10" ]
 
 coverity:
   stage: analyze
