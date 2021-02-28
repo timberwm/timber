@@ -263,6 +263,25 @@ out:
 	pixman_region32_fini(&damage);
 }
 
+static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_surface *subsurface, struct tmbr_server *server, double x, double y)
+{
+	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+	if (surface && keyboard)
+		wlr_seat_keyboard_notify_enter(server->seat, surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+	else
+		wlr_seat_keyboard_notify_clear_focus(server->seat);
+
+	if (subsurface) {
+		struct timespec now;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		wlr_seat_pointer_notify_enter(server->seat, surface, x, y);
+		wlr_seat_pointer_notify_motion(server->seat, now.tv_sec * 1000 + now.tv_nsec / 1000000, x, y);
+	} else {
+		wlr_seat_pointer_notify_clear_focus(server->seat);
+		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
+	}
+}
+
 static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage, struct timespec time)
 {
 	struct wlr_output *output = c->desktop->screen->output;
@@ -299,32 +318,19 @@ static void tmbr_client_set_box(struct tmbr_client *client, int x, int y, int w,
 	}
 }
 
-static void tmbr_client_notify_pointer(struct tmbr_client *client, uint32_t time)
+static void tmbr_client_notify_focus(struct tmbr_client *client)
 {
 	struct tmbr_server *server = client->desktop->screen->server;
 	double x = server->cursor->x, y = server->cursor->y;
-	struct wlr_surface *surface;
-
-	if ((surface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y)) != NULL) {
-		wlr_seat_pointer_notify_enter(server->seat, surface, x, y);
-		if (time)
-			wlr_seat_pointer_notify_motion(server->seat, time, x, y);
-	} else {
-		wlr_seat_pointer_notify_clear_focus(server->seat);
-	}
+	struct wlr_surface *subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
+	tmbr_surface_notify_focus(client->surface->surface, subsurface, server, x, y);
 }
 
 static void tmbr_client_focus(struct tmbr_client *client, bool focus)
 {
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
-	if (focus) {
-		struct tmbr_server *server = client->desktop->screen->server;
-		struct wlr_keyboard *keyboard;
-
-		if ((keyboard = wlr_seat_get_keyboard(server->seat)) != NULL)
-			wlr_seat_keyboard_notify_enter(server->seat, client->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
-		tmbr_client_notify_pointer(client, 0);
-	}
+	if (focus)
+		tmbr_client_notify_focus(client);
 	tmbr_client_damage(client);
 }
 
@@ -358,7 +364,7 @@ static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 	if (client->desktop && client->desktop->screen->focus == client->desktop) {
 		wlr_xdg_surface_for_each_surface(client->surface, tmbr_client_damage_surface, client);
 		if (client == client->desktop->focus)
-			tmbr_client_notify_pointer(client, 0);
+			tmbr_client_notify_focus(client);
 	}
 }
 
@@ -912,10 +918,9 @@ static void tmbr_server_on_cursor_frame(struct wl_listener *listener, TMBR_UNUSE
 	wlr_seat_pointer_notify_frame(server->seat);
 }
 
-static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, uint32_t time)
+static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, TMBR_UNUSED uint32_t time)
 {
 	double x = server->cursor->x, y = server->cursor->y;
-	struct tmbr_client *client = NULL;
 	struct tmbr_screen *screen;
 	struct wlr_output *output;
 
@@ -928,8 +933,9 @@ static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, uint32_
 	tmbr_screen_focus_desktop(screen, screen->focus);
 
 	if (screen->focus->fullscreen) {
-		client = screen->focus->focus;
+		tmbr_desktop_focus_client(screen->focus, screen->focus->focus, true);
 	} else {
+		struct tmbr_client *client = NULL;
 		tmbr_tree_for_each(screen->focus->clients, t) {
 			if (t->client->x > x || t->client->x + t->client->w < x ||
 			    t->client->y > y || t->client->y + t->client->h < y)
@@ -937,13 +943,7 @@ static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, uint32_
 			client = t->client;
 			break;
 		}
-	}
-
-	if (client) {
 		tmbr_desktop_focus_client(screen->focus, client, true);
-		tmbr_client_notify_pointer(client, time);
-	} else {
-		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 	}
 }
 
