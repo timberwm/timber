@@ -264,6 +264,17 @@ out:
 	pixman_region32_fini(&damage);
 }
 
+static void tmbr_surface_damage(struct wlr_surface *surface, struct wlr_output_damage *output_damage, int x, int y, float scale)
+{
+	struct pixman_region32 damage;
+	pixman_region32_init(&damage);
+	wlr_surface_get_effective_damage(surface, &damage);
+	pixman_region32_translate(&damage, x, y);
+	wlr_region_scale(&damage, &damage, scale);
+	wlr_output_damage_add(output_damage, &damage);
+	pixman_region32_fini(&damage);
+}
+
 static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_surface *subsurface, struct tmbr_server *server, double x, double y)
 {
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
@@ -351,14 +362,7 @@ static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_client_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	struct tmbr_client *client = payload;
-	struct pixman_region32 damage;
-
-	pixman_region32_init(&damage);
-	wlr_surface_get_effective_damage(surface, &damage);
-	pixman_region32_translate(&damage, client->x + client->border + sx, client->y + client->border + sy);
-	wlr_region_scale(&damage, &damage, client->desktop->screen->output->scale);
-	wlr_output_damage_add(client->desktop->screen->damage, &damage);
-	pixman_region32_fini(&damage);
+	tmbr_surface_damage(surface, client->desktop->screen->damage, client->x + client->border + sx, client->y + client->border + sy, client->desktop->screen->output->scale);
 }
 
 static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
