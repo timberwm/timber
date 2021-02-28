@@ -15,6 +15,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <string.h>
+
 #include "common.h"
 
 #include "client.h"
@@ -22,7 +24,7 @@
 
 int main(int argc, char *argv[])
 {
-	if (argc == 1)
+	if (argc == 2 && !strcmp(argv[1], "run"))
 		return tmbr_wm();
 	return tmbr_client(argc, argv);
 }
