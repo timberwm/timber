@@ -683,7 +683,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 				struct wlr_box scissor_box;
 				wlr_box_from_pixman_box32(&scissor_box, rects[i]);
 				wlr_renderer_scissor(renderer, &scissor_box);
-				wlr_renderer_clear(renderer, (float[4]){0.0, 0.0, 0.0, 1.0});
+				wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
 			}
 
 			if (screen->focus->fullscreen) {
