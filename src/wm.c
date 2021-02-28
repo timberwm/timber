@@ -225,7 +225,7 @@ static void tmbr_client_kill(struct tmbr_client *client)
 	wlr_xdg_toplevel_send_close(client->surface);
 }
 
-static void tmbr_render_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
+static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	struct tmbr_render_data *data = payload;
 	struct wlr_box bounds = data->box, extents = {
@@ -286,7 +286,7 @@ static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *ou
 			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
 		}
 	}
-	wlr_xdg_surface_for_each_surface(c->surface, tmbr_render_surface, &payload);
+	wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
 }
 
 static void tmbr_client_set_box(struct tmbr_client *client, int x, int y, int w, int h, int border)
