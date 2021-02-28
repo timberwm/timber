@@ -208,7 +208,7 @@ static void tmbr_client_on_global(void *data, struct wl_registry *registry, uint
 static void __attribute__((noreturn)) usage(const char *executable)
 {
 	size_t i;
-	printf("USAGE: %s\n", executable);
+	printf("USAGE: %s run\n", executable);
 
 	for (i = 0; i < ARRAY_SIZE(commands); i++)
 		printf("   or: %s %s %s%s%s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
