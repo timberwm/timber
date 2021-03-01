@@ -143,6 +143,8 @@ struct tmbr_layer_client {
 	struct tmbr_screen *screen;
 	int h, w, x, y;
 	struct wl_list link;
+	struct wl_listener map;
+	struct wl_listener unmap;
 	struct wl_listener destroy;
 	struct wl_listener commit;
 };
@@ -646,6 +648,17 @@ static struct tmbr_screen *tmbr_screen_find_sibling(struct tmbr_screen *screen, 
 	return wl_container_of(sibling, screen, link);;
 }
 
+static struct tmbr_layer_client *tmbr_screen_find_layer_client_at(struct tmbr_screen *screen, double x, double y)
+{
+	struct tmbr_layer_client *c;
+	for (int l = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY; l >= ZWLR_LAYER_SHELL_V1_LAYER_TOP; l--)
+		wl_list_for_each_reverse(c, &screen->layer_clients, link)
+			if (c->surface->mapped && (int)c->surface->current.layer == l && c->surface->current.keyboard_interactive &&
+			    c->x <= x && c->x + c->w >= c->x && c->y <= y && c->y + c->h >= y)
+				return c;
+	return NULL;
+}
+
 static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, destroy), *sibling = tmbr_screen_find_sibling(screen, TMBR_CTRL_SELECTION_NEXT);
@@ -954,10 +967,35 @@ static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_input_devic
 	xkb_context_unref(context);
 }
 
+static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
+{
+	double x = c->screen->server->cursor->x, y = c->screen->server->cursor->y;
+	struct wlr_surface *subsurface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
+	if (c->screen->server->focussed_surface != c->surface->surface)
+		wlr_output_damage_add_whole(c->screen->damage);
+	tmbr_surface_notify_focus(c->surface->surface, subsurface, c->screen->server, x, y);
+}
+
+static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_layer_client *client = wl_container_of(listener, client, map);
+	if ((client->surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY || client->surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP) &&
+	    client->surface->current.keyboard_interactive)
+		tmbr_layer_client_notify_focus(client);
+}
+
+static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_layer_client *client = wl_container_of(listener, client, unmap);
+	tmbr_screen_focus_desktop(client->screen, client->screen->focus);
+}
+
 static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, destroy);
 	wl_list_remove(&client->link);
+	wl_list_remove(&client->map.link);
+	wl_list_remove(&client->unmap.link);
 	wl_list_remove(&client->destroy.link);
 	wl_list_remove(&client->commit.link);
 	tmbr_screen_recalculate(client->screen);
@@ -1079,6 +1117,8 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 
 	wl_list_insert(&server->focussed_screen->layer_clients, &client->link);
 
+	tmbr_register(&surface->events.map, &client->map, tmbr_layer_client_on_map);
+	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_layer_client_on_unmap);
 	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_layer_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_layer_client_on_commit);
 
@@ -1113,6 +1153,7 @@ static void tmbr_server_on_cursor_frame(struct wl_listener *listener, TMBR_UNUSE
 static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, TMBR_UNUSED uint32_t time)
 {
 	double x = server->cursor->x, y = server->cursor->y;
+	struct tmbr_layer_client *layer_client;
 	struct tmbr_screen *screen;
 	struct wlr_output *output;
 
@@ -1122,9 +1163,11 @@ static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, TMBR_UN
 	    (screen = output->data) == NULL)
 		return;
 
-	tmbr_screen_focus_desktop(screen, screen->focus);
+	screen->server->focussed_screen = screen;
 
-	if (screen->focus->fullscreen) {
+	if ((layer_client = tmbr_screen_find_layer_client_at(screen, x, y)) != NULL) {
+		tmbr_layer_client_notify_focus(layer_client);
+	} else if (screen->focus->fullscreen) {
 		tmbr_desktop_focus_client(screen->focus, screen->focus->focus, true);
 	} else {
 		struct tmbr_client *client = NULL;
