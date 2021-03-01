@@ -170,6 +170,7 @@ struct tmbr_server {
 	struct wl_list bindings;
 	struct wl_list screens;
 	struct tmbr_screen *focussed_screen;
+	struct wlr_surface *focussed_surface;
 };
 
 static void tmbr_spawn(const char *path, char * const argv[])
@@ -280,6 +281,8 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 		wlr_seat_pointer_notify_clear_focus(server->seat);
 		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 	}
+
+	server->focussed_surface = surface;
 }
 
 static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage, struct timespec time)
@@ -290,16 +293,13 @@ static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *ou
 	};
 
 	if (c->border) {
-		const float *color = TMBR_COLOR_INACTIVE;
+		const float *color = c->surface->surface == c->server->focussed_surface ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE;
 		struct wlr_box borders[4] = {
 			wlr_box_scaled(c->x, c->y, c->w, c->border, output->scale),
 			wlr_box_scaled(c->x, c->y, c->border, c->h, output->scale),
 			wlr_box_scaled(c->x + c->w - c->border, c->y, c->border, c->h, output->scale),
 			wlr_box_scaled(c->x, c->y + c->h - c->border, c->w, c->border, output->scale),
 		};
-
-		if (c->desktop->focus == c && c->desktop->screen == c->server->focussed_screen)
-			color = TMBR_COLOR_ACTIVE;
 		for (int i = 0; i < (int) ARRAY_SIZE(borders); i++) {
 			wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &borders[i]);
 			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
@@ -363,7 +363,7 @@ static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 	struct tmbr_client *client = wl_container_of(listener, client, commit);
 	if (client->desktop && client->desktop->screen->focus == client->desktop) {
 		wlr_xdg_surface_for_each_surface(client->surface, tmbr_client_damage_surface, client);
-		if (client == client->desktop->focus)
+		if (client->surface->surface == client->server->focussed_surface)
 			tmbr_client_notify_focus(client);
 	}
 }
