@@ -34,6 +34,7 @@
 #include <wlr/types/wlr_gtk_primary_selection.h>
 #include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
+#include <wlr/types/wlr_input_inhibitor.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
@@ -156,6 +157,7 @@ struct tmbr_server {
 	struct wlr_idle *idle;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wlr_idle_timeout *idle_timeout;
+	struct wlr_input_inhibit_manager *input_inhibit;
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct wlr_output_layout *output_layout;
 	struct wlr_seat *seat;
@@ -177,7 +179,6 @@ struct tmbr_server {
 	struct wl_listener request_set_primary_selection;
 	struct wl_listener seat_idle;
 	struct wl_listener seat_resume;
-
 	struct wl_listener idle_inhibitor_new;
 	struct wl_listener idle_inhibitor_destroy;
 	int idle_inhibitors;
@@ -913,7 +914,7 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	int i, n;
 
 	wlr_idle_notify_activity(keyboard->server->idle, keyboard->server->seat);
-	if (event->state != WLR_KEY_PRESSED)
+	if (event->state != WLR_KEY_PRESSED || keyboard->server->input_inhibit->active_client)
 		goto unhandled;
 
 	layout = xkb_state_key_get_layout(keyboard->device->keyboard->xkb_state, event->keycode + 8);
@@ -1159,7 +1160,8 @@ static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, TMBR_UN
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 
-	if ((output = wlr_output_layout_output_at(server->output_layout, x, y)) == NULL ||
+	if (server->input_inhibit->active_client ||
+	    (output = wlr_output_layout_output_at(server->output_layout, x, y)) == NULL ||
 	    (screen = output->data) == NULL)
 		return;
 
@@ -1596,6 +1598,7 @@ int tmbr_wm(void)
 	    (server.idle = wlr_idle_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
 	    (server.idle_timeout = wlr_idle_timeout_create(server.idle, server.seat, TMBR_SCREEN_DPMS_TIMEOUT)) == NULL ||
+	    (server.input_inhibit = wlr_input_inhibit_manager_create(server.display)) == NULL ||
 	    (server.layer_shell = wlr_layer_shell_v1_create(server.display)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
