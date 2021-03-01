@@ -169,7 +169,8 @@ struct tmbr_server {
 
 	struct wl_list bindings;
 	struct wl_list screens;
-	struct tmbr_screen *screen;
+	struct tmbr_screen *focussed_screen;
+	struct wlr_surface *focussed_surface;
 };
 
 static void tmbr_spawn(const char *path, char * const argv[])
@@ -197,7 +198,7 @@ static void tmbr_spawn(const char *path, char * const argv[])
 
 static struct tmbr_client *tmbr_server_find_focus(struct tmbr_server *server)
 {
-	return server->screen->focus->focus;
+	return server->focussed_screen->focus->focus;
 }
 
 static struct wl_list *tmbr_list_get(struct wl_list *head, struct wl_list *link, enum tmbr_ctrl_selection which)
@@ -280,6 +281,8 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 		wlr_seat_pointer_notify_clear_focus(server->seat);
 		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 	}
+
+	server->focussed_surface = surface;
 }
 
 static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage, struct timespec time)
@@ -290,16 +293,13 @@ static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *ou
 	};
 
 	if (c->border) {
-		const float *color = TMBR_COLOR_INACTIVE;
+		const float *color = c->surface->surface == c->server->focussed_surface ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE;
 		struct wlr_box borders[4] = {
 			wlr_box_scaled(c->x, c->y, c->w, c->border, output->scale),
 			wlr_box_scaled(c->x, c->y, c->border, c->h, output->scale),
 			wlr_box_scaled(c->x + c->w - c->border, c->y, c->border, c->h, output->scale),
 			wlr_box_scaled(c->x, c->y + c->h - c->border, c->w, c->border, output->scale),
 		};
-
-		if (c->desktop->focus == c && c->desktop->screen == c->server->screen)
-			color = TMBR_COLOR_ACTIVE;
 		for (int i = 0; i < (int) ARRAY_SIZE(borders); i++) {
 			wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &borders[i]);
 			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
@@ -363,7 +363,7 @@ static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 	struct tmbr_client *client = wl_container_of(listener, client, commit);
 	if (client->desktop && client->desktop->screen->focus == client->desktop) {
 		wlr_xdg_surface_for_each_surface(client->surface, tmbr_client_damage_surface, client);
-		if (client == client->desktop->focus)
+		if (client->surface->surface == client->server->focussed_surface)
 			tmbr_client_notify_focus(client);
 	}
 }
@@ -591,7 +591,7 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 	if (screen->focus != desktop)
 		wlr_output_damage_add_whole(screen->damage);
 	screen->focus = desktop;
-	screen->server->screen = screen;
+	screen->server->focussed_screen = screen;
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 }
 
@@ -855,8 +855,8 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 
 	screen = tmbr_screen_new(server, output);
 	wl_list_insert(&server->screens, &screen->link);
-	if (!server->screen)
-		server->screen = screen;
+	if (!server->focussed_screen)
+		server->focussed_screen = screen;
 	output->data = screen;
 }
 
@@ -871,8 +871,8 @@ static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void
 static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_client *client = wl_container_of(listener, client, map);
-	tmbr_desktop_add_client(client->server->screen->focus, client);
-	tmbr_desktop_focus_client(client->server->screen->focus, client, true);
+	tmbr_desktop_add_client(client->server->focussed_screen->focus, client);
+	tmbr_desktop_focus_client(client->server->focussed_screen->focus, client, true);
 }
 
 static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1136,43 +1136,43 @@ static void tmbr_cmd_desktop_focus(TMBR_UNUSED struct wl_client *client, struct 
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
 	struct tmbr_desktop *sibling;
-	if ((sibling = tmbr_desktop_find_sibling(server->screen->focus, selection)) == NULL)
+	if ((sibling = tmbr_desktop_find_sibling(server->focussed_screen->focus, selection)) == NULL)
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_DESKTOP_NOT_FOUND, "desktop not found");
-	tmbr_screen_focus_desktop(server->screen, sibling);
+	tmbr_screen_focus_desktop(server->focussed_screen, sibling);
 }
 
 static void tmbr_cmd_desktop_kill(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	struct tmbr_desktop *desktop = server->screen->focus;
+	struct tmbr_desktop *desktop = server->focussed_screen->focus;
 	if (desktop->clients)
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_DESKTOP_NOT_EMPTY, "desktop not empty");
 	if (tmbr_desktop_find_sibling(desktop, TMBR_CTRL_SELECTION_NEXT) == NULL)
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_DESKTOP_NOT_FOUND, "desktop not found");
-	tmbr_screen_remove_desktop(server->screen, desktop);
+	tmbr_screen_remove_desktop(server->focussed_screen, desktop);
 	tmbr_desktop_free(desktop);
 }
 
 static void tmbr_cmd_desktop_new(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	tmbr_screen_add_desktop(server->screen, tmbr_desktop_new());
+	tmbr_screen_add_desktop(server->focussed_screen, tmbr_desktop_new());
 }
 
 static void tmbr_cmd_desktop_swap(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
 	struct tmbr_desktop *sibling;
-	if ((sibling = tmbr_desktop_find_sibling(server->screen->focus, selection)) == NULL)
+	if ((sibling = tmbr_desktop_find_sibling(server->focussed_screen->focus, selection)) == NULL)
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_DESKTOP_NOT_FOUND, "desktop not found");
-	tmbr_desktop_swap(server->screen->focus, sibling);
+	tmbr_desktop_swap(server->focussed_screen->focus, sibling);
 }
 
 static void tmbr_cmd_screen_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
 	struct tmbr_screen *sibling;
-	if ((sibling = tmbr_screen_find_sibling(server->screen, selection)) == NULL)
+	if ((sibling = tmbr_screen_find_sibling(server->focussed_screen, selection)) == NULL)
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_SCREEN_NOT_FOUND, "screen not found");
 	tmbr_screen_focus_desktop(sibling, sibling->focus);
 }
@@ -1243,7 +1243,7 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		fprintf(f, "- name: %s\n", s->output->name);
 		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", (int)x, (int)y, s->w, s->h);
-		fprintf(f, "  selected: %s\n", s == server->screen ? "true" : "false");
+		fprintf(f, "  selected: %s\n", s == server->focussed_screen ? "true" : "false");
 		fprintf(f, "  modes:\n");
 		wl_list_for_each(mode, &s->output->modes, link)
 			fprintf(f, "  - %dx%d@%d\n", mode->width, mode->height, mode->refresh);
