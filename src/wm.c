@@ -301,8 +301,11 @@ static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *ou
 			wlr_box_scaled(c->x, c->y + c->h - c->border, c->w, c->border, output->scale),
 		};
 		for (int i = 0; i < (int) ARRAY_SIZE(borders); i++) {
-			wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &borders[i]);
-			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
+			struct pixman_box32 box = { .x1 = borders[i].x, .x2 = borders[i].x + borders[i].width, .y1 = borders[i].y, .y2 = borders[i].y + borders[i].height };
+			if (pixman_region32_contains_rectangle(output_damage, &box)) {
+				wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &borders[i]);
+				wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
+			}
 		}
 	}
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
