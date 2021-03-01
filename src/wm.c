@@ -121,7 +121,7 @@ struct tmbr_desktop {
 };
 
 struct tmbr_screen {
-	int w, h;
+	struct wlr_box box;
 	struct wl_list link;
 	struct tmbr_server *server;
 
@@ -522,9 +522,11 @@ static struct tmbr_desktop *tmbr_desktop_find_sibling(struct tmbr_desktop *deskt
 static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 {
 	if (desktop->fullscreen && desktop->focus)
-		tmbr_client_set_box(desktop->focus, 0, 0, desktop->screen->w, desktop->screen->h, 0);
+		tmbr_client_set_box(desktop->focus, desktop->screen->box.x, desktop->screen->box.y,
+				    desktop->screen->box.width, desktop->screen->box.height, 0);
 	else
-		tmbr_tree_recalculate(desktop->clients, 0, 0, desktop->screen->w, desktop->screen->h);
+		tmbr_tree_recalculate(desktop->clients, desktop->screen->box.x, desktop->screen->box.y,
+				      desktop->screen->box.width, desktop->screen->box.height);
 }
 
 static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fullscreen)
@@ -708,7 +710,7 @@ out:
 static void tmbr_screen_recalculate(struct tmbr_screen *s)
 {
 	struct tmbr_desktop *d;
-	wlr_output_effective_resolution(s->output, &s->w, &s->h);
+	wlr_output_effective_resolution(s->output, &s->box.width, &s->box.height);
 	wl_list_for_each(d, &s->desktops, link)
 		tmbr_desktop_recalculate(d);
 }
@@ -1249,7 +1251,7 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		fprintf(f, "- name: %s\n", s->output->name);
-		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", (int)x, (int)y, s->w, s->h);
+		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", (int)x, (int)y, s->box.width, s->box.height);
 		fprintf(f, "  selected: %s\n", s == server->focussed_screen ? "true" : "false");
 		fprintf(f, "  modes:\n");
 		wl_list_for_each(mode, &s->output->modes, link)
