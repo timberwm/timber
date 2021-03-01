@@ -348,7 +348,7 @@ static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	free(client);
 }
 
-static void tmbr_client_damage_surface(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, TMBR_UNUSED void *payload)
+static void tmbr_client_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	struct tmbr_client *client = payload;
 	struct pixman_region32 damage;
