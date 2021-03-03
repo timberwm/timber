@@ -997,6 +997,7 @@ static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, unmap);
 	tmbr_screen_focus_desktop(client->screen, client->screen->focus);
+	tmbr_layer_client_damage(client);
 }
 
 static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
