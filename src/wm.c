@@ -980,8 +980,8 @@ static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 {
 	double x = c->screen->server->cursor->x, y = c->screen->server->cursor->y;
 	struct wlr_surface *subsurface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
-	if (c->screen->server->focussed_surface != c->surface->surface)
-		wlr_output_damage_add_whole(c->screen->damage);
+	if (c->screen->server->focussed_surface != c->surface->surface && tmbr_server_find_focus(c->screen->server))
+		tmbr_xdg_client_focus(tmbr_server_find_focus(c->screen->server), false);
 	tmbr_surface_notify_focus(c->surface->surface, subsurface, c->screen->server, x, y);
 }
 
