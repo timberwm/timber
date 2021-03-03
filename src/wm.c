@@ -343,6 +343,7 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 	if (client->w != w || client->h != h || client->border != border)
 		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
+		tmbr_xdg_client_damage(client);
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
 		tmbr_xdg_client_damage(client);
 	}
