@@ -343,6 +343,7 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 	if (client->w != w || client->h != h || client->border != border)
 		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
+		tmbr_xdg_client_damage(client);
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
 		tmbr_xdg_client_damage(client);
 	}
@@ -753,6 +754,12 @@ out:
 	pixman_region32_fini(&damage);
 }
 
+static void tmbr_layer_client_damage(struct tmbr_layer_client *c)
+{
+	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, c->screen->output->scale);
+	wlr_output_damage_add_box(c->screen->damage, &box);
+}
+
 static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
 {
 	for (int l = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY; l >= ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND; l--) {
@@ -831,8 +838,9 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 			if (c->w != box.width || c->h != box.height)
 				wlr_layer_surface_v1_configure(c->surface, box.width, box.height);
 			if (c->w != box.width || c->h != box.height || c->x != box.x || c->y != box.y) {
+				tmbr_layer_client_damage(c);
 				c->w = box.width; c->h = box.height; c->x = box.x; c->y = box.y;
-				wlr_output_damage_add_whole(c->screen->damage);
+				tmbr_layer_client_damage(c);
 			}
 
 			for (size_t i = 0; exclusive && i < sizeof(edges) / sizeof(edges[0]); i++) {
@@ -972,8 +980,8 @@ static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 {
 	double x = c->screen->server->cursor->x, y = c->screen->server->cursor->y;
 	struct wlr_surface *subsurface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
-	if (c->screen->server->focussed_surface != c->surface->surface)
-		wlr_output_damage_add_whole(c->screen->damage);
+	if (c->screen->server->focussed_surface != c->surface->surface && tmbr_server_find_focus(c->screen->server))
+		tmbr_xdg_client_focus(tmbr_server_find_focus(c->screen->server), false);
 	tmbr_surface_notify_focus(c->surface->surface, subsurface, c->screen->server, x, y);
 }
 
@@ -989,6 +997,7 @@ static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, unmap);
 	tmbr_screen_focus_desktop(client->screen, client->screen->focus);
+	tmbr_layer_client_damage(client);
 }
 
 static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
