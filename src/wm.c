@@ -84,7 +84,7 @@ struct tmbr_keyboard {
 	struct wl_listener modifiers;
 };
 
-struct tmbr_client {
+struct tmbr_xdg_client {
 	struct tmbr_server *server;
 	struct tmbr_desktop *desktop;
 	struct tmbr_tree *tree;
@@ -109,7 +109,7 @@ struct tmbr_tree {
 	struct tmbr_tree *parent;
 	struct tmbr_tree *left;
 	struct tmbr_tree *right;
-	struct tmbr_client *client;
+	struct tmbr_xdg_client *client;
 	enum tmbr_split split;
 	uint8_t ratio;
 };
@@ -118,7 +118,7 @@ struct tmbr_desktop {
 	struct wl_list link;
 	struct tmbr_screen *screen;
 	struct tmbr_tree *clients;
-	struct tmbr_client *focus;
+	struct tmbr_xdg_client *focus;
 	bool fullscreen;
 };
 
@@ -212,7 +212,7 @@ static void tmbr_spawn(const char *path, char * const argv[])
 	waitpid(pid, NULL, 0);
 }
 
-static struct tmbr_client *tmbr_server_find_focus(struct tmbr_server *server)
+static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server)
 {
 	return server->focussed_screen->focus->focus;
 }
@@ -231,13 +231,13 @@ static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener
 	wl_signal_add(signal, listener);
 }
 
-static void tmbr_client_damage(struct tmbr_client *c)
+static void tmbr_xdg_client_damage(struct tmbr_xdg_client *c)
 {
 	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
 	wlr_output_damage_add_box(c->desktop->screen->damage, &box);
 }
 
-static void tmbr_client_kill(struct tmbr_client *client)
+static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
 {
 	wlr_xdg_toplevel_send_close(client->surface);
 }
@@ -312,7 +312,7 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 	server->focussed_surface = surface;
 }
 
-static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *output_damage, struct timespec time)
+static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_region32 *output_damage, struct timespec time)
 {
 	struct wlr_output *output = c->desktop->screen->output;
 	struct tmbr_render_data payload = {
@@ -338,17 +338,17 @@ static void tmbr_client_render(struct tmbr_client *c, struct pixman_region32 *ou
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
 }
 
-static void tmbr_client_set_box(struct tmbr_client *client, int x, int y, int w, int h, int border)
+static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
 {
 	if (client->w != w || client->h != h || client->border != border)
 		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
-		tmbr_client_damage(client);
+		tmbr_xdg_client_damage(client);
 	}
 }
 
-static void tmbr_client_notify_focus(struct tmbr_client *client)
+static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 {
 	struct tmbr_server *server = client->desktop->screen->server;
 	double x = server->cursor->x, y = server->cursor->y;
@@ -356,17 +356,17 @@ static void tmbr_client_notify_focus(struct tmbr_client *client)
 	tmbr_surface_notify_focus(client->surface->surface, subsurface, server, x, y);
 }
 
-static void tmbr_client_focus(struct tmbr_client *client, bool focus)
+static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 {
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
 	if (focus)
-		tmbr_client_notify_focus(client);
-	tmbr_client_damage(client);
+		tmbr_xdg_client_notify_focus(client);
+	tmbr_xdg_client_damage(client);
 }
 
-static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_client *client = wl_container_of(listener, client, destroy);
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, destroy);
 	wl_list_remove(&client->destroy.link);
 	wl_list_remove(&client->commit.link);
 	wl_list_remove(&client->map.link);
@@ -375,30 +375,30 @@ static void tmbr_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	free(client);
 }
 
-static void tmbr_client_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
+static void tmbr_xdg_client_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
-	struct tmbr_client *client = payload;
+	struct tmbr_xdg_client *client = payload;
 	tmbr_surface_damage(surface, client->desktop->screen->damage, client->x + client->border + sx, client->y + client->border + sy, client->desktop->screen->output->scale);
 }
 
-static void tmbr_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
+static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_client *client = wl_container_of(listener, client, commit);
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, commit);
 	if (client->desktop && client->desktop->screen->focus == client->desktop) {
-		wlr_xdg_surface_for_each_surface(client->surface, tmbr_client_damage_surface, client);
+		wlr_xdg_surface_for_each_surface(client->surface, tmbr_xdg_client_damage_surface, client);
 		if (client->surface->surface == client->server->focussed_surface)
-			tmbr_client_notify_focus(client);
+			tmbr_xdg_client_notify_focus(client);
 	}
 }
 
-static struct tmbr_client *tmbr_client_new(struct tmbr_server *server, struct wlr_xdg_surface *surface)
+static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, struct wlr_xdg_surface *surface)
 {
-	struct tmbr_client *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
+	struct tmbr_xdg_client *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
 	client->server = server;
 	client->surface = surface;
 
-	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_client_on_destroy);
-	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_client_on_commit);
+	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_xdg_client_on_destroy);
+	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_xdg_client_on_commit);
 
 	return client;
 }
@@ -411,7 +411,7 @@ static void tmbr_tree_recalculate(struct tmbr_tree *tree, int x, int y, int w, i
 		return;
 
 	if (tree->client) {
-		tmbr_client_set_box(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
+		tmbr_xdg_client_set_box(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
 		return;
 	}
 
@@ -433,7 +433,7 @@ static void tmbr_tree_recalculate(struct tmbr_tree *tree, int x, int y, int w, i
 	tmbr_tree_recalculate(tree->right, x + xoff, y + yoff, rw, rh);
 }
 
-static void tmbr_tree_insert(struct tmbr_tree **tree, struct tmbr_client *client)
+static void tmbr_tree_insert(struct tmbr_tree **tree, struct tmbr_xdg_client *client)
 {
 	struct tmbr_tree *l, *r, *p = *tree;
 
@@ -538,7 +538,7 @@ static struct tmbr_desktop *tmbr_desktop_find_sibling(struct tmbr_desktop *deskt
 static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 {
 	if (desktop->fullscreen && desktop->focus)
-		tmbr_client_set_box(desktop->focus, desktop->screen->box.x, desktop->screen->box.y,
+		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->box.x, desktop->screen->box.y,
 				    desktop->screen->box.width, desktop->screen->box.height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, desktop->screen->box.x, desktop->screen->box.y,
@@ -556,14 +556,14 @@ static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fulls
 	wlr_output_damage_add_whole(desktop->screen->damage);
 }
 
-static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_client *client, bool inputfocus)
+static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client, bool inputfocus)
 {
 	if (inputfocus) {
-		struct tmbr_client *current_focus = tmbr_server_find_focus(desktop->screen->server);
+		struct tmbr_xdg_client *current_focus = tmbr_server_find_focus(desktop->screen->server);
 		if (current_focus && current_focus != client)
-			tmbr_client_focus(current_focus, false);
+			tmbr_xdg_client_focus(current_focus, false);
 		if (client)
-			tmbr_client_focus(client, true);
+			tmbr_xdg_client_focus(client, true);
 	}
 	if (desktop->focus == client)
 		return;
@@ -571,7 +571,7 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 	tmbr_desktop_set_fullscreen(desktop, false);
 }
 
-static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_client *client)
+static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client)
 {
 	tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client);
 	client->desktop = desktop;
@@ -579,7 +579,7 @@ static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_cl
 	tmbr_desktop_recalculate(desktop);
 }
 
-static void tmbr_desktop_remove_client(struct tmbr_desktop *desktop, struct tmbr_client *client)
+static void tmbr_desktop_remove_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client)
 {
 	if (desktop->focus == client) {
 		enum tmbr_ctrl_selection sel = (client->tree->parent && client->tree->parent->left == client->tree)
@@ -729,12 +729,12 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			}
 
 			if (screen->focus->fullscreen) {
-				tmbr_client_render(screen->focus->focus, &damage, time);
+				tmbr_xdg_client_render(screen->focus->focus, &damage, time);
 			} else {
 				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
 				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
 				tmbr_tree_for_each(screen->focus->clients, tree)
-					tmbr_client_render(tree->client, &damage, time);
+					tmbr_xdg_client_render(tree->client, &damage, time);
 				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
 				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
 			}
@@ -1071,21 +1071,21 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
 {
 	struct wlr_xdg_toplevel_set_fullscreen_event *event = payload;
-	struct tmbr_client *client = wl_container_of(listener, client, request_fullscreen);
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, request_fullscreen);
 	if (client->desktop && client == tmbr_server_find_focus(client->server))
 		tmbr_desktop_set_fullscreen(client->desktop, event->fullscreen);
 }
 
 static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_client *client = wl_container_of(listener, client, map);
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, map);
 	tmbr_desktop_add_client(client->server->focussed_screen->focus, client);
 	tmbr_desktop_focus_client(client->server->focussed_screen->focus, client, true);
 }
 
 static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_client *client = wl_container_of(listener, client, unmap);
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, unmap);
 	if (client->desktop)
 		tmbr_desktop_remove_client(client->desktop, client);
 }
@@ -1096,7 +1096,7 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 	struct wlr_xdg_surface *surface = payload;
 
 	if (surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
-		struct tmbr_client *client = tmbr_client_new(server, surface);
+		struct tmbr_xdg_client *client = tmbr_xdg_client_new(server, surface);
 		tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
 		tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
@@ -1172,7 +1172,7 @@ static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, TMBR_UN
 	} else if (screen->focus->fullscreen) {
 		tmbr_desktop_focus_client(screen->focus, screen->focus->focus, true);
 	} else {
-		struct tmbr_client *client = NULL;
+		struct tmbr_xdg_client *client = NULL;
 		tmbr_tree_for_each(screen->focus->clients, t) {
 			if (t->client->x > x || t->client->x + t->client->w < x ||
 			    t->client->y > y || t->client->y + t->client->h < y)
@@ -1260,7 +1260,7 @@ static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	struct tmbr_client *focus;
+	struct tmbr_xdg_client *focus;
 	struct tmbr_tree *next;
 
 	if ((focus = tmbr_server_find_focus(server)) == NULL ||
@@ -1272,7 +1272,7 @@ static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct w
 static void tmbr_cmd_client_fullscreen(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	struct tmbr_client *focus;
+	struct tmbr_xdg_client *focus;
 	if ((focus = tmbr_server_find_focus(server)) == NULL)
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
 	tmbr_desktop_set_fullscreen(focus->desktop, !focus->desktop->fullscreen);
@@ -1281,16 +1281,16 @@ static void tmbr_cmd_client_fullscreen(TMBR_UNUSED struct wl_client *client, str
 static void tmbr_cmd_client_kill(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	struct tmbr_client *focus;
+	struct tmbr_xdg_client *focus;
 	if ((focus = tmbr_server_find_focus(server)) == NULL)
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
-	tmbr_client_kill(focus);
+	tmbr_xdg_client_kill(focus);
 }
 
 static void tmbr_cmd_client_resize(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t dir, uint32_t ratio)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	struct tmbr_client *focus;
+	struct tmbr_xdg_client *focus;
 	enum tmbr_ctrl_selection select;
 	enum tmbr_split split;
 	struct tmbr_tree *tree;
@@ -1331,7 +1331,7 @@ static void tmbr_cmd_client_resize(TMBR_UNUSED struct wl_client *client, struct 
 static void tmbr_cmd_client_swap(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	struct tmbr_client *focus;
+	struct tmbr_xdg_client *focus;
 	struct tmbr_tree *next;
 
 	if ((focus = tmbr_server_find_focus(server)) == NULL ||
@@ -1345,7 +1345,7 @@ static void tmbr_cmd_client_to_desktop(TMBR_UNUSED struct wl_client *client, str
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
 	struct tmbr_desktop *target;
-	struct tmbr_client *focus;
+	struct tmbr_xdg_client *focus;
 
 	if ((focus = tmbr_server_find_focus(server)) == NULL ||
 	    (target = tmbr_desktop_find_sibling(focus->desktop, selection)) == NULL)
@@ -1359,7 +1359,7 @@ static void tmbr_cmd_client_to_screen(TMBR_UNUSED struct wl_client *client, stru
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
 	struct tmbr_screen *screen;
-	struct tmbr_client *focus;
+	struct tmbr_xdg_client *focus;
 
 	if ((focus = tmbr_server_find_focus(server)) == NULL ||
 	    (screen = tmbr_screen_find_sibling(focus->desktop->screen, selection)) == NULL)
@@ -1446,7 +1446,7 @@ static void tmbr_cmd_screen_scale(TMBR_UNUSED struct wl_client *client, struct w
 static void tmbr_cmd_tree_rotate(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	struct tmbr_client *focus;
+	struct tmbr_xdg_client *focus;
 	struct tmbr_tree *p;
 
 	if ((focus = tmbr_server_find_focus(server)) == NULL ||
@@ -1490,7 +1490,7 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 			fprintf(f, "  - selected: %s\n", d == s->focus ? "true" : "false");
 			fprintf(f, "    clients:\n");
 			tmbr_tree_for_each(d->clients, tree) {
-				struct tmbr_client *c = tree->client;
+				struct tmbr_xdg_client *c = tree->client;
 				fprintf(f, "    - title: %s\n", c->surface->toplevel->title);
 				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n", c->x, c->y, c->w, c->h);
 				fprintf(f, "      selected: %s\n", c == d->focus ? "true" : "false");
