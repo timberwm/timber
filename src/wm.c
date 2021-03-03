@@ -754,6 +754,12 @@ out:
 	pixman_region32_fini(&damage);
 }
 
+static void tmbr_layer_client_damage(struct tmbr_layer_client *c)
+{
+	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, c->screen->output->scale);
+	wlr_output_damage_add_box(c->screen->damage, &box);
+}
+
 static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
 {
 	for (int l = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY; l >= ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND; l--) {
@@ -832,8 +838,9 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 			if (c->w != box.width || c->h != box.height)
 				wlr_layer_surface_v1_configure(c->surface, box.width, box.height);
 			if (c->w != box.width || c->h != box.height || c->x != box.x || c->y != box.y) {
+				tmbr_layer_client_damage(c);
 				c->w = box.width; c->h = box.height; c->x = box.x; c->y = box.y;
-				wlr_output_damage_add_whole(c->screen->damage);
+				tmbr_layer_client_damage(c);
 			}
 
 			for (size_t i = 0; exclusive && i < sizeof(edges) / sizeof(edges[0]); i++) {
