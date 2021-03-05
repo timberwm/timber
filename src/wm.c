@@ -54,6 +54,7 @@
 #define tmbr_return_error(resource, code, msg) \
 	do { wl_resource_post_error((resource), (code), (msg)); return; } while (0)
 #define tmbr_box_scaled(vx, vy, vw, vh, s) (struct wlr_box){ .x = (vx)*(s), .y = (vy)*(s), .width = (vw)*(s), .height = (vh)*(s) }
+#define tmbr_box_from_pixman(b) (struct wlr_box) { .x = (b).x1, .y = (b).y1, .width = (b).x2 - (b).x1, .height = (b).y2 - (b).y1 }
 
 enum tmbr_split {
 	TMBR_SPLIT_VERTICAL,
@@ -263,8 +264,7 @@ static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, voi
 	wlr_matrix_project_box(matrix, &extents, wlr_output_transform_invert(surface->current.transform), 0, data->output->transform_matrix);
 
 	for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
-		struct wlr_box scissor_box = { .x = rects[i].x1, .y = rects[i].y1, .width = rects[i].x2 - rects[i].x1, .height = rects[i].y2 - rects[i].y1 };
-		wlr_renderer_scissor(wlr_backend_get_renderer(data->output->backend), &scissor_box);
+		wlr_renderer_scissor(wlr_backend_get_renderer(data->output->backend), &tmbr_box_from_pixman(rects[i]));
 		wlr_render_texture_with_matrix(wlr_backend_get_renderer(data->output->backend), texture, matrix, 1);
 	}
 
@@ -327,9 +327,7 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 		pixman_region32_intersect(&borders, &borders, output_damage);
 
 		for (i = 0, rects = pixman_region32_rectangles(&borders, &nrects); i < nrects; i++) {
-			struct wlr_box scissor_box;
-			wlr_box_from_pixman_box32(&scissor_box, rects[i]);
-			wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &scissor_box);
+			wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &tmbr_box_from_pixman(rects[i]));
 			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
 		}
 		pixman_region32_fini(&borders);
@@ -722,9 +720,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			int i, nrects;
 
 			for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
-				struct wlr_box scissor_box;
-				wlr_box_from_pixman_box32(&scissor_box, rects[i]);
-				wlr_renderer_scissor(renderer, &scissor_box);
+				wlr_renderer_scissor(renderer, &tmbr_box_from_pixman(rects[i]));
 				wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
 			}
 
