@@ -55,6 +55,7 @@
 	do { wl_resource_post_error((resource), (code), (msg)); return; } while (0)
 #define tmbr_box_scaled(vx, vy, vw, vh, s) (struct wlr_box){ .x = (vx)*(s), .y = (vy)*(s), .width = (vw)*(s), .height = (vh)*(s) }
 #define tmbr_box_from_pixman(b) (struct wlr_box) { .x = (b).x1, .y = (b).y1, .width = (b).x2 - (b).x1, .height = (b).y2 - (b).y1 }
+#define tmbr_box_to_pixman(b) (struct pixman_box32) { .x1 = (b).x, .x2 = (b).x + (b).width, .y1 = (b).y, .y2 = (b).y + (b).height }
 
 enum tmbr_split {
 	TMBR_SPLIT_VERTICAL,
@@ -312,6 +313,8 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 		output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale), time,
 	};
 
+	if (!pixman_region32_contains_rectangle(output_damage, &tmbr_box_to_pixman(payload.box)))
+		return;
 	if (c->border) {
 		const float *color = c->surface->surface == c->server->focussed_surface ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE;
 		struct pixman_region32 borders;
