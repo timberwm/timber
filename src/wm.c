@@ -314,19 +314,25 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 
 	if (c->border) {
 		const float *color = c->surface->surface == c->server->focussed_surface ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE;
-		struct wlr_box borders[4] = {
-			wlr_box_scaled(c->x, c->y, c->w, c->border, output->scale),
-			wlr_box_scaled(c->x, c->y, c->border, c->h, output->scale),
-			wlr_box_scaled(c->x + c->w - c->border, c->y, c->border, c->h, output->scale),
-			wlr_box_scaled(c->x, c->y + c->h - c->border, c->w, c->border, output->scale),
-		};
-		for (int i = 0; i < (int) ARRAY_SIZE(borders); i++) {
-			struct pixman_box32 box = { .x1 = borders[i].x, .x2 = borders[i].x + borders[i].width, .y1 = borders[i].y, .y2 = borders[i].y + borders[i].height };
-			if (pixman_region32_contains_rectangle(output_damage, &box)) {
-				wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &borders[i]);
-				wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
-			}
+		struct pixman_region32 borders;
+		struct pixman_box32 *rects;
+		int i, nrects;
+
+		pixman_region32_init(&borders);
+		pixman_region32_union_rect(&borders, &borders, c->x, c->y, c->w, c->border);
+		pixman_region32_union_rect(&borders, &borders, c->x, c->y, c->border, c->h);
+		pixman_region32_union_rect(&borders, &borders, c->x + c->w - c->border, c->y, c->border, c->h);
+		pixman_region32_union_rect(&borders, &borders, c->x, c->y + c->h - c->border, c->w, c->border);
+		wlr_region_scale(&borders, &borders, output->scale);
+		pixman_region32_intersect(&borders, &borders, output_damage);
+
+		for (i = 0, rects = pixman_region32_rectangles(&borders, &nrects); i < nrects; i++) {
+			struct wlr_box scissor_box;
+			wlr_box_from_pixman_box32(&scissor_box, rects[i]);
+			wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &scissor_box);
+			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
 		}
+		pixman_region32_fini(&borders);
 	}
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
 }
