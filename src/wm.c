@@ -53,7 +53,7 @@
 
 #define tmbr_return_error(resource, code, msg) \
 	do { wl_resource_post_error((resource), (code), (msg)); return; } while (0)
-#define wlr_box_scaled(vx, vy, vw, vh, s) (struct wlr_box){ .x = (vx)*(s), .y = (vy)*(s), .width = (vw)*(s), .height = (vh)*(s) }
+#define tmbr_box_scaled(vx, vy, vw, vh, s) (struct wlr_box){ .x = (vx)*(s), .y = (vy)*(s), .width = (vw)*(s), .height = (vh)*(s) }
 
 enum tmbr_split {
 	TMBR_SPLIT_VERTICAL,
@@ -226,7 +226,7 @@ static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener
 
 static void tmbr_xdg_client_damage(struct tmbr_xdg_client *c)
 {
-	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
+	struct wlr_box box = tmbr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
 	wlr_output_damage_add_box(c->desktop->screen->damage, &box);
 }
 
@@ -309,7 +309,7 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 {
 	struct wlr_output *output = c->desktop->screen->output;
 	struct tmbr_render_data payload = {
-		output_damage, output, wlr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale), time,
+		output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale), time,
 	};
 
 	if (c->border) {
@@ -693,7 +693,7 @@ static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_r
 		struct tmbr_layer_client *c;
 		wl_list_for_each(c, &screen->layer_clients, link) {
 			struct tmbr_render_data data = {
-				output_damage, screen->output, wlr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale), time,
+				output_damage, screen->output, tmbr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale), time,
 			};
 			if (c->surface->current.layer == layer)
 				wlr_layer_surface_v1_for_each_surface(c->surface, tmbr_surface_render, &data);
@@ -755,8 +755,7 @@ out:
 
 static void tmbr_layer_client_damage(struct tmbr_layer_client *c)
 {
-	struct wlr_box box = wlr_box_scaled(c->x, c->y, c->w, c->h, c->screen->output->scale);
-	wlr_output_damage_add_box(c->screen->damage, &box);
+	wlr_output_damage_add_box(c->screen->damage, &tmbr_box_scaled(c->x, c->y, c->w, c->h, c->screen->output->scale));
 }
 
 static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
