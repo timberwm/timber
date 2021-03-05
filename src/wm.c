@@ -51,11 +51,8 @@
 #include "timber-server.h"
 #include "wm.h"
 
-#define TMBR_UNUSED __attribute__((unused))
-
 #define tmbr_return_error(resource, code, msg) \
 	do { wl_resource_post_error((resource), (code), (msg)); return; } while (0)
-
 #define wlr_box_scaled(vx, vy, vw, vh, s) (struct wlr_box){ .x = (vx)*(s), .y = (vy)*(s), .width = (vw)*(s), .height = (vh)*(s) }
 
 enum tmbr_split {
