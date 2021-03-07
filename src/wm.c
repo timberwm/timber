@@ -321,12 +321,11 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 		struct pixman_box32 *rects;
 		int i, nrects;
 
-		pixman_region32_init(&borders);
-		pixman_region32_union_rect(&borders, &borders, c->x, c->y, c->w, c->border);
-		pixman_region32_union_rect(&borders, &borders, c->x, c->y, c->border, c->h);
-		pixman_region32_union_rect(&borders, &borders, c->x + c->w - c->border, c->y, c->border, c->h);
-		pixman_region32_union_rect(&borders, &borders, c->x, c->y + c->h - c->border, c->w, c->border);
-		wlr_region_scale(&borders, &borders, output->scale);
+		pixman_region32_init_with_extents(&borders, &tmbr_box_to_pixman(payload.box));
+		pixman_region32_inverse(&borders, &borders, &(struct pixman_box32){
+			.x1 = c->x * output->scale, .x2 = (c->x + c->w) * output->scale,
+			.y1 = c->y * output->scale, .y2 = (c->y + c->h) * output->scale,
+		});
 		pixman_region32_intersect(&borders, &borders, output_damage);
 
 		for (i = 0, rects = pixman_region32_rectangles(&borders, &nrects); i < nrects; i++) {
