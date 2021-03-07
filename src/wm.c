@@ -567,8 +567,8 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 	}
 	if (desktop->focus == client)
 		return;
-	desktop->focus = client;
 	tmbr_desktop_set_fullscreen(desktop, false);
+	desktop->focus = client;
 }
 
 static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client)
