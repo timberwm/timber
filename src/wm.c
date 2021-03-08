@@ -85,7 +85,9 @@ struct tmbr_xdg_client {
 	struct tmbr_tree *tree;
 	struct wlr_xdg_surface *surface;
 	int h, w, x, y, border;
+	uint32_t pending_serial;
 
+	struct wl_event_source *configure_timer;
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener destroy;
@@ -340,10 +342,19 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
 }
 
+static int tmbr_xdg_client_handle_configure_timer(void *client)
+{
+	((struct tmbr_xdg_client *)client)->pending_serial = 0;
+	tmbr_xdg_client_damage(client);
+	return 0;
+}
+
 static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
 {
-	if (client->w != w || client->h != h || client->border != border)
-		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+	if (client->w != w || client->h != h || client->border != border) {
+		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+		wl_event_source_timer_update(client->configure_timer, 50);
+	}
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
 		tmbr_xdg_client_damage(client);
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
@@ -375,6 +386,7 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 	wl_list_remove(&client->map.link);
 	wl_list_remove(&client->unmap.link);
 	wl_list_remove(&client->request_fullscreen.link);
+	wl_event_source_remove(client->configure_timer);
 	free(client);
 }
 
@@ -392,6 +404,10 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 		if (client->surface->surface == client->server->focussed_surface)
 			tmbr_xdg_client_notify_focus(client);
 	}
+	if (client->pending_serial && client->pending_serial == client->surface->configure_serial) {
+		tmbr_xdg_client_handle_configure_timer(client);
+		wl_event_source_timer_update(client->configure_timer, 0);
+	}
 }
 
 static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, struct wlr_xdg_surface *surface)
@@ -399,10 +415,9 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	struct tmbr_xdg_client *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
 	client->server = server;
 	client->surface = surface;
-
+	client->configure_timer = wl_event_loop_add_timer(wl_display_get_event_loop(server->display), tmbr_xdg_client_handle_configure_timer, client);
 	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_xdg_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_xdg_client_on_commit);
-
 	return client;
 }
 
@@ -714,6 +729,11 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 
 	clock_gettime(CLOCK_MONOTONIC, &time);
 	pixman_region32_init(&damage);
+
+	tmbr_tree_for_each(screen->focus->clients, tree)
+		if (tree->client->pending_serial)
+			goto out;
+
 	if (!wlr_output_damage_attach_render(screen->damage, &needs_frame, &damage))
 		goto out;
 	if (needs_frame) {
