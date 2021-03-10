@@ -4,7 +4,7 @@ stages:
 
 .setup: &setup
   - test "${IMAGE%:*}" = "alpine" && apk add clang curl gcc meson musl-dev wlroots-dev
-  - test "${IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang curl gcc meson pkg-config wayland-protocols wlroots
+  - test "${IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang curl gcc meson perl pkg-config wayland-protocols wlroots
   - test "${IMAGE%:*}" = "ubuntu" && apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc clang curl meson pkg-config libwlroots-dev
 
 build:
@@ -19,6 +19,17 @@ build:
     matrix:
       - CC: [ "clang", "gcc" ]
         IMAGE: [ "alpine:edge", "archlinux:latest", "ubuntu:20.10" ]
+
+clang-analyzer:
+  stage: analyze
+  image: ${IMAGE}
+  before_script:
+    - *setup
+  script:
+    - meson setup build .
+    - scan-build --status-bugs ninja -C build all
+  variables:
+    IMAGE: archlinux:latest
 
 coverity:
   stage: analyze
