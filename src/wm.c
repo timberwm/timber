@@ -306,6 +306,12 @@ static void tmbr_xdg_client_damage(struct tmbr_xdg_client *c)
 	wlr_output_damage_add_box(c->desktop->screen->damage, &box);
 }
 
+static void tmbr_xdg_client_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
+{
+	struct tmbr_xdg_client *client = payload;
+	tmbr_surface_damage(surface, client->desktop->screen->damage, client->x + client->border + sx, client->y + client->border + sy, client->desktop->screen->output->scale);
+}
+
 static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
 {
 	wlr_xdg_toplevel_send_close(client->surface);
@@ -388,12 +394,6 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 	wl_list_remove(&client->request_fullscreen.link);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
-}
-
-static void tmbr_xdg_client_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
-{
-	struct tmbr_xdg_client *client = payload;
-	tmbr_surface_damage(surface, client->desktop->screen->damage, client->x + client->border + sx, client->y + client->border + sy, client->desktop->screen->output->scale);
 }
 
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
