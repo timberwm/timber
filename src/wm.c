@@ -85,7 +85,9 @@ struct tmbr_xdg_client {
 	struct tmbr_tree *tree;
 	struct wlr_xdg_surface *surface;
 	int h, w, x, y, border;
+	uint32_t pending_serial;
 
+	struct wl_event_source *configure_timer;
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener destroy;
@@ -97,7 +99,6 @@ struct tmbr_render_data {
 	struct pixman_region32 *damage;
 	struct wlr_output *output;
 	struct wlr_box box;
-	struct timespec time;
 };
 
 struct tmbr_tree {
@@ -237,6 +238,11 @@ static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
 	wlr_xdg_toplevel_send_close(client->surface);
 }
 
+static void tmbr_surface_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, void *payload)
+{
+	wlr_surface_send_frame_done(surface, payload);
+}
+
 static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	struct tmbr_render_data *data = payload;
@@ -270,7 +276,6 @@ static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, voi
 	}
 
 out:
-	wlr_surface_send_frame_done(surface, &data->time);
 	pixman_region32_fini(&damage);
 }
 
@@ -306,11 +311,11 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 	server->focussed_surface = surface;
 }
 
-static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_region32 *output_damage, struct timespec time)
+static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_region32 *output_damage)
 {
 	struct wlr_output *output = c->desktop->screen->output;
 	struct tmbr_render_data payload = {
-		output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale), time,
+		output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale),
 	};
 
 	if (!pixman_region32_contains_rectangle(output_damage, &tmbr_box_to_pixman(payload.box)))
@@ -337,10 +342,19 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
 }
 
+static int tmbr_xdg_client_handle_configure_timer(void *client)
+{
+	((struct tmbr_xdg_client *)client)->pending_serial = 0;
+	tmbr_xdg_client_damage(client);
+	return 0;
+}
+
 static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
 {
-	if (client->w != w || client->h != h || client->border != border)
-		wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+	if (client->w != w || client->h != h || client->border != border) {
+		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+		wl_event_source_timer_update(client->configure_timer, 50);
+	}
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
 		tmbr_xdg_client_damage(client);
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
@@ -372,6 +386,7 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 	wl_list_remove(&client->map.link);
 	wl_list_remove(&client->unmap.link);
 	wl_list_remove(&client->request_fullscreen.link);
+	wl_event_source_remove(client->configure_timer);
 	free(client);
 }
 
@@ -389,6 +404,10 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 		if (client->surface->surface == client->server->focussed_surface)
 			tmbr_xdg_client_notify_focus(client);
 	}
+	if (client->pending_serial && client->pending_serial == client->surface->configure_serial) {
+		tmbr_xdg_client_handle_configure_timer(client);
+		wl_event_source_timer_update(client->configure_timer, 0);
+	}
 }
 
 static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, struct wlr_xdg_surface *surface)
@@ -396,10 +415,9 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	struct tmbr_xdg_client *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
 	client->server = server;
 	client->surface = surface;
-
+	client->configure_timer = wl_event_loop_add_timer(wl_display_get_event_loop(server->display), tmbr_xdg_client_handle_configure_timer, client);
 	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_xdg_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_xdg_client_on_commit);
-
 	return client;
 }
 
@@ -688,12 +706,12 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	free(screen);
 }
 
-static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_region32 *output_damage, struct timespec time, enum zwlr_layer_shell_v1_layer layer)
+static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_region32 *output_damage, enum zwlr_layer_shell_v1_layer layer)
 {
 		struct tmbr_layer_client *c;
 		wl_list_for_each(c, &screen->layer_clients, link) {
 			struct tmbr_render_data data = {
-				output_damage, screen->output, tmbr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale), time,
+				output_damage, screen->output, tmbr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale),
 			};
 			if (c->surface->current.layer == layer)
 				wlr_layer_surface_v1_for_each_surface(c->surface, tmbr_surface_render, &data);
@@ -704,15 +722,21 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
 	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
+	struct tmbr_layer_client *layer_client;
 	struct pixman_region32 damage;
 	struct timespec time;
 	bool needs_frame;
 
+	clock_gettime(CLOCK_MONOTONIC, &time);
 	pixman_region32_init(&damage);
+
+	tmbr_tree_for_each(screen->focus->clients, tree)
+		if (tree->client->pending_serial)
+			goto out;
+
 	if (!wlr_output_damage_attach_render(screen->damage, &needs_frame, &damage))
 		goto out;
 	if (needs_frame) {
-		clock_gettime(CLOCK_MONOTONIC, &time);
 		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
 
 		if (!screen->focus->focus && wl_list_empty(&screen->layer_clients)) {
@@ -727,14 +751,14 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			}
 
 			if (screen->focus->fullscreen) {
-				tmbr_xdg_client_render(screen->focus->focus, &damage, time);
+				tmbr_xdg_client_render(screen->focus->focus, &damage);
 			} else {
-				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
-				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
+				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
+				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
 				tmbr_tree_for_each(screen->focus->clients, tree)
-					tmbr_xdg_client_render(tree->client, &damage, time);
-				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
-				tmbr_screen_render_layer(screen, &damage, time, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+					tmbr_xdg_client_render(tree->client, &damage);
+				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
+				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
 			}
 		}
 
@@ -748,6 +772,10 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	}
 
 out:
+	tmbr_tree_for_each(screen->focus->clients, tree)
+		wlr_xdg_surface_for_each_surface(tree->client->surface, tmbr_surface_send_frame_done, &time);
+	wl_list_for_each(layer_client, &screen->layer_clients, link)
+		wlr_layer_surface_v1_for_each_surface(layer_client->surface, tmbr_surface_send_frame_done, &time);
 	pixman_region32_fini(&damage);
 }
 
