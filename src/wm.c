@@ -227,17 +227,6 @@ static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener
 	wl_signal_add(signal, listener);
 }
 
-static void tmbr_xdg_client_damage(struct tmbr_xdg_client *c)
-{
-	struct wlr_box box = tmbr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
-	wlr_output_damage_add_box(c->desktop->screen->damage, &box);
-}
-
-static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
-{
-	wlr_xdg_toplevel_send_close(client->surface);
-}
-
 static void tmbr_surface_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, void *payload)
 {
 	wlr_surface_send_frame_done(surface, payload);
@@ -309,6 +298,17 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 	}
 
 	server->focussed_surface = surface;
+}
+
+static void tmbr_xdg_client_damage(struct tmbr_xdg_client *c)
+{
+	struct wlr_box box = tmbr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
+	wlr_output_damage_add_box(c->desktop->screen->damage, &box);
+}
+
+static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
+{
+	wlr_xdg_toplevel_send_close(client->surface);
 }
 
 static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_region32 *output_damage)
