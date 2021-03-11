@@ -290,7 +290,7 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 	if (subsurface) {
 		struct timespec now;
 		clock_gettime(CLOCK_MONOTONIC, &now);
-		wlr_seat_pointer_notify_enter(server->seat, surface, x, y);
+		wlr_seat_pointer_notify_enter(server->seat, subsurface, x, y);
 		wlr_seat_pointer_notify_motion(server->seat, now.tv_sec * 1000 + now.tv_nsec / 1000000, x, y);
 	} else {
 		wlr_seat_pointer_notify_clear_focus(server->seat);
