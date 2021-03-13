@@ -93,6 +93,15 @@ struct tmbr_xdg_client {
 	struct wl_listener destroy;
 	struct wl_listener commit;
 	struct wl_listener request_fullscreen;
+	struct wl_listener new_popup;
+};
+
+struct tmbr_xdg_popup {
+	struct wlr_xdg_surface *surface;
+	struct tmbr_xdg_client *client;
+	struct wl_listener map;
+	struct wl_listener unmap;
+	struct wl_listener destroy;
 };
 
 struct tmbr_render_data {
@@ -300,6 +309,49 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 	server->focussed_surface = surface;
 }
 
+static void tmbr_xdg_popup_damage(struct tmbr_xdg_popup *p)
+{
+	struct tmbr_xdg_client *c = p->client;
+	if (c->desktop && c->desktop == c->desktop->screen->focus)
+		wlr_output_damage_add_box(c->desktop->screen->damage, &tmbr_box_scaled(
+			c->x + c->border + p->surface->popup->geometry.x - p->surface->geometry.x,
+			c->y + c->border + p->surface->popup->geometry.y - p->surface->geometry.y,
+			p->surface->popup->geometry.width + p->surface->popup->geometry.x,
+			p->surface->popup->geometry.height + p->surface->popup->geometry.y,
+			c->desktop->screen->output->scale));
+}
+
+static void tmbr_xdg_popup_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, map);
+	tmbr_xdg_popup_damage(popup);
+}
+
+static void tmbr_xdg_popup_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, unmap);
+	tmbr_xdg_popup_damage(popup);
+}
+
+static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, destroy);
+	wl_list_remove(&popup->map.link);
+	wl_list_remove(&popup->unmap.link);
+	free(popup);
+}
+
+static void tmbr_xdg_client_on_new_popup(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, new_popup);
+	struct tmbr_xdg_popup *popup = tmbr_alloc(sizeof(*popup), "could not allocate XDG popup");
+	popup->surface = ((struct wlr_xdg_popup *)payload)->base;
+	popup->client = client;
+	tmbr_register(&popup->surface->events.map, &popup->map, tmbr_xdg_popup_on_map);
+	tmbr_register(&popup->surface->events.unmap, &popup->unmap, tmbr_xdg_popup_on_unmap);
+	tmbr_register(&popup->surface->events.destroy, &popup->destroy, tmbr_xdg_popup_on_destroy);
+}
+
 static void tmbr_xdg_client_damage(struct tmbr_xdg_client *c)
 {
 	if (c->desktop && c->desktop == c->desktop->screen->focus) {
@@ -394,6 +446,7 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 	wl_list_remove(&client->commit.link);
 	wl_list_remove(&client->map.link);
 	wl_list_remove(&client->unmap.link);
+	wl_list_remove(&client->new_popup.link);
 	wl_list_remove(&client->request_fullscreen.link);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
@@ -418,6 +471,7 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	client->surface = surface;
 	client->configure_timer = wl_event_loop_add_timer(wl_display_get_event_loop(server->display), tmbr_xdg_client_handle_configure_timer, client);
 	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_xdg_client_on_destroy);
+	tmbr_register(&surface->events.new_popup, &client->new_popup, tmbr_xdg_client_on_new_popup);
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_xdg_client_on_commit);
 	return client;
 }
