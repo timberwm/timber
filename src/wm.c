@@ -79,6 +79,12 @@ struct tmbr_keyboard {
 	struct wl_listener modifiers;
 };
 
+struct tmbr_surface_render_data {
+	struct pixman_region32 *damage;
+	struct wlr_output *output;
+	struct wlr_box box;
+};
+
 struct tmbr_xdg_client {
 	struct tmbr_server *server;
 	struct tmbr_desktop *desktop;
@@ -102,12 +108,6 @@ struct tmbr_xdg_popup {
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener destroy;
-};
-
-struct tmbr_render_data {
-	struct pixman_region32 *damage;
-	struct wlr_output *output;
-	struct wlr_box box;
 };
 
 struct tmbr_tree {
@@ -243,7 +243,7 @@ static void tmbr_surface_send_frame_done(struct wlr_surface *surface, TMBR_UNUSE
 
 static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
-	struct tmbr_render_data *data = payload;
+	struct tmbr_surface_render_data *data = payload;
 	struct wlr_box bounds = data->box, extents = {
 		.x = bounds.x + sx * data->output->scale, .y = bounds.y + sy * data->output->scale,
 		.width = surface->current.width * data->output->scale, .height = surface->current.height * data->output->scale,
@@ -375,7 +375,7 @@ static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
 static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_region32 *output_damage)
 {
 	struct wlr_output *output = c->desktop->screen->output;
-	struct tmbr_render_data payload = {
+	struct tmbr_surface_render_data payload = {
 		output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale),
 	};
 
@@ -765,7 +765,7 @@ static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_r
 {
 		struct tmbr_layer_client *c;
 		wl_list_for_each(c, &screen->layer_clients, link) {
-			struct tmbr_render_data data = {
+			struct tmbr_surface_render_data data = {
 				output_damage, screen->output, tmbr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale),
 			};
 			if (c->surface->current.layer == layer)
