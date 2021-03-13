@@ -454,11 +454,12 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, commit);
-	if (client->desktop && client->desktop == client->desktop->screen->focus)
+	if (client->desktop && client->desktop == client->desktop->screen->focus) {
 		wlr_xdg_surface_for_each_surface(client->surface, tmbr_surface_damage_surface,
 						 &(struct tmbr_surface_damage_data){ client->desktop->screen, client->x + client->border, client->y + client->border });
-	if (client->surface->surface == client->server->focussed_surface)
-		tmbr_xdg_client_notify_focus(client);
+		if (client->surface->surface == client->server->focussed_surface)
+			tmbr_xdg_client_notify_focus(client);
+	}
 	if (client->pending_serial && client->pending_serial == client->surface->configure_serial) {
 		tmbr_xdg_client_handle_configure_timer(client);
 		wl_event_source_timer_update(client->configure_timer, 0);
