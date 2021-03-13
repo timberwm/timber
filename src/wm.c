@@ -85,6 +85,11 @@ struct tmbr_surface_render_data {
 	struct wlr_box box;
 };
 
+struct tmbr_surface_damage_data {
+	struct tmbr_screen *screen;
+	int x, y;
+};
+
 struct tmbr_xdg_client {
 	struct tmbr_server *server;
 	struct tmbr_desktop *desktop;
@@ -277,14 +282,15 @@ out:
 	pixman_region32_fini(&damage);
 }
 
-static void tmbr_surface_damage(struct wlr_surface *surface, struct wlr_output_damage *output_damage, int x, int y, float scale)
+static void tmbr_surface_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
+	struct tmbr_surface_damage_data *data = payload;
 	struct pixman_region32 damage;
 	pixman_region32_init(&damage);
 	wlr_surface_get_effective_damage(surface, &damage);
-	pixman_region32_translate(&damage, x, y);
-	wlr_region_scale(&damage, &damage, scale);
-	wlr_output_damage_add(output_damage, &damage);
+	pixman_region32_translate(&damage, data->x + sx, data->y + sy);
+	wlr_region_scale(&damage, &damage, data->screen->output->scale);
+	wlr_output_damage_add(data->screen->damage, &damage);
 	pixman_region32_fini(&damage);
 }
 
@@ -358,13 +364,6 @@ static void tmbr_xdg_client_damage(struct tmbr_xdg_client *c)
 		struct wlr_box box = tmbr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
 		wlr_output_damage_add_box(c->desktop->screen->damage, &box);
 	}
-}
-
-static void tmbr_xdg_client_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
-{
-	struct tmbr_xdg_client *c = payload;
-	if (c->desktop && c->desktop == c->desktop->screen->focus)
-		tmbr_surface_damage(surface, c->desktop->screen->damage, c->x + c->border + sx, c->y + c->border + sy, c->desktop->screen->output->scale);
 }
 
 static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
@@ -455,7 +454,9 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, commit);
-	wlr_xdg_surface_for_each_surface(client->surface, tmbr_xdg_client_damage_surface, client);
+	if (client->desktop && client->desktop == client->desktop->screen->focus)
+		wlr_xdg_surface_for_each_surface(client->surface, tmbr_surface_damage_surface,
+						 &(struct tmbr_surface_damage_data){ client->desktop->screen, client->x + client->border, client->y + client->border });
 	if (client->surface->surface == client->server->focussed_surface)
 		tmbr_xdg_client_notify_focus(client);
 	if (client->pending_serial && client->pending_serial == client->surface->configure_serial) {
@@ -1091,12 +1092,6 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 	free(client);
 }
 
-static void tmbr_layer_client_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
-{
-	struct tmbr_layer_client *client = payload;
-	tmbr_surface_damage(surface, client->screen->damage, client->x + sx, client->y + sy, client->screen->output->scale);
-}
-
 static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, commit);
@@ -1104,7 +1099,8 @@ static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSE
 	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
 	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
 		tmbr_screen_recalculate(client->screen);
-	wlr_layer_surface_v1_for_each_surface(client->surface, tmbr_layer_client_damage_surface, client);
+	wlr_layer_surface_v1_for_each_surface(client->surface, tmbr_surface_damage_surface,
+					      &(struct tmbr_surface_damage_data){ client->screen, client->x, client->y });
 }
 
 static struct tmbr_screen *tmbr_server_find_output(struct tmbr_server *server, const char *output)
