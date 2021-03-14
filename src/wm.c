@@ -850,7 +850,6 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 		wl_list_for_each(c, &s->layer_clients, link) {
 			struct wlr_layer_surface_v1_state *state = &c->surface->current;
 			struct wlr_box box = { .x = 0, .y = 0, .width = state->desired_width, .height = state->desired_height };
-
 			struct {
 				uint32_t singular_anchor, anchor_triplet;
 				int *positive_axis, *negative_axis, margin;
