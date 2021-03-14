@@ -241,6 +241,17 @@ static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener
 	wl_signal_add(signal, listener);
 }
 
+static void tmbr_unregister(struct wl_listener *listener, ...)
+{
+	va_list ap;
+	va_start(ap, listener);
+	while (listener) {
+		wl_list_remove(&listener->link);
+		listener = va_arg(ap, struct wl_listener *);
+	}
+	va_end(ap);
+}
+
 static void tmbr_surface_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, void *payload)
 {
 	wlr_surface_send_frame_done(surface, payload);
@@ -342,8 +353,7 @@ static void tmbr_xdg_popup_on_unmap(struct wl_listener *listener, TMBR_UNUSED vo
 static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, destroy);
-	wl_list_remove(&popup->map.link);
-	wl_list_remove(&popup->unmap.link);
+	tmbr_unregister(&popup->map, &popup->unmap, NULL);
 	free(popup);
 }
 
@@ -441,12 +451,7 @@ static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, destroy);
-	wl_list_remove(&client->destroy.link);
-	wl_list_remove(&client->commit.link);
-	wl_list_remove(&client->map.link);
-	wl_list_remove(&client->unmap.link);
-	wl_list_remove(&client->new_popup.link);
-	wl_list_remove(&client->request_fullscreen.link);
+	tmbr_unregister(&client->destroy, &client->commit, &client->map, &client->unmap, &client->new_popup, &client->request_fullscreen, NULL);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
 }
@@ -755,10 +760,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link)
 		wlr_layer_surface_v1_close(c->surface);
 
-	wl_list_remove(&screen->destroy.link);
-	wl_list_remove(&screen->frame.link);
-	wl_list_remove(&screen->mode.link);
-	wl_list_remove(&screen->scale.link);
+	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->scale, NULL);
 	wl_list_remove(&screen->link);
 	free(screen);
 }
@@ -986,9 +988,7 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 static void tmbr_keyboard_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
-	wl_list_remove(&keyboard->destroy.link);
-	wl_list_remove(&keyboard->key.link);
-	wl_list_remove(&keyboard->modifiers.link);
+	tmbr_unregister(&keyboard->destroy, &keyboard->key, &keyboard->modifiers, NULL);
 	free(keyboard);
 }
 
@@ -1085,10 +1085,7 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, destroy);
 	wl_list_remove(&client->link);
-	wl_list_remove(&client->map.link);
-	wl_list_remove(&client->unmap.link);
-	wl_list_remove(&client->destroy.link);
-	wl_list_remove(&client->commit.link);
+	tmbr_unregister(&client->map, &client->unmap, &client->destroy, &client->commit, NULL);
 	tmbr_screen_recalculate(client->screen);
 	free(client);
 }
