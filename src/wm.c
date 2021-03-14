@@ -241,6 +241,17 @@ static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener
 	wl_signal_add(signal, listener);
 }
 
+static void tmbr_unregister(struct wl_listener *listener, ...)
+{
+	va_list ap;
+	va_start(ap, listener);
+	while (listener) {
+		wl_list_remove(&listener->link);
+		listener = va_arg(ap, struct wl_listener *);
+	}
+	va_end(ap);
+}
+
 static void tmbr_surface_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, void *payload)
 {
 	wlr_surface_send_frame_done(surface, payload);
@@ -315,7 +326,7 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 	server->focussed_surface = surface;
 }
 
-static void tmbr_xdg_popup_damage(struct tmbr_xdg_popup *p)
+static void tmbr_xdg_popup_damage_whole(struct tmbr_xdg_popup *p)
 {
 	struct tmbr_xdg_client *c = p->client;
 	if (c->desktop && c->desktop == c->desktop->screen->focus)
@@ -330,20 +341,19 @@ static void tmbr_xdg_popup_damage(struct tmbr_xdg_popup *p)
 static void tmbr_xdg_popup_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, map);
-	tmbr_xdg_popup_damage(popup);
+	tmbr_xdg_popup_damage_whole(popup);
 }
 
 static void tmbr_xdg_popup_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, unmap);
-	tmbr_xdg_popup_damage(popup);
+	tmbr_xdg_popup_damage_whole(popup);
 }
 
 static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, destroy);
-	wl_list_remove(&popup->map.link);
-	wl_list_remove(&popup->unmap.link);
+	tmbr_unregister(&popup->map, &popup->unmap, NULL);
 	free(popup);
 }
 
@@ -358,7 +368,7 @@ static void tmbr_xdg_client_on_new_popup(struct wl_listener *listener, void *pay
 	tmbr_register(&popup->surface->events.destroy, &popup->destroy, tmbr_xdg_popup_on_destroy);
 }
 
-static void tmbr_xdg_client_damage(struct tmbr_xdg_client *c)
+static void tmbr_xdg_client_damage_whole(struct tmbr_xdg_client *c)
 {
 	if (c->desktop && c->desktop == c->desktop->screen->focus) {
 		struct wlr_box box = tmbr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
@@ -405,7 +415,7 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 static int tmbr_xdg_client_handle_configure_timer(void *client)
 {
 	((struct tmbr_xdg_client *)client)->pending_serial = 0;
-	tmbr_xdg_client_damage(client);
+	tmbr_xdg_client_damage_whole(client);
 	return 0;
 }
 
@@ -416,9 +426,9 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 		wl_event_source_timer_update(client->configure_timer, 50);
 	}
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
-		tmbr_xdg_client_damage(client);
+		tmbr_xdg_client_damage_whole(client);
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
-		tmbr_xdg_client_damage(client);
+		tmbr_xdg_client_damage_whole(client);
 	}
 }
 
@@ -435,18 +445,13 @@ static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
 	if (focus)
 		tmbr_xdg_client_notify_focus(client);
-	tmbr_xdg_client_damage(client);
+	tmbr_xdg_client_damage_whole(client);
 }
 
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, destroy);
-	wl_list_remove(&client->destroy.link);
-	wl_list_remove(&client->commit.link);
-	wl_list_remove(&client->map.link);
-	wl_list_remove(&client->unmap.link);
-	wl_list_remove(&client->new_popup.link);
-	wl_list_remove(&client->request_fullscreen.link);
+	tmbr_unregister(&client->destroy, &client->commit, &client->map, &client->unmap, &client->new_popup, &client->request_fullscreen, NULL);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
 }
@@ -614,7 +619,7 @@ static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 {
 	if (desktop->fullscreen && desktop->focus)
 		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->box.x, desktop->screen->box.y,
-				    desktop->screen->box.width, desktop->screen->box.height, 0);
+					desktop->screen->box.width, desktop->screen->box.height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, desktop->screen->box.x, desktop->screen->box.y,
 				      desktop->screen->box.width, desktop->screen->box.height);
@@ -640,9 +645,8 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 		if (client)
 			tmbr_xdg_client_focus(client, true);
 	}
-	if (desktop->focus == client)
-		return;
-	tmbr_desktop_set_fullscreen(desktop, false);
+	if (desktop->focus != client)
+		tmbr_desktop_set_fullscreen(desktop, false);
 	desktop->focus = client;
 }
 
@@ -755,10 +759,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link)
 		wlr_layer_surface_v1_close(c->surface);
 
-	wl_list_remove(&screen->destroy.link);
-	wl_list_remove(&screen->frame.link);
-	wl_list_remove(&screen->mode.link);
-	wl_list_remove(&screen->scale.link);
+	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->scale, NULL);
 	wl_list_remove(&screen->link);
 	free(screen);
 }
@@ -836,7 +837,7 @@ out:
 	pixman_region32_fini(&damage);
 }
 
-static void tmbr_layer_client_damage(struct tmbr_layer_client *c)
+static void tmbr_layer_client_damage_whole(struct tmbr_layer_client *c)
 {
 	wlr_output_damage_add_box(c->screen->damage, &tmbr_box_scaled(c->x, c->y, c->w, c->h, c->screen->output->scale));
 }
@@ -849,7 +850,6 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 		wl_list_for_each(c, &s->layer_clients, link) {
 			struct wlr_layer_surface_v1_state *state = &c->surface->current;
 			struct wlr_box box = { .x = 0, .y = 0, .width = state->desired_width, .height = state->desired_height };
-
 			struct {
 				uint32_t singular_anchor, anchor_triplet;
 				int *positive_axis, *negative_axis, margin;
@@ -886,29 +886,29 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 				continue;
 
 			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x, box.width = s->box.width; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x = s->box.x; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x + s->box.width - box.width; break;
-				default: box.x = s->box.x + s->box.width / 2 - box.width / 2; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x, box.width = s->box.width; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x = s->box.x; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x + s->box.width - box.width; break;
+			default: box.x = s->box.x + s->box.width / 2 - box.width / 2; break;
 			}
 
 			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
-				case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM): box.y = s->box.y, box.height = s->box.height; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y = s->box.y; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y = s->box.y + s->box.height - box.height; break;
-				default: box.y = s->box.y + s->box.height / 2 - box.height / 2; break;
+			case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM): box.y = s->box.y, box.height = s->box.height; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y = s->box.y; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y = s->box.y + s->box.height - box.height; break;
+			default: box.y = s->box.y + s->box.height / 2 - box.height / 2; break;
 			}
 
 			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.left; box.width -= state->margin.left + state->margin.right; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x += state->margin.left; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.right; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.left; box.width -= state->margin.left + state->margin.right; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x += state->margin.left; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.right; break;
 			}
 
 			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.top; box.height -= state->margin.top + state->margin.bottom; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y += state->margin.top; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.bottom; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.top; box.height -= state->margin.top + state->margin.bottom; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y += state->margin.top; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.bottom; break;
 			}
 
 			if (box.width < 0 || box.height < 0) {
@@ -919,9 +919,9 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 			if (c->w != box.width || c->h != box.height)
 				wlr_layer_surface_v1_configure(c->surface, box.width, box.height);
 			if (c->w != box.width || c->h != box.height || c->x != box.x || c->y != box.y) {
-				tmbr_layer_client_damage(c);
+				tmbr_layer_client_damage_whole(c);
 				c->w = box.width; c->h = box.height; c->x = box.x; c->y = box.y;
-				tmbr_layer_client_damage(c);
+				tmbr_layer_client_damage_whole(c);
 			}
 
 			for (size_t i = 0; exclusive && i < sizeof(edges) / sizeof(edges[0]); i++) {
@@ -986,9 +986,7 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 static void tmbr_keyboard_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
-	wl_list_remove(&keyboard->destroy.link);
-	wl_list_remove(&keyboard->key.link);
-	wl_list_remove(&keyboard->modifiers.link);
+	tmbr_unregister(&keyboard->destroy, &keyboard->key, &keyboard->modifiers, NULL);
 	free(keyboard);
 }
 
@@ -1078,17 +1076,14 @@ static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, unmap);
 	tmbr_screen_focus_desktop(client->screen, client->screen->focus);
-	tmbr_layer_client_damage(client);
+	tmbr_layer_client_damage_whole(client);
 }
 
 static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, destroy);
 	wl_list_remove(&client->link);
-	wl_list_remove(&client->map.link);
-	wl_list_remove(&client->unmap.link);
-	wl_list_remove(&client->destroy.link);
-	wl_list_remove(&client->commit.link);
+	tmbr_unregister(&client->map, &client->unmap, &client->destroy, &client->commit, NULL);
 	tmbr_screen_recalculate(client->screen);
 	free(client);
 }
@@ -1119,14 +1114,14 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 	struct wlr_input_device *device = payload;
 
 	switch (device->type) {
-		case WLR_INPUT_DEVICE_POINTER:
-			wlr_cursor_attach_input_device(server->cursor, device);
-			break;
-		case WLR_INPUT_DEVICE_KEYBOARD:
-			tmbr_keyboard_new(server, device);
-			break;
-		default:
-			break;
+	case WLR_INPUT_DEVICE_POINTER:
+		wlr_cursor_attach_input_device(server->cursor, device);
+		break;
+	case WLR_INPUT_DEVICE_KEYBOARD:
+		tmbr_keyboard_new(server, device);
+		break;
+	default:
+		break;
 	}
 
 	wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER|WL_SEAT_CAPABILITY_KEYBOARD);
@@ -1385,15 +1380,15 @@ static void tmbr_cmd_client_resize(TMBR_UNUSED struct wl_client *client, struct 
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
 
 	switch (dir) {
-	    case TMBR_CTRL_DIRECTION_NORTH:
+	case TMBR_CTRL_DIRECTION_NORTH:
 		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_CTRL_SELECTION_NEXT; i = ratio * -1; break;
-	    case TMBR_CTRL_DIRECTION_SOUTH:
+	case TMBR_CTRL_DIRECTION_SOUTH:
 		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_CTRL_SELECTION_PREV; i = ratio; break;
-	    case TMBR_CTRL_DIRECTION_EAST:
+	case TMBR_CTRL_DIRECTION_EAST:
 		split = TMBR_SPLIT_VERTICAL; select = TMBR_CTRL_SELECTION_PREV; i = ratio; break;
-	    case TMBR_CTRL_DIRECTION_WEST:
+	case TMBR_CTRL_DIRECTION_WEST:
 		split = TMBR_SPLIT_VERTICAL; select = TMBR_CTRL_SELECTION_NEXT; i = ratio * -1; break;
-	    default:
+	default:
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_INVALID_PARAM, "invalid direction");
 	}
 
