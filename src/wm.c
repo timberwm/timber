@@ -326,7 +326,7 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 	server->focussed_surface = surface;
 }
 
-static void tmbr_xdg_popup_damage(struct tmbr_xdg_popup *p)
+static void tmbr_xdg_popup_damage_whole(struct tmbr_xdg_popup *p)
 {
 	struct tmbr_xdg_client *c = p->client;
 	if (c->desktop && c->desktop == c->desktop->screen->focus)
@@ -341,13 +341,13 @@ static void tmbr_xdg_popup_damage(struct tmbr_xdg_popup *p)
 static void tmbr_xdg_popup_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, map);
-	tmbr_xdg_popup_damage(popup);
+	tmbr_xdg_popup_damage_whole(popup);
 }
 
 static void tmbr_xdg_popup_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, unmap);
-	tmbr_xdg_popup_damage(popup);
+	tmbr_xdg_popup_damage_whole(popup);
 }
 
 static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -368,7 +368,7 @@ static void tmbr_xdg_client_on_new_popup(struct wl_listener *listener, void *pay
 	tmbr_register(&popup->surface->events.destroy, &popup->destroy, tmbr_xdg_popup_on_destroy);
 }
 
-static void tmbr_xdg_client_damage(struct tmbr_xdg_client *c)
+static void tmbr_xdg_client_damage_whole(struct tmbr_xdg_client *c)
 {
 	if (c->desktop && c->desktop == c->desktop->screen->focus) {
 		struct wlr_box box = tmbr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
@@ -415,7 +415,7 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 static int tmbr_xdg_client_handle_configure_timer(void *client)
 {
 	((struct tmbr_xdg_client *)client)->pending_serial = 0;
-	tmbr_xdg_client_damage(client);
+	tmbr_xdg_client_damage_whole(client);
 	return 0;
 }
 
@@ -426,9 +426,9 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 		wl_event_source_timer_update(client->configure_timer, 50);
 	}
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
-		tmbr_xdg_client_damage(client);
+		tmbr_xdg_client_damage_whole(client);
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
-		tmbr_xdg_client_damage(client);
+		tmbr_xdg_client_damage_whole(client);
 	}
 }
 
@@ -445,7 +445,7 @@ static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
 	if (focus)
 		tmbr_xdg_client_notify_focus(client);
-	tmbr_xdg_client_damage(client);
+	tmbr_xdg_client_damage_whole(client);
 }
 
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -838,7 +838,7 @@ out:
 	pixman_region32_fini(&damage);
 }
 
-static void tmbr_layer_client_damage(struct tmbr_layer_client *c)
+static void tmbr_layer_client_damage_whole(struct tmbr_layer_client *c)
 {
 	wlr_output_damage_add_box(c->screen->damage, &tmbr_box_scaled(c->x, c->y, c->w, c->h, c->screen->output->scale));
 }
@@ -921,9 +921,9 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 			if (c->w != box.width || c->h != box.height)
 				wlr_layer_surface_v1_configure(c->surface, box.width, box.height);
 			if (c->w != box.width || c->h != box.height || c->x != box.x || c->y != box.y) {
-				tmbr_layer_client_damage(c);
+				tmbr_layer_client_damage_whole(c);
 				c->w = box.width; c->h = box.height; c->x = box.x; c->y = box.y;
-				tmbr_layer_client_damage(c);
+				tmbr_layer_client_damage_whole(c);
 			}
 
 			for (size_t i = 0; exclusive && i < sizeof(edges) / sizeof(edges[0]); i++) {
@@ -1078,7 +1078,7 @@ static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, unmap);
 	tmbr_screen_focus_desktop(client->screen, client->screen->focus);
-	tmbr_layer_client_damage(client);
+	tmbr_layer_client_damage_whole(client);
 }
 
 static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
