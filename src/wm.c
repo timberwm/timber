@@ -196,7 +196,6 @@ struct tmbr_server {
 	struct wl_list bindings;
 	struct wl_list screens;
 	struct tmbr_screen *focussed_screen;
-	struct wlr_surface *focussed_surface;
 };
 
 static void tmbr_spawn(const char *path, char * const argv[])
@@ -224,7 +223,7 @@ static void tmbr_spawn(const char *path, char * const argv[])
 
 static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server)
 {
-	return server->focussed_screen->focus->focus;
+	return server->input_inhibit->active_client ? NULL : server->focussed_screen->focus->focus;
 }
 
 static struct wl_list *tmbr_list_get(struct wl_list *head, struct wl_list *link, enum tmbr_ctrl_selection which)
@@ -308,6 +307,9 @@ static void tmbr_surface_damage_surface(struct wlr_surface *surface, int sx, int
 static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_surface *subsurface, struct tmbr_server *server, double x, double y)
 {
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+	if (server->input_inhibit->active_client &&
+	    wl_resource_get_client(surface->resource) != server->input_inhibit->active_client)
+		return;
 	if (surface && keyboard)
 		wlr_seat_keyboard_notify_enter(server->seat, surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
 	else
@@ -322,8 +324,6 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 		wlr_seat_pointer_notify_clear_focus(server->seat);
 		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
 	}
-
-	server->focussed_surface = surface;
 }
 
 static void tmbr_xdg_popup_damage_whole(struct tmbr_xdg_popup *p)
@@ -391,7 +391,7 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 	if (!pixman_region32_contains_rectangle(output_damage, &tmbr_box_to_pixman(payload.box)))
 		return;
 	if (c->border) {
-		const float *color = c->surface->surface == c->server->focussed_surface ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE;
+		const float *color = (c == tmbr_server_find_focus(c->server)) ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE;
 		struct pixman_region32 borders;
 		struct pixman_box32 *rects;
 		int i, nrects;
@@ -460,7 +460,7 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 	if (client->desktop && client->desktop == client->desktop->screen->focus) {
 		wlr_xdg_surface_for_each_surface(client->surface, tmbr_surface_damage_surface,
 						 &(struct tmbr_surface_damage_data){ client->desktop->screen, client->x + client->border, client->y + client->border });
-		if (client->surface->surface == client->server->focussed_surface)
+		if (client == tmbr_server_find_focus(client->server))
 			tmbr_xdg_client_notify_focus(client);
 	}
 	if (client->pending_serial && client->pending_serial == client->surface->configure_serial) {
@@ -1057,7 +1057,7 @@ static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 {
 	double x = c->screen->server->cursor->x, y = c->screen->server->cursor->y;
 	struct wlr_surface *subsurface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
-	if (c->screen->server->focussed_surface != c->surface->surface && tmbr_server_find_focus(c->screen->server))
+	if (tmbr_server_find_focus(c->screen->server))
 		tmbr_xdg_client_focus(tmbr_server_find_focus(c->screen->server), false);
 	tmbr_surface_notify_focus(c->surface->surface, subsurface, c->screen->server, x, y);
 }
