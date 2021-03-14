@@ -886,29 +886,29 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 				continue;
 
 			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x, box.width = s->box.width; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x = s->box.x; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x + s->box.width - box.width; break;
-				default: box.x = s->box.x + s->box.width / 2 - box.width / 2; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x, box.width = s->box.width; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x = s->box.x; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x + s->box.width - box.width; break;
+			default: box.x = s->box.x + s->box.width / 2 - box.width / 2; break;
 			}
 
 			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
-				case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM): box.y = s->box.y, box.height = s->box.height; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y = s->box.y; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y = s->box.y + s->box.height - box.height; break;
-				default: box.y = s->box.y + s->box.height / 2 - box.height / 2; break;
+			case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM): box.y = s->box.y, box.height = s->box.height; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y = s->box.y; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y = s->box.y + s->box.height - box.height; break;
+			default: box.y = s->box.y + s->box.height / 2 - box.height / 2; break;
 			}
 
 			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.left; box.width -= state->margin.left + state->margin.right; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x += state->margin.left; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.right; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.left; box.width -= state->margin.left + state->margin.right; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x += state->margin.left; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.right; break;
 			}
 
 			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.top; box.height -= state->margin.top + state->margin.bottom; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y += state->margin.top; break;
-				case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.bottom; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.top; box.height -= state->margin.top + state->margin.bottom; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y += state->margin.top; break;
+			case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.bottom; break;
 			}
 
 			if (box.width < 0 || box.height < 0) {
@@ -1114,14 +1114,14 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 	struct wlr_input_device *device = payload;
 
 	switch (device->type) {
-		case WLR_INPUT_DEVICE_POINTER:
-			wlr_cursor_attach_input_device(server->cursor, device);
-			break;
-		case WLR_INPUT_DEVICE_KEYBOARD:
-			tmbr_keyboard_new(server, device);
-			break;
-		default:
-			break;
+	case WLR_INPUT_DEVICE_POINTER:
+		wlr_cursor_attach_input_device(server->cursor, device);
+		break;
+	case WLR_INPUT_DEVICE_KEYBOARD:
+		tmbr_keyboard_new(server, device);
+		break;
+	default:
+		break;
 	}
 
 	wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER|WL_SEAT_CAPABILITY_KEYBOARD);
@@ -1380,15 +1380,15 @@ static void tmbr_cmd_client_resize(TMBR_UNUSED struct wl_client *client, struct 
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client not found");
 
 	switch (dir) {
-	    case TMBR_CTRL_DIRECTION_NORTH:
+	case TMBR_CTRL_DIRECTION_NORTH:
 		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_CTRL_SELECTION_NEXT; i = ratio * -1; break;
-	    case TMBR_CTRL_DIRECTION_SOUTH:
+	case TMBR_CTRL_DIRECTION_SOUTH:
 		split = TMBR_SPLIT_HORIZONTAL; select = TMBR_CTRL_SELECTION_PREV; i = ratio; break;
-	    case TMBR_CTRL_DIRECTION_EAST:
+	case TMBR_CTRL_DIRECTION_EAST:
 		split = TMBR_SPLIT_VERTICAL; select = TMBR_CTRL_SELECTION_PREV; i = ratio; break;
-	    case TMBR_CTRL_DIRECTION_WEST:
+	case TMBR_CTRL_DIRECTION_WEST:
 		split = TMBR_SPLIT_VERTICAL; select = TMBR_CTRL_SELECTION_NEXT; i = ratio * -1; break;
-	    default:
+	default:
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_INVALID_PARAM, "invalid direction");
 	}
 
