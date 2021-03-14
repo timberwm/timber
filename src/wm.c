@@ -414,9 +414,7 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 
 static int tmbr_xdg_client_handle_configure_timer(void *client)
 {
-	((struct tmbr_xdg_client *)client)->pending_serial = 0;
-	tmbr_xdg_client_damage_whole(client);
-	return 0;
+	return ((struct tmbr_xdg_client *)client)->pending_serial = 0;
 }
 
 static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
