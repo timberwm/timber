@@ -814,8 +814,8 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 				tmbr_tree_for_each(screen->focus->clients, tree)
 					tmbr_xdg_client_render(tree->client, &damage);
 				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
-				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
 			}
+			tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
 		}
 
 		wlr_renderer_scissor(renderer, NULL);
