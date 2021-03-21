@@ -7,4 +7,4 @@ manpage = configure_file(
   configuration: config,
 )
 
-install_man(meson.current_build_dir() + '/timber.1')
+install_man(manpage)

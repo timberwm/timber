@@ -48,7 +48,7 @@
 
 #include "common.h"
 #include "config.h"
-#include "timber-server.h"
+#include "timber-protocol.h"
 #include "wm.h"
 
 #define tmbr_return_error(resource, code, msg) \
