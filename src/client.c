@@ -26,7 +26,7 @@
 
 #include "client.h"
 #include "common.h"
-#include "timber-client.h"
+#include "timber-client-protocol.h"
 
 #define ARRAY_FIND(array, i, cmp) \
 	for (i = 0; i < (ssize_t)ARRAY_SIZE(array); i++) \
