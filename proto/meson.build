@@ -38,14 +38,14 @@ xdg_shell_protocol_c = custom_target(
 
 layer_shell_protocol_h = custom_target(
   'wlr-layer-shell-unstable-v1-protocol.h',
-  input: '../proto/wlr-layer-shell-unstable-v1.xml',
+  input: 'wlr-layer-shell-unstable-v1.xml',
   output: 'wlr-layer-shell-unstable-v1-protocol.h',
   command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
 )
 
 layer_shell_protocol_c = custom_target(
   'wlr-layer-shell-unstable-v1-protocol.c',
-  input: '../proto/wlr-layer-shell-unstable-v1.xml',
+  input: 'wlr-layer-shell-unstable-v1.xml',
   output: 'wlr-layer-shell-unstable-v1-protocol.c',
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
