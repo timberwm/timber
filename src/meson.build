@@ -1,9 +1,6 @@
-config = configuration_data()
-config.set('version', meson.project_version())
-config_header = configure_file(
+config_header = vcs_tag(
   input: 'config.h.in',
   output: 'config.h',
-  configuration: config,
 )
 
 executable(
