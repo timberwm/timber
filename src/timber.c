@@ -17,10 +17,7 @@
 
 #include <string.h>
 
-#include "common.h"
-
-#include "client.h"
-#include "wm.h"
+#include "timber.h"
 
 int main(int argc, char *argv[])
 {

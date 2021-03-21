@@ -1,4 +1,4 @@
-#define TMBR_VERSION "@version@"
+#define TMBR_VERSION "@VCS_TAG@"
 
 #define TMBR_CONFIG_PATH "/etc/timberrc"
 

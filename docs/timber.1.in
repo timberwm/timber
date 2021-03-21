@@ -4,6 +4,7 @@ timber \- tree-based window manager
 .SH SYNOPSIS
 .sp
 .nf
+\fItimber\fR [--help] [--version] [<args>]
 \fItimber\fR run
 \fItimber\fR client focus (next|prev)
 \fItimber\fR client fullscreen
@@ -57,6 +58,13 @@ Switching between desktops on a screen will cause it to only display clients fro
 .sp
 A screen represents a monitor attached to your graphics card.
 Each monitor has its own screen that may hold one or more desktops.
+.SH OPTIONS
+.SS --help
+.sp
+Print the list of available commands.
+.SS --version
+.sp
+Print the version of timber.
 .SH COMMANDS
 .SS Window manager
 .sp

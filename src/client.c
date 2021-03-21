@@ -24,8 +24,7 @@
 #include <wayland-client.h>
 #include <wlr/types/wlr_keyboard.h>
 
-#include "client.h"
-#include "common.h"
+#include "timber.h"
 #include "timber-client-protocol.h"
 
 #define ARRAY_FIND(array, i, cmp) \
@@ -208,10 +207,13 @@ static void tmbr_client_on_global(void *data, struct wl_registry *registry, uint
 static void __attribute__((noreturn)) usage(const char *executable)
 {
 	size_t i;
-	printf("USAGE: %s run\n", executable);
+	printf("USAGE: %s [--help] [--version] <command> [<args>]\n\n", executable);
 
+	puts("These are the availabe commands:\n");
+
+	printf("   %s run\n", executable);
 	for (i = 0; i < ARRAY_SIZE(commands); i++)
-		printf("   or: %s %s %s%s%s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
+		printf("   %s %s %s%s%s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
 			commands[i].args & TMBR_ARG_SCREEN ? " <SCREEN>" : "",
 			commands[i].args & TMBR_ARG_SEL ? " (next|prev)" : "",
 			commands[i].args & TMBR_ARG_DIR ? " (north|south|east|west)" : "",
@@ -220,7 +222,13 @@ static void __attribute__((noreturn)) usage(const char *executable)
 			commands[i].args & TMBR_ARG_CMD ? " <COMMAND>" : "",
 			commands[i].args & TMBR_ARG_MODE ? " <WIDTH>x<HEIGHT>@<REFRESH>" : "");
 
-	exit(-1);
+	exit(0);
+}
+
+static void __attribute__((noreturn)) version(void)
+{
+	puts("timber version " TMBR_VERSION);
+	exit(0);
 }
 
 int tmbr_client(int argc, char *argv[])
@@ -233,8 +241,13 @@ int tmbr_client(int argc, char *argv[])
 	struct tmbr_arg args = { 0 };
 	uint32_t error = 0;
 
-	if (argc < 3)
-		usage(argv[0]);
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "--help"))
+			usage(argv[0]);
+		else if (!strcmp(argv[i], "--version"))
+			version();
+	}
+
 	tmbr_parse(&args, argc - 1, argv + 1);
 
 	if ((display = wl_display_connect(NULL)) == NULL)

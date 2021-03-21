@@ -46,10 +46,8 @@
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 
-#include "common.h"
-#include "config.h"
+#include "timber.h"
 #include "timber-protocol.h"
-#include "wm.h"
 
 #define tmbr_return_error(resource, code, msg) \
 	do { wl_resource_post_error((resource), (code), (msg)); return; } while (0)
