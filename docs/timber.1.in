@@ -4,7 +4,7 @@ timber \- tree-based window manager
 .SH SYNOPSIS
 .sp
 .nf
-\fItimber\fR [--help] [<args>]
+\fItimber\fR [--help] [--version] [<args>]
 \fItimber\fR run
 \fItimber\fR client focus (next|prev)
 \fItimber\fR client fullscreen
@@ -62,6 +62,9 @@ Each monitor has its own screen that may hold one or more desktops.
 .SS --help
 .sp
 Print the list of available commands.
+.SS --version
+.sp
+Print the version of timber.
 .SH COMMANDS
 .SS Window manager
 .sp

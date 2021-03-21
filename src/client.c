@@ -207,7 +207,7 @@ static void tmbr_client_on_global(void *data, struct wl_registry *registry, uint
 static void __attribute__((noreturn)) usage(const char *executable)
 {
 	size_t i;
-	printf("USAGE: %s [--help] <command> [<args>]\n\n", executable);
+	printf("USAGE: %s [--help] [--version] <command> [<args>]\n\n", executable);
 
 	puts("These are the availabe commands:\n");
 
@@ -225,6 +225,12 @@ static void __attribute__((noreturn)) usage(const char *executable)
 	exit(0);
 }
 
+static void __attribute__((noreturn)) version(void)
+{
+	puts("timber version " TMBR_VERSION);
+	exit(0);
+}
+
 int tmbr_client(int argc, char *argv[])
 {
 	const struct wl_registry_listener listener = {
@@ -235,9 +241,12 @@ int tmbr_client(int argc, char *argv[])
 	struct tmbr_arg args = { 0 };
 	uint32_t error = 0;
 
-	for (int i = 1; i < argc; i++)
+	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--help"))
 			usage(argv[0]);
+		else if (!strcmp(argv[i], "--version"))
+			version();
+	}
 
 	tmbr_parse(&args, argc - 1, argv + 1);
 
