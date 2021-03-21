@@ -15,4 +15,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <sys/types.h>
+
+#include "config.h"
+
+#define TMBR_UNUSED __attribute__((unused))
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
+
+void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);
+void *tmbr_alloc(size_t bytes, const char *msg);
+int tmbr_client(int argc, char *argv[]);
 int tmbr_wm(void);

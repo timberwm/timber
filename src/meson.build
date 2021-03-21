@@ -12,6 +12,7 @@ executable(
       'client.c',
       'common.c',
       'timber.c',
+      'timber.h',
       'wm.c',
       config_header,
       proto_sources,

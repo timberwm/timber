@@ -19,7 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "common.h"
+#include "timber.h"
 
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...)
 {

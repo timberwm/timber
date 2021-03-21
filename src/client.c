@@ -24,8 +24,7 @@
 #include <wayland-client.h>
 #include <wlr/types/wlr_keyboard.h>
 
-#include "client.h"
-#include "common.h"
+#include "timber.h"
 #include "timber-client-protocol.h"
 
 #define ARRAY_FIND(array, i, cmp) \
