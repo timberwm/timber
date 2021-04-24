@@ -56,6 +56,10 @@
 #define tmbr_box_from_pixman(b) (struct wlr_box) { .x = (b).x1, .y = (b).y1, .width = (b).x2 - (b).x1, .height = (b).y2 - (b).y1 }
 #define tmbr_box_to_pixman(b) (struct pixman_box32) { .x1 = (b).x, .x2 = (b).x + (b).width, .y1 = (b).y, .y2 = (b).y + (b).height }
 
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR < 13
+# define WL_KEYBOARD_KEY_STATE_PRESSED WLR_KEY_PRESSED
+#endif
+
 enum tmbr_split {
 	TMBR_SPLIT_VERTICAL,
 	TMBR_SPLIT_HORIZONTAL
@@ -1002,7 +1006,7 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	int i, n;
 
 	wlr_idle_notify_activity(keyboard->server->idle, keyboard->server->seat);
-	if (event->state != WLR_KEY_PRESSED || keyboard->server->input_inhibit->active_client)
+	if (event->state != WL_KEYBOARD_KEY_STATE_PRESSED || keyboard->server->input_inhibit->active_client)
 		goto unhandled;
 
 	layout = xkb_state_key_get_layout(keyboard->device->keyboard->xkb_state, event->keycode + 8);
