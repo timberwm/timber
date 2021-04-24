@@ -58,6 +58,7 @@
 
 #if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR < 13
 # define WL_KEYBOARD_KEY_STATE_PRESSED WLR_KEY_PRESSED
+# define wlr_backend_autocreate(backend) wlr_backend_autocreate((backend), NULL)
 #endif
 
 enum tmbr_split {
@@ -1665,7 +1666,7 @@ int tmbr_wm(void)
 	wl_list_init(&server.screens);
 	if ((server.display = wl_display_create()) == NULL)
 		die("Could not create display");
-	if ((server.backend = wlr_backend_autocreate(server.display, NULL)) == NULL)
+	if ((server.backend = wlr_backend_autocreate(server.display)) == NULL)
 		die("Could not create backend");
 	wlr_renderer_init_wl_display(wlr_backend_get_renderer(server.backend), server.display);
 
