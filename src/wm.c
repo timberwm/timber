@@ -421,6 +421,14 @@ static int tmbr_xdg_client_handle_configure_timer(void *client)
 	return ((struct tmbr_xdg_client *)client)->pending_serial = 0;
 }
 
+static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
+{
+	struct tmbr_server *server = client->desktop->screen->server;
+	double x = server->cursor->x, y = server->cursor->y;
+	struct wlr_surface *subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
+	tmbr_surface_notify_focus(client->surface->surface, subsurface, server, x, y);
+}
+
 static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
 {
 	if (client->w != w || client->h != h || client->border != border) {
@@ -432,14 +440,6 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
 		tmbr_xdg_client_damage_whole(client);
 	}
-}
-
-static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
-{
-	struct tmbr_server *server = client->desktop->screen->server;
-	double x = server->cursor->x, y = server->cursor->y;
-	struct wlr_surface *subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
-	tmbr_surface_notify_focus(client->surface->surface, subsurface, server, x, y);
 }
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
