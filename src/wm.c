@@ -1237,7 +1237,7 @@ static void tmbr_server_on_cursor_frame(struct wl_listener *listener, TMBR_UNUSE
 	wlr_seat_pointer_notify_frame(server->seat);
 }
 
-static void tmbr_server_handle_cursor_motion(struct tmbr_server *server, TMBR_UNUSED uint32_t time)
+static void tmbr_server_handle_cursor_motion(struct tmbr_server *server)
 {
 	double x = server->cursor->x, y = server->cursor->y;
 	struct tmbr_layer_client *layer_client;
@@ -1275,7 +1275,7 @@ static void tmbr_server_on_cursor_motion(struct wl_listener *listener, void *pay
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion);
 	struct wlr_event_pointer_motion *event = payload;
 	wlr_cursor_move(server->cursor, event->device, event->delta_x, event->delta_y);
-	tmbr_server_handle_cursor_motion(server, event->time_msec);
+	tmbr_server_handle_cursor_motion(server);
 }
 
 static void tmbr_server_on_cursor_motion_absolute(struct wl_listener *listener, void *payload)
@@ -1283,7 +1283,7 @@ static void tmbr_server_on_cursor_motion_absolute(struct wl_listener *listener, 
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_absolute);
 	struct wlr_event_pointer_motion_absolute *event = payload;
 	wlr_cursor_warp_absolute(server->cursor, event->device, event->x, event->y);
-	tmbr_server_handle_cursor_motion(server, event->time_msec);
+	tmbr_server_handle_cursor_motion(server);
 }
 
 static void tmbr_server_on_request_set_cursor(struct wl_listener *listener, void *payload)
