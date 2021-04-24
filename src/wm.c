@@ -45,6 +45,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
+#include <wlr/version.h>
 
 #include "timber.h"
 #include "timber-protocol.h"
@@ -143,7 +144,7 @@ struct tmbr_screen {
 
 	struct wl_listener destroy;
 	struct wl_listener frame;
-	struct wl_listener scale;
+	struct wl_listener commit;
 	struct wl_listener mode;
 };
 
@@ -755,7 +756,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link)
 		wlr_layer_surface_v1_close(c->surface);
 
-	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->scale, NULL);
+	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
 	wl_list_remove(&screen->link);
 	free(screen);
 }
@@ -953,9 +954,9 @@ static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *
 	tmbr_screen_recalculate(screen);
 }
 
-static void tmbr_screen_on_scale(struct wl_listener *listener, TMBR_UNUSED void *payload)
+static void tmbr_screen_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_screen *screen = wl_container_of(listener, screen, scale);
+	struct tmbr_screen *screen = wl_container_of(listener, screen, commit);
 	wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
 	tmbr_screen_recalculate(screen);
 }
@@ -973,7 +974,11 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
-	tmbr_register(&output->events.scale, &screen->scale, tmbr_screen_on_scale);
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR < 13
+	tmbr_register(&output->events.scale, &screen->commit, tmbr_screen_on_commit);
+#else
+	tmbr_register(&output->events.commit, &screen->commit, tmbr_screen_on_commit);
+#endif
 	tmbr_register(&screen->damage->events.frame, &screen->frame, tmbr_screen_on_frame);
 
 	return screen;
