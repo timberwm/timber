@@ -1214,7 +1214,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	surface->current = current_state;
 }
 
-static void tmbr_server_on_cursor_axis(struct wl_listener *listener, void *payload)
+static void tmbr_cursor_on_axis(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_axis);
 	struct wlr_event_pointer_axis *event = payload;
@@ -1223,7 +1223,7 @@ static void tmbr_server_on_cursor_axis(struct wl_listener *listener, void *paylo
 				     event->delta, event->delta_discrete, event->source);
 }
 
-static void tmbr_server_on_cursor_button(struct wl_listener *listener, void *payload)
+static void tmbr_cursor_on_button(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_button);
 	struct wlr_event_pointer_button *event = payload;
@@ -1231,13 +1231,13 @@ static void tmbr_server_on_cursor_button(struct wl_listener *listener, void *pay
 	wlr_seat_pointer_notify_button(server->seat, event->time_msec, event->button, event->state);
 }
 
-static void tmbr_server_on_cursor_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
+static void tmbr_cursor_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_frame);
 	wlr_seat_pointer_notify_frame(server->seat);
 }
 
-static void tmbr_server_handle_cursor_motion(struct tmbr_server *server)
+static void tmbr_cursor_handle_motion(struct tmbr_server *server)
 {
 	double x = server->cursor->x, y = server->cursor->y;
 	struct tmbr_layer_client *layer_client;
@@ -1270,20 +1270,20 @@ static void tmbr_server_handle_cursor_motion(struct tmbr_server *server)
 	}
 }
 
-static void tmbr_server_on_cursor_motion(struct wl_listener *listener, void *payload)
+static void tmbr_cursor_on_motion(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion);
 	struct wlr_event_pointer_motion *event = payload;
 	wlr_cursor_move(server->cursor, event->device, event->delta_x, event->delta_y);
-	tmbr_server_handle_cursor_motion(server);
+	tmbr_cursor_handle_motion(server);
 }
 
-static void tmbr_server_on_cursor_motion_absolute(struct wl_listener *listener, void *payload)
+static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_absolute);
 	struct wlr_event_pointer_motion_absolute *event = payload;
 	wlr_cursor_warp_absolute(server->cursor, event->device, event->x, event->y);
-	tmbr_server_handle_cursor_motion(server);
+	tmbr_cursor_handle_motion(server);
 }
 
 static void tmbr_server_on_request_set_cursor(struct wl_listener *listener, void *payload)
@@ -1703,11 +1703,11 @@ int tmbr_wm(void)
 	tmbr_register(&server.seat->events.request_set_cursor, &server.request_set_cursor, tmbr_server_on_request_set_cursor);
 	tmbr_register(&server.seat->events.request_set_selection, &server.request_set_selection, tmbr_server_on_request_set_selection);
 	tmbr_register(&server.seat->events.request_set_primary_selection, &server.request_set_primary_selection, tmbr_server_on_request_set_primary_selection);
-	tmbr_register(&server.cursor->events.axis, &server.cursor_axis, tmbr_server_on_cursor_axis);
-	tmbr_register(&server.cursor->events.button, &server.cursor_button, tmbr_server_on_cursor_button);
-	tmbr_register(&server.cursor->events.motion, &server.cursor_motion, tmbr_server_on_cursor_motion);
-	tmbr_register(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute, tmbr_server_on_cursor_motion_absolute);
-	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_server_on_cursor_frame);
+	tmbr_register(&server.cursor->events.axis, &server.cursor_axis, tmbr_cursor_on_axis);
+	tmbr_register(&server.cursor->events.button, &server.cursor_button, tmbr_cursor_on_button);
+	tmbr_register(&server.cursor->events.motion, &server.cursor_motion, tmbr_cursor_on_motion);
+	tmbr_register(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute, tmbr_cursor_on_motion_absolute);
+	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
 	tmbr_register(&server.idle_timeout->events.idle, &server.seat_idle, tmbr_server_on_idle);
 	tmbr_register(&server.idle_timeout->events.resume, &server.seat_resume, tmbr_server_on_resume);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.idle_inhibitor_new, tmbr_server_on_new_idle_inhibitor);
