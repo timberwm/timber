@@ -3,7 +3,7 @@ stages:
   - analyze
 
 .setup: &setup
-  - test "${IMAGE%:*}" = "alpine" && apk add clang curl gcc meson musl-dev wlroots-dev
+  - test "${IMAGE%:*}" = "alpine" && apk add clang curl gcc meson musl-dev wayland-protocols wlroots-dev
   - test "${IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang curl gcc meson perl pkg-config wayland-protocols wlroots
   - test "${IMAGE%:*}" = "ubuntu" && apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc clang curl meson pkg-config libwlroots-dev
 
