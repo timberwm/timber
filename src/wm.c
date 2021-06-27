@@ -301,13 +301,16 @@ out:
 static void tmbr_surface_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	struct tmbr_surface_damage_data *data = payload;
-	struct pixman_region32 damage;
-	pixman_region32_init(&damage);
-	wlr_surface_get_effective_damage(surface, &damage);
-	pixman_region32_translate(&damage, data->x + sx, data->y + sy);
-	wlr_region_scale(&damage, &damage, data->screen->output->scale);
-	wlr_output_damage_add(data->screen->damage, &damage);
-	pixman_region32_fini(&damage);
+
+	if (pixman_region32_not_empty(&surface->buffer_damage)) {
+		struct pixman_region32 damage;
+		pixman_region32_init(&damage);
+		wlr_surface_get_effective_damage(surface, &damage);
+		pixman_region32_translate(&damage, data->x + sx, data->y + sy);
+		wlr_region_scale(&damage, &damage, data->screen->output->scale);
+		wlr_output_damage_add(data->screen->damage, &damage);
+		pixman_region32_fini(&damage);
+	}
 }
 
 static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_surface *subsurface, struct tmbr_server *server, double x, double y)
