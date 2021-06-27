@@ -19,6 +19,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <wlr/version.h>
 #include <wlr/backend.h>
 #include <wlr/render/gles2.h>
 #include <wlr/render/wlr_renderer.h>
@@ -27,7 +28,9 @@
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
-#include <wlr/types/wlr_gtk_primary_selection.h>
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR < 14
+# include <wlr/types/wlr_gtk_primary_selection.h>
+#endif
 #include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_input_inhibitor.h>
@@ -45,7 +48,6 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
-#include <wlr/version.h>
 
 #include "timber.h"
 #include "timber-protocol.h"
@@ -1680,7 +1682,9 @@ int tmbr_wm(void)
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR < 14
 	    wlr_gtk_primary_selection_device_manager_create(server.display) == NULL ||
+#endif
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
