@@ -311,6 +311,9 @@ static void tmbr_surface_damage_surface(struct wlr_surface *surface, int sx, int
 		wlr_output_damage_add(data->screen->damage, &damage);
 		pixman_region32_fini(&damage);
 	}
+
+	if (!wl_list_empty(&surface->current.frame_callback_list))
+		wlr_output_schedule_frame(data->screen->output);
 }
 
 static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_surface *subsurface, struct tmbr_server *server, double x, double y)
