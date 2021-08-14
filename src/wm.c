@@ -440,10 +440,9 @@ static int tmbr_xdg_client_handle_configure_timer(void *client)
 
 static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 {
-	struct tmbr_server *server = client->desktop->screen->server;
-	double x = server->cursor->x, y = server->cursor->y;
+	double x = client->server->cursor->x, y = client->server->cursor->y;
 	struct wlr_surface *subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
-	tmbr_surface_notify_focus(client->surface->surface, subsurface, server, x, y);
+	tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y);
 }
 
 static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
@@ -1283,7 +1282,7 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server)
 
 	if ((screen = tmbr_server_find_screen_at(server, server->cursor->x, server->cursor->y)) == NULL)
 		return;
-	screen->server->focussed_screen = screen;
+	server->focussed_screen = screen;
 
 	if ((layer_client = tmbr_screen_find_layer_client_at(screen, server->cursor->x, server->cursor->y)) != NULL)
 		tmbr_layer_client_notify_focus(layer_client);
