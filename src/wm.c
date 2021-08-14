@@ -1287,7 +1287,7 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server)
 	if ((layer_client = tmbr_screen_find_layer_client_at(screen, server->cursor->x, server->cursor->y)) != NULL)
 		tmbr_layer_client_notify_focus(layer_client);
 	else if ((xdg_client = tmbr_screen_find_xdg_client_at(screen, server->cursor->x, server->cursor->y)) != NULL)
-		tmbr_desktop_focus_client(screen->focus, screen->focus->focus, true);
+		tmbr_desktop_focus_client(screen->focus, xdg_client, true);
 }
 
 static void tmbr_cursor_on_motion(struct wl_listener *listener, void *payload)
