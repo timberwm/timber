@@ -274,10 +274,7 @@ static void tmbr_surface_send_frame_done(struct wlr_surface *surface, TMBR_UNUSE
 static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, void *payload)
 {
 	struct tmbr_surface_render_data *data = payload;
-	struct wlr_box bounds = data->box, extents = {
-		.x = bounds.x + sx * data->output->scale, .y = bounds.y + sy * data->output->scale,
-		.width = surface->current.width * data->output->scale, .height = surface->current.height * data->output->scale,
-	};
+	struct wlr_box extents = tmbr_box_scaled(data->box.x + sx, data->box.y + sy, surface->current.width, surface->current.height, data->output->scale);
 	struct wlr_texture *texture;
 	struct pixman_region32 damage;
 	struct pixman_box32 *rects;
@@ -286,7 +283,7 @@ static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, voi
 
 	pixman_region32_init(&damage);
 	pixman_region32_union_rect(&damage, &damage, extents.x, extents.y, extents.width, extents.height);
-	pixman_region32_intersect_rect(&damage, &damage, bounds.x, bounds.y, bounds.width, bounds.height);
+	pixman_region32_intersect_rect(&damage, &damage, data->box.x, data->box.y, data->box.width, data->box.height);
 	pixman_region32_intersect(&damage, &damage, data->damage);
 	if (!pixman_region32_not_empty(&damage) || (texture = wlr_surface_get_texture(surface)) == NULL)
 		goto out;
