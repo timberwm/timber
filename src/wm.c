@@ -992,8 +992,16 @@ static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *
 static void tmbr_screen_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, commit);
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR >= 13
+	struct wlr_output_event_commit *event = payload;
+	if (event->committed & WLR_OUTPUT_STATE_SCALE)
+		wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
+	if (event->committed & (WLR_OUTPUT_STATE_TRANSFORM|WLR_OUTPUT_STATE_SCALE))
+		tmbr_screen_recalculate(screen);
+#else
 	wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
 	tmbr_screen_recalculate(screen);
+#endif
 }
 
 static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wlr_output *output)
