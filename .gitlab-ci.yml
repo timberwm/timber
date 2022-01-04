@@ -44,4 +44,4 @@ coverity:
     IMAGE: ubuntu:21.10
   only:
     refs:
-      - master
+      - main
