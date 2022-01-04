@@ -42,6 +42,9 @@ coverity:
     - curl https://scan.coverity.com/builds?project=$COVERITY_PROJECT --form token=$COVERITY_TOKEN --form email=$GITLAB_USER_EMAIL --form file=@cov-int.tar.gz --form version=$CI_COMMIT_SHA --form description="$CI_COMMIT_SHA / $CI_COMMIT_TITLE / $CI_COMMIT_REF_NAME:$CI_PIPELINE_ID"
   variables:
     IMAGE: ubuntu:21.10
+  artifacts:
+    paths:
+      - cov-int.tar.gz
   only:
     refs:
       - main
