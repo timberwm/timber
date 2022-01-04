@@ -18,7 +18,7 @@ build:
   parallel:
     matrix:
       - CC: [ "clang", "gcc" ]
-        IMAGE: [ "alpine:edge", "archlinux:latest", "ubuntu:20.10" ]
+        IMAGE: [ "alpine:edge", "archlinux:latest", "ubuntu:21.10" ]
 
 clang-analyzer:
   stage: analyze
@@ -43,7 +43,7 @@ coverity:
     - tar czf cov-int.tar.gz cov-int
     - curl https://scan.coverity.com/builds?project=$COVERITY_PROJECT --form token=$COVERITY_TOKEN --form email=$GITLAB_USER_EMAIL --form file=@cov-int.tar.gz --form version=$CI_COMMIT_SHA --form description="$CI_COMMIT_SHA / $CI_COMMIT_TITLE / $CI_COMMIT_REF_NAME:$CI_PIPELINE_ID"
   variables:
-    IMAGE: ubuntu:20.10
+    IMAGE: ubuntu:21.10
   only:
     refs:
       - master
