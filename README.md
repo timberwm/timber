@@ -12,9 +12,13 @@ layouting.
 Requirements
 ------------
 
-In order to build timber you need to have wlroots and xkbcommon
-header and library files installed. Furthermore, timber makes use
-of the meson build system.
+In order to build timber you need to have the following dependencies installed:
+
+    - meson >= 0.56.2
+    - pixman
+    - wayland-protocol
+    - wlroots >= 0.11.0
+    - xkbcommon
 
 Installation
 ------------
