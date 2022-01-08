@@ -4,9 +4,9 @@ stages:
 
 .install-dependencies:
   before_script:
-    - test "${CI_BUILD_IMAGE%:*}" = "alpine" && apk add clang curl gcc meson musl-dev wayland-protocols wlroots-dev
-    - test "${CI_BUILD_IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang curl gcc meson perl pkg-config wayland-protocols wlroots
-    - test "${CI_BUILD_IMAGE%:*}" = "ubuntu" && apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc clang curl meson pkg-config libwlroots-dev
+    - test "${CI_JOB_IMAGE%:*}" = "alpine" && apk add clang curl gcc meson musl-dev wayland-protocols wlroots-dev
+    - test "${CI_JOB_IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang curl gcc meson perl pkg-config wayland-protocols wlroots
+    - test "${CI_JOB_IMAGE%:*}" = "ubuntu" && apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc clang curl meson pkg-config libwlroots-dev
 
 build:
   extends: .install-dependencies
