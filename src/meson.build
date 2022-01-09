@@ -34,7 +34,6 @@ executable(
     '-DTMBR_BORDER_WIDTH=' + get_option('border_width').to_string(),
     '-DTMBR_COLOR_ACTIVE=((float[4])' + get_option('border_color_active') + ')',
     '-DTMBR_COLOR_INACTIVE=((float[4])' + get_option('border_color_inactive') + ')',
-    '-DTMBR_SCREEN_DPMS_TIMEOUT=' + get_option('screen_dpms_timeout').to_string(),
   ],
   install: true,
 )

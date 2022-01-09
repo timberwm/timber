@@ -173,7 +173,6 @@ struct tmbr_server {
 	struct wlr_cursor *cursor;
 	struct wlr_idle *idle;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
-	struct wlr_idle_timeout *idle_timeout;
 	struct wlr_input_inhibit_manager *input_inhibit;
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct wlr_output_layout *output_layout;
@@ -1371,26 +1370,6 @@ static void tmbr_server_on_request_set_primary_selection(struct wl_listener *lis
 	wlr_seat_set_primary_selection(server->seat, event->source, event->serial);
 }
 
-static void tmbr_server_on_idle(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_server *server = wl_container_of(listener, server, seat_idle);
-	struct tmbr_screen *s;
-	wl_list_for_each(s, &server->screens, link) {
-		wlr_output_enable(s->output, false);
-		wlr_output_commit(s->output);
-	}
-}
-
-static void tmbr_server_on_resume(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_server *server = wl_container_of(listener, server, seat_resume);
-	struct tmbr_screen *s;
-	wl_list_for_each(s, &server->screens, link) {
-		wlr_output_enable(s->output, true);
-		wlr_output_commit(s->output);
-	}
-}
-
 static void tmbr_server_on_destroy_idle_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_destroy);
@@ -1758,7 +1737,6 @@ int tmbr_wm(void)
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
 	    (server.idle = wlr_idle_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
-	    (server.idle_timeout = wlr_idle_timeout_create(server.idle, server.seat, TMBR_SCREEN_DPMS_TIMEOUT)) == NULL ||
 	    (server.input_inhibit = wlr_input_inhibit_manager_create(server.display)) == NULL ||
 	    (server.layer_shell = wlr_layer_shell_v1_create(server.display)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
@@ -1785,8 +1763,6 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.touch_down, &server.cursor_touch_down, tmbr_cursor_on_touch_down);
 	tmbr_register(&server.cursor->events.touch_up, &server.cursor_touch_up, tmbr_cursor_on_touch_up);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
-	tmbr_register(&server.idle_timeout->events.idle, &server.seat_idle, tmbr_server_on_idle);
-	tmbr_register(&server.idle_timeout->events.resume, &server.seat_resume, tmbr_server_on_resume);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.idle_inhibitor_new, tmbr_server_on_new_idle_inhibitor);
 
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
