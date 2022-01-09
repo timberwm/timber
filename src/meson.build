@@ -1,7 +1,12 @@
-config_header = vcs_tag(
-  input: 'config.h.in',
-  output: 'config.h',
-)
+version = meson.project_version()
+
+git = find_program('git', required : false)
+if git.found()
+  git_version = run_command(git, '-C', meson.project_source_root(), 'describe')
+  if git_version.returncode() == 0
+    version = git_version.stdout().strip()
+  endif
+endif
 
 executable(
   'timber',
@@ -11,7 +16,6 @@ executable(
       'timber.c',
       'timber.h',
       'wm.c',
-      config_header,
       proto_sources,
   ],
   dependencies: [
@@ -25,6 +29,12 @@ executable(
   c_args: [
     '-DWLR_USE_UNSTABLE',
     '-D_POSIX_C_SOURCE=200809L',
+    '-DTMBR_VERSION="' + version + '"',
+    '-DTMBR_CONFIG_PATH="' + get_option('config_path') + '"',
+    '-DTMBR_BORDER_WIDTH=' + get_option('border_width').to_string(),
+    '-DTMBR_COLOR_ACTIVE=((float[4])' + get_option('border_color_active') + ')',
+    '-DTMBR_COLOR_INACTIVE=((float[4])' + get_option('border_color_inactive') + ')',
+    '-DTMBR_SCREEN_DPMS_TIMEOUT=' + get_option('screen_dpms_timeout').to_string(),
   ],
   install: true,
 )

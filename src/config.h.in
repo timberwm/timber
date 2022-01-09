@@ -1,8 +1,0 @@
-#define TMBR_VERSION "@VCS_TAG@"
-
-#define TMBR_CONFIG_PATH "/etc/timberrc"
-
-#define TMBR_BORDER_WIDTH 3
-#define TMBR_SCREEN_DPMS_TIMEOUT 1000 * 60 * 5
-static const float TMBR_COLOR_ACTIVE[4]   = { 0.0, 0.5, 0.7, 1.0 };
-static const float TMBR_COLOR_INACTIVE[4] = { 0.2, 0.2, 0.2, 1.0 };
