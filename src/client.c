@@ -41,6 +41,7 @@
 #define TMBR_ARG_KEY    (1 << 4)
 #define TMBR_ARG_CMD    (1 << 5)
 #define TMBR_ARG_MODE   (1 << 6)
+#define TMBR_ARG_BOOL   (1 << 7)
 
 static const struct {
 	const char *cmd;
@@ -59,6 +60,7 @@ static const struct {
 	{ "desktop", "kill",      TMBR_CTRL_DESKTOP_KILL,      0                             },
 	{ "desktop", "new",       TMBR_CTRL_DESKTOP_NEW,       0                             },
 	{ "desktop", "swap",      TMBR_CTRL_DESKTOP_SWAP,      TMBR_ARG_SEL                  },
+	{ "screen", "dpms",       TMBR_CTRL_SCREEN_DPMS,       TMBR_ARG_SCREEN|TMBR_ARG_BOOL },
 	{ "screen", "focus",      TMBR_CTRL_SCREEN_FOCUS,      TMBR_ARG_SEL                  },
 	{ "screen", "scale",      TMBR_CTRL_SCREEN_SCALE,      TMBR_ARG_SCREEN|TMBR_ARG_INT  },
 	{ "screen", "mode",       TMBR_CTRL_SCREEN_MODE,       TMBR_ARG_SCREEN|TMBR_ARG_MODE },
@@ -73,6 +75,7 @@ struct tmbr_arg {
 	enum tmbr_ctrl_selection sel;
 	enum tmbr_ctrl_direction dir;
 	int i;
+	bool b;
 	struct { uint32_t modifiers; xkb_keysym_t keycode; } key;
 	struct { int height; int width; int refresh; } mode;
 	const char *command;
@@ -191,6 +194,19 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 		argv++;
 	}
 
+	if (commands[c].args & TMBR_ARG_BOOL) {
+		if (!argc)
+			die("Command is missing boolean");
+		if (!strcmp(argv[0], "on") || !strcmp(argv[0], "true"))
+			out->b = true;
+		else if (!strcmp(argv[0], "off") || !strcmp(argv[0], "false"))
+			out->b = false;
+		else
+			die("Invalid boolean '%s'", argv[0]);
+		argc--;
+		argv++;
+	}
+
 	if (argc)
 		die("Command has trailing arguments");
 }
@@ -215,14 +231,15 @@ static void __attribute__((noreturn)) usage(const char *executable)
 
 	printf("   %s run\n", executable);
 	for (i = 0; i < ARRAY_SIZE(commands); i++)
-		printf("   %s %s %s%s%s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
+		printf("   %s %s %s%s%s%s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
 			commands[i].args & TMBR_ARG_SCREEN ? " <SCREEN>" : "",
 			commands[i].args & TMBR_ARG_SEL ? " (next|prev)" : "",
 			commands[i].args & TMBR_ARG_DIR ? " (north|south|east|west)" : "",
 			commands[i].args & TMBR_ARG_INT ? " <NUMBER>" : "",
 			commands[i].args & TMBR_ARG_KEY ? " <KEY>" : "",
 			commands[i].args & TMBR_ARG_CMD ? " <COMMAND>" : "",
-			commands[i].args & TMBR_ARG_MODE ? " <WIDTH>x<HEIGHT>@<REFRESH>" : "");
+			commands[i].args & TMBR_ARG_MODE ? " <WIDTH>x<HEIGHT>@<REFRESH>" : "",
+			commands[i].args & TMBR_ARG_BOOL ? " (on|off|true|false)" : "");
 
 	exit(0);
 }
@@ -271,6 +288,7 @@ int tmbr_client(int argc, char *argv[])
 		case TMBR_CTRL_DESKTOP_KILL: tmbr_ctrl_desktop_kill(ctrl); break;
 		case TMBR_CTRL_DESKTOP_NEW: tmbr_ctrl_desktop_new(ctrl); break;
 		case TMBR_CTRL_DESKTOP_SWAP: tmbr_ctrl_desktop_swap(ctrl, args.sel); break;
+		case TMBR_CTRL_SCREEN_DPMS: tmbr_ctrl_screen_dpms(ctrl, args.screen, args.b); break;
 		case TMBR_CTRL_SCREEN_FOCUS: tmbr_ctrl_screen_focus(ctrl, args.sel); break;
 		case TMBR_CTRL_SCREEN_SCALE: tmbr_ctrl_screen_scale(ctrl, args.screen, args.i); break;
 		case TMBR_CTRL_SCREEN_MODE: tmbr_ctrl_screen_mode(ctrl, args.screen, args.mode.height, args.mode.width, args.mode.refresh); break;
