@@ -23,11 +23,6 @@ In order to build timber you need to have the following dependencies installed:
 Installation
 ------------
 
-If you desire, you can modify the file "src/config.h.in" to match
-your own needs. Besides the path where the control socket shall
-be created, it also contains options to modify the border width
-and color.
-
 To build and install timber, you can execute the following
 commands in the timber directory:
 

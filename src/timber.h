@@ -17,8 +17,6 @@
 
 #include <sys/types.h>
 
-#include "config.h"
-
 #define TMBR_UNUSED __attribute__((unused))
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 
