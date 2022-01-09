@@ -1794,6 +1794,8 @@ int tmbr_wm(void)
 	else if (errno != ENOENT)
 		die("Could not execute config file: %s", strerror(errno));
 
+	signal(SIGPIPE, SIG_IGN);
+
 	wl_display_run(server.display);
 	wl_display_destroy_clients(server.display);
 	wl_display_destroy(server.display);
