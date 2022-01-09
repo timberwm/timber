@@ -1553,6 +1553,16 @@ static void tmbr_cmd_desktop_swap(TMBR_UNUSED struct wl_client *client, struct w
 	tmbr_desktop_swap(server->focussed_screen->focus, sibling);
 }
 
+static void tmbr_cmd_screen_dpms(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, const char *screen, uint32_t state)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	struct tmbr_screen *s;
+	if ((s = tmbr_server_find_output(server, screen)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_SCREEN_NOT_FOUND, "screen not found");
+	wlr_output_enable(s->output, state);
+	wlr_output_commit(s->output);
+}
+
 static void tmbr_cmd_screen_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
@@ -1701,6 +1711,7 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 		.desktop_kill = tmbr_cmd_desktop_kill,
 		.desktop_new = tmbr_cmd_desktop_new,
 		.desktop_swap = tmbr_cmd_desktop_swap,
+		.screen_dpms = tmbr_cmd_screen_dpms,
 		.screen_focus = tmbr_cmd_screen_focus,
 		.screen_mode = tmbr_cmd_screen_mode,
 		.screen_scale = tmbr_cmd_screen_scale,
