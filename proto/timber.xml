@@ -128,7 +128,7 @@
 
     <request name="screen_mode">
         <description summary="set screen mode">
-            Set the mode of the currently focussed screen.
+            Set the mode of the specified screen.
         </description>
         <arg name="screen" type="string"/>
         <arg name="height" type="int"/>
@@ -138,7 +138,7 @@
 
     <request name="screen_scale">
         <description summary="scale screen">
-            Set the scale of the currently focussed screen.
+            Set the scale of the specified screen.
         </description>
         <arg name="screen" type="string"/>
         <arg name="scale" type="uint"/>
