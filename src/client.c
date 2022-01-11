@@ -199,6 +199,8 @@ static void tmbr_client_on_global(void *data, struct wl_registry *registry, uint
 {
 	if (!strcmp(interface, tmbr_ctrl_interface.name)) {
 		struct tmbr_ctrl **cmd = data;
+		if ((int)version != tmbr_ctrl_interface.version)
+			die("Incompatible control protocol versions (server: v%d, client: v%d)", version, tmbr_ctrl_interface.version);
 		if ((*cmd = wl_registry_bind(registry, id, &tmbr_ctrl_interface, version)) == NULL)
 			die("Could not bind timber control");
 	}
