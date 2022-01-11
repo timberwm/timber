@@ -1711,12 +1711,6 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 	};
 	struct wl_resource *resource;
 
-	if (version != (uint32_t)tmbr_ctrl_interface.version) {
-		wl_client_post_implementation_error(client, "timber protocol version mismatch (client: %d, server: %d)",
-						    version, tmbr_ctrl_interface.version);
-		return;
-	}
-
 	if ((resource = wl_resource_create(client, &tmbr_ctrl_interface, version, id)) == NULL) {
 		wl_client_post_no_memory(client);
 		return;
@@ -1738,7 +1732,7 @@ int tmbr_wm(void)
 		die("Could not create backend");
 	wlr_renderer_init_wl_display(wlr_backend_get_renderer(server.backend), server.display);
 
-	if (wl_global_create(server.display, &tmbr_ctrl_interface, 1, &server, tmbr_server_on_bind) == NULL ||
+	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
 	    wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
