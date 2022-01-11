@@ -1711,6 +1711,12 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 	};
 	struct wl_resource *resource;
 
+	if (version != (uint32_t)tmbr_ctrl_interface.version) {
+		wl_client_post_implementation_error(client, "timber protocol version mismatch (client: %d, server: %d)",
+						    version, tmbr_ctrl_interface.version);
+		return;
+	}
+
 	if ((resource = wl_resource_create(client, &tmbr_ctrl_interface, version, id)) == NULL) {
 		wl_client_post_no_memory(client);
 		return;
