@@ -18,7 +18,7 @@
     along with this program.  If not, see https://www.gnu.org/licenses/.
   </copyright>
 
-  <interface name="tmbr_ctrl" version="1">
+  <interface name="tmbr_ctrl" version="2">
     <description summary="control the timber window manager">
         This interface allows to control the timber window manager.
     </description>
@@ -126,9 +126,19 @@
         <arg name="selection" type="uint" enum="selection"/>
     </request>
 
+    <request name="screen_dpms">
+        <description summary="set screen DPMS state">
+            Set the DPMS state of a screen. If a zero state is
+            passed, then the screen is turned off. Otherwise, it
+            is turned on.
+        </description>
+        <arg name="screen" type="string"/>
+        <arg name="state" type="uint"/>
+    </request>
+
     <request name="screen_mode">
         <description summary="set screen mode">
-            Set the mode of the currently focussed screen.
+            Set the mode of the specified screen.
         </description>
         <arg name="screen" type="string"/>
         <arg name="height" type="int"/>
@@ -138,7 +148,7 @@
 
     <request name="screen_scale">
         <description summary="scale screen">
-            Set the scale of the currently focussed screen.
+            Set the scale of the specified screen.
         </description>
         <arg name="screen" type="string"/>
         <arg name="scale" type="uint"/>

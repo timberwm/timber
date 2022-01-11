@@ -18,5 +18,4 @@ summary({
   'Border width': get_option('border_width'),
   'Border color (active)': get_option('border_color_active'),
   'Border color (inactive)': get_option('border_color_inactive'),
-  'Screen DPMS timeout': get_option('screen_dpms_timeout'),
 }, section: 'Configuration')

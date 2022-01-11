@@ -173,7 +173,6 @@ struct tmbr_server {
 	struct wlr_cursor *cursor;
 	struct wlr_idle *idle;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
-	struct wlr_idle_timeout *idle_timeout;
 	struct wlr_input_inhibit_manager *input_inhibit;
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct wlr_output_layout *output_layout;
@@ -1371,26 +1370,6 @@ static void tmbr_server_on_request_set_primary_selection(struct wl_listener *lis
 	wlr_seat_set_primary_selection(server->seat, event->source, event->serial);
 }
 
-static void tmbr_server_on_idle(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_server *server = wl_container_of(listener, server, seat_idle);
-	struct tmbr_screen *s;
-	wl_list_for_each(s, &server->screens, link) {
-		wlr_output_enable(s->output, false);
-		wlr_output_commit(s->output);
-	}
-}
-
-static void tmbr_server_on_resume(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_server *server = wl_container_of(listener, server, seat_resume);
-	struct tmbr_screen *s;
-	wl_list_for_each(s, &server->screens, link) {
-		wlr_output_enable(s->output, true);
-		wlr_output_commit(s->output);
-	}
-}
-
 static void tmbr_server_on_destroy_idle_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_destroy);
@@ -1553,6 +1532,16 @@ static void tmbr_cmd_desktop_swap(TMBR_UNUSED struct wl_client *client, struct w
 	tmbr_desktop_swap(server->focussed_screen->focus, sibling);
 }
 
+static void tmbr_cmd_screen_dpms(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, const char *screen, uint32_t state)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	struct tmbr_screen *s;
+	if ((s = tmbr_server_find_output(server, screen)) == NULL)
+		tmbr_return_error(resource, TMBR_CTRL_ERROR_SCREEN_NOT_FOUND, "screen not found");
+	wlr_output_enable(s->output, state);
+	wlr_output_commit(s->output);
+}
+
 static void tmbr_cmd_screen_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
@@ -1701,6 +1690,7 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 		.desktop_kill = tmbr_cmd_desktop_kill,
 		.desktop_new = tmbr_cmd_desktop_new,
 		.desktop_swap = tmbr_cmd_desktop_swap,
+		.screen_dpms = tmbr_cmd_screen_dpms,
 		.screen_focus = tmbr_cmd_screen_focus,
 		.screen_mode = tmbr_cmd_screen_mode,
 		.screen_scale = tmbr_cmd_screen_scale,
@@ -1747,7 +1737,6 @@ int tmbr_wm(void)
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
 	    (server.idle = wlr_idle_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
-	    (server.idle_timeout = wlr_idle_timeout_create(server.idle, server.seat, TMBR_SCREEN_DPMS_TIMEOUT)) == NULL ||
 	    (server.input_inhibit = wlr_input_inhibit_manager_create(server.display)) == NULL ||
 	    (server.layer_shell = wlr_layer_shell_v1_create(server.display)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
@@ -1774,8 +1763,6 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.touch_down, &server.cursor_touch_down, tmbr_cursor_on_touch_down);
 	tmbr_register(&server.cursor->events.touch_up, &server.cursor_touch_up, tmbr_cursor_on_touch_up);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
-	tmbr_register(&server.idle_timeout->events.idle, &server.seat_idle, tmbr_server_on_idle);
-	tmbr_register(&server.idle_timeout->events.resume, &server.seat_resume, tmbr_server_on_resume);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.idle_inhibitor_new, tmbr_server_on_new_idle_inhibitor);
 
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
