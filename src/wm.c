@@ -738,6 +738,7 @@ static void tmbr_screen_add_desktop(struct tmbr_screen *screen, struct tmbr_desk
 {
 	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
 	desktop->screen = screen;
+	tmbr_desktop_recalculate(desktop);
 	tmbr_screen_focus_desktop(screen, desktop);
 }
 
