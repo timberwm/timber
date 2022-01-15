@@ -815,11 +815,10 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link)
 		wlr_layer_surface_v1_close(c->surface);
 
+	tmbr_server_update_output_layout(screen->server);
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
 	wl_list_remove(&screen->link);
 	free(screen);
-
-	tmbr_server_update_output_layout(screen->server);
 }
 
 static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_region32 *output_damage, enum zwlr_layer_shell_v1_layer layer)
