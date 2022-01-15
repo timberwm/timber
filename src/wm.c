@@ -1262,7 +1262,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	client->surface = surface;
 	client->screen = surface->output->data;
 
-	wl_list_insert(&server->focussed_screen->layer_clients, &client->link);
+	wl_list_insert(&client->screen->layer_clients, &client->link);
 
 	tmbr_register(&surface->events.map, &client->map, tmbr_layer_client_on_map);
 	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_layer_client_on_unmap);
@@ -1270,7 +1270,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_layer_client_on_commit);
 
 	surface->current = surface->client_pending;
-	tmbr_screen_recalculate(server->focussed_screen);
+	tmbr_screen_recalculate(client->screen);
 	surface->current = current_state;
 }
 
