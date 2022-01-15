@@ -801,6 +801,8 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	struct tmbr_desktop *desktop, *tmp;
 	struct tmbr_layer_client *c, *ctmp;
 
+	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link)
+		wlr_layer_surface_v1_close(c->surface);
 	if (sibling) {
 		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
 			tmbr_screen_add_desktop(sibling, desktop);
@@ -812,8 +814,6 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		}
 		wl_display_terminate(screen->server->display);
 	}
-	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link)
-		wlr_layer_surface_v1_close(c->surface);
 
 	tmbr_server_update_output_layout(screen->server);
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
