@@ -201,6 +201,7 @@ struct tmbr_server {
 	struct wl_listener seat_resume;
 	struct wl_listener idle_inhibitor_new;
 	struct wl_listener idle_inhibitor_destroy;
+	struct wl_listener apply_layout;
 	int idle_inhibitors;
 
 	struct wl_list bindings;
@@ -1413,6 +1414,38 @@ static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void
 	wlr_idle_set_enabled(server->idle, server->seat, !++server->idle_inhibitors);
 }
 
+static void tmbr_server_on_apply_layout(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, apply_layout);
+	struct wlr_output_configuration_v1 *cfg = payload;
+	struct wlr_output_configuration_head_v1 *head;
+	bool successful = true;
+
+	wl_list_for_each(head, &cfg->heads, link) {
+		struct tmbr_screen *s = head->state.output->data;
+		if (s->output->enabled && !head->state.enabled)
+			wlr_output_enable(s->output, false);
+		else if (!s->output->enabled && head->state.enabled)
+			wlr_output_enable(s->output, true);
+		if (head->state.mode != NULL)
+			wlr_output_set_mode(s->output, head->state.mode);
+		else
+			wlr_output_set_custom_mode(s->output, head->state.custom_mode.width, head->state.custom_mode.height,
+						   head->state.custom_mode.refresh / 1000.0);
+		wlr_output_set_transform(s->output, head->state.transform);
+		wlr_output_set_scale(s->output, head->state.scale);
+		wlr_output_layout_add(s->server->output_layout, s->output, head->state.x, head->state.y);
+
+		successful &= wlr_output_commit(s->output);
+	}
+
+	if (successful)
+		wlr_output_configuration_v1_send_succeeded(cfg);
+	else
+		wlr_output_configuration_v1_send_failed(cfg);
+	wlr_output_configuration_v1_destroy(cfg);
+}
+
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
@@ -1794,6 +1827,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.touch_up, &server.cursor_touch_up, tmbr_cursor_on_touch_up);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.idle_inhibitor_new, tmbr_server_on_new_idle_inhibitor);
+	tmbr_register(&server.output_manager->events.apply, &server.apply_layout, tmbr_server_on_apply_layout);
 
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");
