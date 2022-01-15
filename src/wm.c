@@ -801,6 +801,10 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	struct tmbr_desktop *desktop, *tmp;
 	struct tmbr_layer_client *c, *ctmp;
 
+	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link) {
+		wlr_layer_surface_v1_close(c->surface);
+		c->screen = NULL;
+	}
 	if (sibling) {
 		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
 			tmbr_screen_add_desktop(sibling, desktop);
@@ -812,8 +816,6 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		}
 		wl_display_terminate(screen->server->display);
 	}
-	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link)
-		wlr_layer_surface_v1_close(c->surface);
 
 	tmbr_server_update_output_layout(screen->server);
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
@@ -1155,7 +1157,8 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 	struct tmbr_layer_client *client = wl_container_of(listener, client, destroy);
 	wl_list_remove(&client->link);
 	tmbr_unregister(&client->map, &client->unmap, &client->destroy, &client->commit, NULL);
-	tmbr_screen_recalculate(client->screen);
+	if (client->screen)
+		tmbr_screen_recalculate(client->screen);
 	free(client);
 }
 
@@ -1262,7 +1265,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	client->surface = surface;
 	client->screen = surface->output->data;
 
-	wl_list_insert(&server->focussed_screen->layer_clients, &client->link);
+	wl_list_insert(&client->screen->layer_clients, &client->link);
 
 	tmbr_register(&surface->events.map, &client->map, tmbr_layer_client_on_map);
 	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_layer_client_on_unmap);
@@ -1270,7 +1273,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_layer_client_on_commit);
 
 	surface->current = surface->client_pending;
-	tmbr_screen_recalculate(server->focussed_screen);
+	tmbr_screen_recalculate(client->screen);
 	surface->current = current_state;
 }
 
