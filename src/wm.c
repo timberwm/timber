@@ -39,6 +39,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_damage.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_server_decoration.h>
@@ -176,6 +177,7 @@ struct tmbr_server {
 	struct wlr_input_inhibit_manager *input_inhibit;
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct wlr_output_layout *output_layout;
+	struct wlr_output_manager_v1 *output_manager;
 	struct wlr_seat *seat;
 	struct wlr_server_decoration_manager *decoration;
 	struct wlr_xcursor_manager *xcursor;
@@ -232,6 +234,25 @@ static void tmbr_spawn(const char *path, char * const argv[])
 static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server)
 {
 	return server->input_inhibit->active_client ? NULL : server->focussed_screen->focus->focus;
+}
+
+static void tmbr_server_update_output_layout(struct tmbr_server *server)
+{
+	struct wlr_output_configuration_v1 *cfg = wlr_output_configuration_v1_create();
+	struct tmbr_screen *s;
+
+	wl_list_for_each(s, &server->screens, link) {
+		struct wlr_output_configuration_head_v1 *head = wlr_output_configuration_head_v1_create(cfg, s->output);
+		struct wlr_box *geom = wlr_output_layout_get_box(server->output_layout, s->output);
+		head->state.enabled = s->output->enabled;
+		head->state.mode = s->output->current_mode;
+		if (geom) {
+			head->state.x = geom->x;
+			head->state.y = geom->y;
+		}
+	}
+
+	wlr_output_manager_v1_set_configuration(server->output_manager, cfg);
 }
 
 static struct tmbr_screen *tmbr_server_find_screen_at(struct tmbr_server *server, double x, double y)
@@ -796,6 +817,8 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
 	wl_list_remove(&screen->link);
 	free(screen);
+
+	tmbr_server_update_output_layout(screen->server);
 }
 
 static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_region32 *output_damage, enum zwlr_layer_shell_v1_layer layer)
@@ -989,6 +1012,7 @@ static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, mode);
 	tmbr_screen_recalculate(screen);
+	tmbr_server_update_output_layout(screen->server);
 }
 
 static void tmbr_screen_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1004,6 +1028,7 @@ static void tmbr_screen_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 	wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
 	tmbr_screen_recalculate(screen);
 #endif
+	tmbr_server_update_output_layout(screen->server);
 }
 
 static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wlr_output *output)
@@ -1195,6 +1220,7 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	if (!server->focussed_screen)
 		server->focussed_screen = screen;
 	output->data = screen;
+	tmbr_server_update_output_layout(screen->server);
 }
 
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
@@ -1743,6 +1769,7 @@ int tmbr_wm(void)
 	    (server.input_inhibit = wlr_input_inhibit_manager_create(server.display)) == NULL ||
 	    (server.layer_shell = wlr_layer_shell_v1_create(server.display)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
+	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
