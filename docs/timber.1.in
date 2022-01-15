@@ -18,8 +18,6 @@ timber \- tree-based window manager
 \fItimber\fR desktop new
 \fItimber\fR desktop swap (next|prev)
 \fItimber\fR screen focus (next|prev)
-\fItimber\fR screen scale <SCREEN> <NUMBER>
-\fItimber\fR screen mode <SCREEN> <WIDTH>x<HEIGHT>x<REFRESH>
 \fItimber\fR tree rotate
 \fItimber\fR state subscribe
 \fItimber\fR state query
@@ -140,17 +138,6 @@ The current desktop will stay focussed, but the order of those two desktops will
 $ timber screen focus (next|prev)
 .sp
 Selects the screen relative to the currently focussed screen and makes it the new focussed one.
-.SS Screen: set scale
-.sp
-$ timber screen scale <SCREEN> <NUMBER>
-.sp
-Sets the scale of the screen to the given percentage.
-The default scale is 100.
-.SS Screen: set mode
-.sp
-$ timber screen mode <SCREEN> <WIDTH>x<HEIGHT>@<REFRESH>
-.sp
-Sets the mode of the screen to the given width, height and refresh rate.
 .SS Tree: rotate current node
 .sp
 $ timber tree rotate
