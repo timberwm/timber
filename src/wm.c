@@ -1416,18 +1416,17 @@ static void tmbr_server_on_apply_layout(struct wl_listener *listener, void *payl
 
 	wl_list_for_each(head, &cfg->heads, link) {
 		struct tmbr_screen *s = head->state.output->data;
-		if (s->output->enabled && !head->state.enabled)
-			wlr_output_enable(s->output, false);
-		else if (!s->output->enabled && head->state.enabled)
-			wlr_output_enable(s->output, true);
-		if (head->state.mode != NULL)
-			wlr_output_set_mode(s->output, head->state.mode);
-		else
-			wlr_output_set_custom_mode(s->output, head->state.custom_mode.width, head->state.custom_mode.height,
-						   head->state.custom_mode.refresh / 1000.0);
-		wlr_output_set_transform(s->output, head->state.transform);
-		wlr_output_set_scale(s->output, head->state.scale);
-		wlr_output_layout_add(s->server->output_layout, s->output, head->state.x, head->state.y);
+		wlr_output_enable(s->output, head->state.enabled);
+		if (head->state.enabled) {
+			if (head->state.mode != NULL)
+				wlr_output_set_mode(s->output, head->state.mode);
+			else
+				wlr_output_set_custom_mode(s->output, head->state.custom_mode.width, head->state.custom_mode.height,
+							   head->state.custom_mode.refresh / 1000.0);
+			wlr_output_set_transform(s->output, head->state.transform);
+			wlr_output_set_scale(s->output, head->state.scale);
+			wlr_output_layout_add(s->server->output_layout, s->output, head->state.x, head->state.y);
+		}
 
 		successful &= wlr_output_commit(s->output);
 	}
