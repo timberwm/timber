@@ -454,16 +454,19 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 	wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
 }
 
-static int tmbr_xdg_client_handle_configure_timer(void *client)
-{
-	return ((struct tmbr_xdg_client *)client)->pending_serial = 0;
-}
-
 static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 {
 	double x = client->server->cursor->x, y = client->server->cursor->y;
 	struct wlr_surface *subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
 	tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y);
+}
+
+static int tmbr_xdg_client_handle_configure_timer(void *payload)
+{
+	struct tmbr_xdg_client *client = payload;
+	if (client == tmbr_server_find_focus(client->server))
+		tmbr_xdg_client_notify_focus(client);
+	return client->pending_serial = 0;
 }
 
 static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
@@ -501,10 +504,8 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, commit);
 	if (client->desktop && client->desktop == client->desktop->screen->focus) {
-		wlr_xdg_surface_for_each_surface(client->surface, tmbr_surface_damage_surface,
-						 &(struct tmbr_surface_damage_data){ client->desktop->screen, client->x + client->border, client->y + client->border });
-		if (client == tmbr_server_find_focus(client->server))
-			tmbr_xdg_client_notify_focus(client);
+		struct tmbr_surface_damage_data damage_data = { client->desktop->screen, client->x + client->border, client->y + client->border };
+		wlr_xdg_surface_for_each_surface(client->surface, tmbr_surface_damage_surface, &damage_data);
 	}
 	if (client->pending_serial && client->pending_serial == client->surface->configure_serial) {
 		tmbr_xdg_client_handle_configure_timer(client);
