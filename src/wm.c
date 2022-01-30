@@ -470,7 +470,10 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 {
 	double x = client->server->cursor->x, y = client->server->cursor->y;
-	struct wlr_surface *subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
+	struct wlr_surface *subsurface;
+
+	wlr_output_layout_output_coords(client->server->output_layout, client->desktop->screen->output, &x, &y);
+	subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
 	tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y);
 }
 
@@ -1159,10 +1162,14 @@ static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_input_devic
 static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 {
 	double x = c->screen->server->cursor->x, y = c->screen->server->cursor->y;
-	struct wlr_surface *subsurface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
+	struct wlr_surface *surface;
+
 	if (tmbr_server_find_focus(c->screen->server))
 		tmbr_xdg_client_focus(tmbr_server_find_focus(c->screen->server), false);
-	tmbr_surface_notify_focus(c->surface->surface, subsurface, c->screen->server, x, y);
+
+	wlr_output_layout_output_coords(c->screen->server->output_layout, c->screen->output, &x, &y);
+	surface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
+	tmbr_surface_notify_focus(c->surface->surface, surface, c->screen->server, x, y);
 }
 
 static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1346,18 +1353,20 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server)
 	struct tmbr_layer_client *layer_client = NULL;
 	struct tmbr_xdg_client *xdg_client = NULL;
 	struct tmbr_screen *screen = NULL;
+	double x = server->cursor->x, y = server->cursor->y;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 	if (server->input_inhibit->active_client)
 		return;
 
-	if ((screen = tmbr_server_find_screen_at(server, server->cursor->x, server->cursor->y)) == NULL)
+	if ((screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
 		return;
 	server->focussed_screen = screen;
+	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
 
-	if ((layer_client = tmbr_screen_find_layer_client_at(screen, server->cursor->x, server->cursor->y)) != NULL)
+	if ((layer_client = tmbr_screen_find_layer_client_at(screen, x, y)) != NULL)
 		tmbr_layer_client_notify_focus(layer_client);
-	else if ((xdg_client = tmbr_screen_find_xdg_client_at(screen, server->cursor->x, server->cursor->y)) != NULL)
+	else if ((xdg_client = tmbr_screen_find_xdg_client_at(screen, x, y)) != NULL)
 		tmbr_desktop_focus_client(screen->focus, xdg_client, true);
 }
 
