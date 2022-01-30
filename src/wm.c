@@ -379,13 +379,18 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 static void tmbr_xdg_popup_damage_whole(struct tmbr_xdg_popup *p)
 {
 	struct tmbr_xdg_client *c = p->client;
+	int popup_x = p->surface->popup->geometry.x, popup_y = p->surface->popup->geometry.y,
+	    popup_w = p->surface->popup->geometry.width, popup_h = p->surface->popup->geometry.height,
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	    surface_x = p->surface->current.geometry.x, surface_y = p->surface->current.geometry.y;
+#else
+	    surface_x = p->surface->geometry.x, surface_y = p->surface->geometry.y;
+#endif
+
 	if (c->desktop && c->desktop == c->desktop->screen->focus)
 		wlr_output_damage_add_box(c->desktop->screen->damage, &tmbr_box_scaled(
-			c->x + c->border + p->surface->popup->geometry.x - p->surface->geometry.x,
-			c->y + c->border + p->surface->popup->geometry.y - p->surface->geometry.y,
-			p->surface->popup->geometry.width + p->surface->popup->geometry.x,
-			p->surface->popup->geometry.height + p->surface->popup->geometry.y,
-			c->desktop->screen->output->scale));
+			c->x + c->border + popup_x - surface_x, c->y + c->border + popup_y - surface_y,
+			popup_w + popup_x, popup_h + popup_y, c->desktop->screen->output->scale));
 }
 
 static void tmbr_xdg_popup_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -511,11 +516,17 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, commit);
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	uint32_t serial = client->surface->current.configure_serial;
+#else
+	uint32_t serial = client->surface->configure_serial;
+#endif
+
 	if (client->desktop && client->desktop == client->desktop->screen->focus) {
 		struct tmbr_surface_damage_data damage_data = { client->desktop->screen, client->x + client->border, client->y + client->border };
 		wlr_xdg_surface_for_each_surface(client->surface, tmbr_surface_damage_surface, &damage_data);
 	}
-	if (client->pending_serial && client->pending_serial == client->surface->configure_serial) {
+	if (client->pending_serial && client->pending_serial == serial) {
 		tmbr_xdg_client_handle_configure_timer(client);
 		wl_event_source_timer_update(client->configure_timer, 0);
 	}
