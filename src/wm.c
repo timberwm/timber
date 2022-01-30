@@ -811,8 +811,12 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	struct tmbr_layer_client *c, *ctmp;
 
 	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link) {
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+		wlr_layer_surface_v1_destroy(c->surface);
+#else
 		wlr_layer_surface_v1_close(c->surface);
 		c->screen = NULL;
+#endif
 	}
 	if (sibling) {
 		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
@@ -980,7 +984,11 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 			}
 
 			if (box.width < 0 || box.height < 0) {
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+				wlr_layer_surface_v1_destroy(c->surface);
+#else
 				wlr_layer_surface_v1_close(c->surface);
+#endif
 				continue;
 			}
 
