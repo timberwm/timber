@@ -21,6 +21,9 @@
 
 #include <wlr/version.h>
 #include <wlr/backend.h>
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+# include <wlr/render/allocator.h>
+#endif
 #include <wlr/render/gles2.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
@@ -172,6 +175,9 @@ struct tmbr_layer_client {
 struct tmbr_server {
 	struct wl_display *display;
 	struct wlr_renderer *renderer;
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	struct wlr_allocator *allocator;
+#endif
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
 	struct wlr_idle *idle;
@@ -1205,6 +1211,10 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	struct wlr_output_mode *mode;
 	struct tmbr_screen *screen;
 
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	wlr_output_init_render(output, server->allocator, server->renderer);
+#endif
+
 	wlr_output_enable(output, true);
 	if ((mode = wlr_output_preferred_mode(output)) != NULL)
 		wlr_output_set_mode(output, mode);
@@ -1735,8 +1745,15 @@ int tmbr_wm(void)
 		die("Could not create display");
 	if ((server.backend = wlr_backend_autocreate(server.display)) == NULL)
 		die("Could not create backend");
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR > 14
+	if ((server.renderer = wlr_renderer_autocreate(server.backend)) == NULL)
+		die("Could not create renderer");
+	if ((server.allocator = wlr_allocator_autocreate(server.backend, server.renderer)) == NULL)
+		die("Could not create allocator");
+#else
 	if ((server.renderer = wlr_backend_get_renderer(server.backend)) == NULL)
 		die("Could not create renderer");
+#endif
 	wlr_renderer_init_wl_display(server.renderer, server.display);
 
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
