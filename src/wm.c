@@ -836,6 +836,8 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
 			tmbr_screen_add_desktop(sibling, desktop);
 		wl_list_init(&screen->desktops);
+		if (screen->server->focussed_screen == screen)
+			tmbr_screen_focus_desktop(sibling, sibling->focus);
 	} else {
 		wl_list_for_each(desktop, &screen->desktops, link) {
 			tmbr_tree_for_each(desktop->clients, t)
