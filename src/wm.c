@@ -1182,7 +1182,12 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, commit);
-	struct wlr_layer_surface_v1_state *c = &client->surface->current, *p = &client->surface->client_pending;
+	struct wlr_layer_surface_v1_state *c = &client->surface->current,
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+					  *p = &client->surface->pending;
+#else
+					  *p = &client->surface->client_pending;
+#endif
 	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
 	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
 		tmbr_screen_recalculate(client->screen);
@@ -1293,7 +1298,11 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_layer_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_layer_client_on_commit);
 
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	surface->current = surface->pending;
+#else
 	surface->current = surface->client_pending;
+#endif
 	tmbr_screen_recalculate(client->screen);
 	surface->current = current_state;
 }
