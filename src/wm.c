@@ -242,7 +242,7 @@ static void tmbr_spawn(const char *path, char * const argv[])
 
 static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server)
 {
-	return server->input_inhibit->active_client ? NULL : server->focussed_screen->focus->focus;
+	return server->input_inhibit->active_client ? NULL : server->focussed_screen ? server->focussed_screen->focus->focus : NULL;
 }
 
 static void tmbr_server_update_output_layout(struct tmbr_server *server)
@@ -760,9 +760,9 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 		wlr_output_damage_add_whole(screen->damage);
 	if (screen->server->focussed_screen && screen->server->focussed_screen != screen)
 		wlr_output_damage_add_whole(screen->server->focussed_screen->damage);
+	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 	screen->focus = desktop;
 	screen->server->focussed_screen = screen;
-	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 }
 
 static void tmbr_screen_remove_desktop(struct tmbr_screen *screen, struct tmbr_desktop *desktop)
