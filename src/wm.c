@@ -21,6 +21,9 @@
 
 #include <wlr/version.h>
 #include <wlr/backend.h>
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+# include <wlr/render/allocator.h>
+#endif
 #include <wlr/render/gles2.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
@@ -88,6 +91,7 @@ struct tmbr_keyboard {
 };
 
 struct tmbr_surface_render_data {
+	struct wlr_renderer *renderer;
 	struct pixman_region32 *damage;
 	struct wlr_output *output;
 	struct wlr_box box;
@@ -170,6 +174,10 @@ struct tmbr_layer_client {
 
 struct tmbr_server {
 	struct wl_display *display;
+	struct wlr_renderer *renderer;
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	struct wlr_allocator *allocator;
+#endif
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
 	struct wlr_idle *idle;
@@ -320,8 +328,8 @@ static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, voi
 	wlr_matrix_project_box(matrix, &extents, wlr_output_transform_invert(surface->current.transform), 0, data->output->transform_matrix);
 
 	for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
-		wlr_renderer_scissor(wlr_backend_get_renderer(data->output->backend), &tmbr_box_from_pixman(rects[i]));
-		wlr_render_texture_with_matrix(wlr_backend_get_renderer(data->output->backend), texture, matrix, 1);
+		wlr_renderer_scissor(data->renderer, &tmbr_box_from_pixman(rects[i]));
+		wlr_render_texture_with_matrix(data->renderer, texture, matrix, 1);
 	}
 
 out:
@@ -371,13 +379,18 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 static void tmbr_xdg_popup_damage_whole(struct tmbr_xdg_popup *p)
 {
 	struct tmbr_xdg_client *c = p->client;
+	int popup_x = p->surface->popup->geometry.x, popup_y = p->surface->popup->geometry.y,
+	    popup_w = p->surface->popup->geometry.width, popup_h = p->surface->popup->geometry.height,
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	    surface_x = p->surface->current.geometry.x, surface_y = p->surface->current.geometry.y;
+#else
+	    surface_x = p->surface->geometry.x, surface_y = p->surface->geometry.y;
+#endif
+
 	if (c->desktop && c->desktop == c->desktop->screen->focus)
 		wlr_output_damage_add_box(c->desktop->screen->damage, &tmbr_box_scaled(
-			c->x + c->border + p->surface->popup->geometry.x - p->surface->geometry.x,
-			c->y + c->border + p->surface->popup->geometry.y - p->surface->geometry.y,
-			p->surface->popup->geometry.width + p->surface->popup->geometry.x,
-			p->surface->popup->geometry.height + p->surface->popup->geometry.y,
-			c->desktop->screen->output->scale));
+			c->x + c->border + popup_x - surface_x, c->y + c->border + popup_y - surface_y,
+			popup_w + popup_x, popup_h + popup_y, c->desktop->screen->output->scale));
 }
 
 static void tmbr_xdg_popup_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -427,7 +440,7 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 {
 	struct wlr_output *output = c->desktop->screen->output;
 	struct tmbr_surface_render_data payload = {
-		output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale),
+		c->server->renderer, output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale),
 	};
 
 	if (!pixman_region32_contains_rectangle(output_damage, &tmbr_box_to_pixman(payload.box)))
@@ -446,8 +459,8 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 		pixman_region32_intersect(&borders, &borders, output_damage);
 
 		for (i = 0, rects = pixman_region32_rectangles(&borders, &nrects); i < nrects; i++) {
-			wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &tmbr_box_from_pixman(rects[i]));
-			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
+			wlr_renderer_scissor(c->server->renderer, &tmbr_box_from_pixman(rects[i]));
+			wlr_renderer_clear(c->server->renderer, color);
 		}
 		pixman_region32_fini(&borders);
 	}
@@ -503,11 +516,17 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, commit);
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	uint32_t serial = client->surface->current.configure_serial;
+#else
+	uint32_t serial = client->surface->configure_serial;
+#endif
+
 	if (client->desktop && client->desktop == client->desktop->screen->focus) {
 		struct tmbr_surface_damage_data damage_data = { client->desktop->screen, client->x + client->border, client->y + client->border };
 		wlr_xdg_surface_for_each_surface(client->surface, tmbr_surface_damage_surface, &damage_data);
 	}
-	if (client->pending_serial && client->pending_serial == client->surface->configure_serial) {
+	if (client->pending_serial && client->pending_serial == serial) {
 		tmbr_xdg_client_handle_configure_timer(client);
 		wl_event_source_timer_update(client->configure_timer, 0);
 	}
@@ -803,8 +822,12 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	struct tmbr_layer_client *c, *ctmp;
 
 	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link) {
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+		wlr_layer_surface_v1_destroy(c->surface);
+#else
 		wlr_layer_surface_v1_close(c->surface);
 		c->screen = NULL;
+#endif
 	}
 	if (sibling) {
 		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
@@ -829,7 +852,7 @@ static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_r
 		struct tmbr_layer_client *c;
 		wl_list_for_each(c, &screen->layer_clients, link) {
 			struct tmbr_surface_render_data data = {
-				output_damage, screen->output, tmbr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale),
+				c->screen->server->renderer, output_damage, screen->output, tmbr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale),
 			};
 			if (c->surface->current.layer == layer)
 				wlr_layer_surface_v1_for_each_surface(c->surface, tmbr_surface_render, &data);
@@ -839,7 +862,7 @@ static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_r
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
-	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
+	struct wlr_renderer *renderer = screen->server->renderer;
 	struct tmbr_layer_client *layer_client;
 	struct pixman_region32 damage;
 	struct timespec time;
@@ -972,7 +995,11 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 			}
 
 			if (box.width < 0 || box.height < 0) {
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+				wlr_layer_surface_v1_destroy(c->surface);
+#else
 				wlr_layer_surface_v1_close(c->surface);
+#endif
 				continue;
 			}
 
@@ -1166,7 +1193,12 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, commit);
-	struct wlr_layer_surface_v1_state *c = &client->surface->current, *p = &client->surface->client_pending;
+	struct wlr_layer_surface_v1_state *c = &client->surface->current,
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+					  *p = &client->surface->pending;
+#else
+					  *p = &client->surface->client_pending;
+#endif
 	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
 	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
 		tmbr_screen_recalculate(client->screen);
@@ -1202,6 +1234,10 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	struct wlr_output *output = payload;
 	struct wlr_output_mode *mode;
 	struct tmbr_screen *screen;
+
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	wlr_output_init_render(output, server->allocator, server->renderer);
+#endif
 
 	wlr_output_enable(output, true);
 	if ((mode = wlr_output_preferred_mode(output)) != NULL)
@@ -1273,7 +1309,11 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_layer_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_layer_client_on_commit);
 
+#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
+	surface->current = surface->pending;
+#else
 	surface->current = surface->client_pending;
+#endif
 	tmbr_screen_recalculate(client->screen);
 	surface->current = current_state;
 }
@@ -1733,10 +1773,19 @@ int tmbr_wm(void)
 		die("Could not create display");
 	if ((server.backend = wlr_backend_autocreate(server.display)) == NULL)
 		die("Could not create backend");
-	wlr_renderer_init_wl_display(wlr_backend_get_renderer(server.backend), server.display);
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR > 14
+	if ((server.renderer = wlr_renderer_autocreate(server.backend)) == NULL)
+		die("Could not create renderer");
+	if ((server.allocator = wlr_allocator_autocreate(server.backend, server.renderer)) == NULL)
+		die("Could not create allocator");
+#else
+	if ((server.renderer = wlr_backend_get_renderer(server.backend)) == NULL)
+		die("Could not create renderer");
+#endif
+	wlr_renderer_init_wl_display(server.renderer, server.display);
 
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
-	    wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
+	    wlr_compositor_create(server.display, server.renderer) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
