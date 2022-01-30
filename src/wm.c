@@ -88,6 +88,7 @@ struct tmbr_keyboard {
 };
 
 struct tmbr_surface_render_data {
+	struct wlr_renderer *renderer;
 	struct pixman_region32 *damage;
 	struct wlr_output *output;
 	struct wlr_box box;
@@ -170,6 +171,7 @@ struct tmbr_layer_client {
 
 struct tmbr_server {
 	struct wl_display *display;
+	struct wlr_renderer *renderer;
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
 	struct wlr_idle *idle;
@@ -320,8 +322,8 @@ static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, voi
 	wlr_matrix_project_box(matrix, &extents, wlr_output_transform_invert(surface->current.transform), 0, data->output->transform_matrix);
 
 	for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
-		wlr_renderer_scissor(wlr_backend_get_renderer(data->output->backend), &tmbr_box_from_pixman(rects[i]));
-		wlr_render_texture_with_matrix(wlr_backend_get_renderer(data->output->backend), texture, matrix, 1);
+		wlr_renderer_scissor(data->renderer, &tmbr_box_from_pixman(rects[i]));
+		wlr_render_texture_with_matrix(data->renderer, texture, matrix, 1);
 	}
 
 out:
@@ -427,7 +429,7 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 {
 	struct wlr_output *output = c->desktop->screen->output;
 	struct tmbr_surface_render_data payload = {
-		output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale),
+		c->server->renderer, output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale),
 	};
 
 	if (!pixman_region32_contains_rectangle(output_damage, &tmbr_box_to_pixman(payload.box)))
@@ -446,8 +448,8 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 		pixman_region32_intersect(&borders, &borders, output_damage);
 
 		for (i = 0, rects = pixman_region32_rectangles(&borders, &nrects); i < nrects; i++) {
-			wlr_renderer_scissor(wlr_backend_get_renderer(output->backend), &tmbr_box_from_pixman(rects[i]));
-			wlr_renderer_clear(wlr_backend_get_renderer(output->backend), color);
+			wlr_renderer_scissor(c->server->renderer, &tmbr_box_from_pixman(rects[i]));
+			wlr_renderer_clear(c->server->renderer, color);
 		}
 		pixman_region32_fini(&borders);
 	}
@@ -829,7 +831,7 @@ static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_r
 		struct tmbr_layer_client *c;
 		wl_list_for_each(c, &screen->layer_clients, link) {
 			struct tmbr_surface_render_data data = {
-				output_damage, screen->output, tmbr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale),
+				c->screen->server->renderer, output_damage, screen->output, tmbr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale),
 			};
 			if (c->surface->current.layer == layer)
 				wlr_layer_surface_v1_for_each_surface(c->surface, tmbr_surface_render, &data);
@@ -839,7 +841,7 @@ static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_r
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
-	struct wlr_renderer *renderer = wlr_backend_get_renderer(screen->output->backend);
+	struct wlr_renderer *renderer = screen->server->renderer;
 	struct tmbr_layer_client *layer_client;
 	struct pixman_region32 damage;
 	struct timespec time;
@@ -1733,10 +1735,12 @@ int tmbr_wm(void)
 		die("Could not create display");
 	if ((server.backend = wlr_backend_autocreate(server.display)) == NULL)
 		die("Could not create backend");
-	wlr_renderer_init_wl_display(wlr_backend_get_renderer(server.backend), server.display);
+	if ((server.renderer = wlr_backend_get_renderer(server.backend)) == NULL)
+		die("Could not create renderer");
+	wlr_renderer_init_wl_display(server.renderer, server.display);
 
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
-	    wlr_compositor_create(server.display, wlr_backend_get_renderer(server.backend)) == NULL ||
+	    wlr_compositor_create(server.display, server.renderer) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
