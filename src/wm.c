@@ -1396,29 +1396,37 @@ static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *p
 	tmbr_cursor_handle_motion(server);
 }
 
+static struct wlr_surface *tmbr_server_surface_at(struct tmbr_server *server, double x, double y, double *sx, double *sy)
+{
+	struct tmbr_layer_client *layer_client = NULL;
+	struct tmbr_xdg_client *xdg_client = NULL;
+	struct tmbr_screen *screen;
+
+	if ((screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
+		return NULL;
+	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
+
+	if ((layer_client = tmbr_screen_find_layer_client_at(screen, x, y)) != NULL)
+		return wlr_layer_surface_v1_surface_at(layer_client->surface, x - layer_client->x, y - layer_client->y, sx, sy);
+	else if ((xdg_client = tmbr_screen_find_xdg_client_at(screen, x, y)) != NULL)
+		return wlr_xdg_surface_surface_at(xdg_client->surface, x - xdg_client->x, y - xdg_client->y, sx, sy);
+
+	return NULL;
+}
+
 static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_down);
 	struct wlr_event_touch_down *event = payload;
-	struct tmbr_layer_client *layer_client = NULL;
-	struct tmbr_xdg_client *xdg_client = NULL;
-	struct wlr_surface *surface = NULL;
-	struct tmbr_screen *screen;
-	double x, y, sx, sy;
+	struct wlr_surface *surface;
+	double lx, ly, sx, sy;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 	if (server->input_inhibit->active_client)
 		return;
 
-	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &x, &y);
-	if ((screen = tmbr_server_find_screen_at(server, server->cursor->x, server->cursor->y)) == NULL)
-		return;
-
-	if ((layer_client = tmbr_screen_find_layer_client_at(screen, x, y)) != NULL)
-		surface = wlr_layer_surface_v1_surface_at(layer_client->surface, x - layer_client->x, y - layer_client->y, &sx, &sy);
-	else if ((xdg_client = tmbr_screen_find_xdg_client_at(screen, x, y)) != NULL)
-		surface = wlr_xdg_surface_surface_at(xdg_client->surface, x - xdg_client->x, y - xdg_client->y, &sx, &sy);
-	if (surface)
+	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
+	if ((surface = tmbr_server_surface_at(server, lx, ly, &sx, &sy)))
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 }
 
