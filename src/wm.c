@@ -499,10 +499,19 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 {
+	struct wlr_output_damage *damage = client->desktop->screen->damage;
+	float scale = client->desktop->screen->output->scale;
+
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
 	if (focus)
 		tmbr_xdg_client_notify_focus(client);
-	tmbr_xdg_client_damage_whole(client);
+	if ((focus && tmbr_server_find_focus(client->server) != client) ||
+	    (!focus && tmbr_server_find_focus(client->server) == client)) {
+		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x, client->y, client->w, client->border, scale));
+		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x, client->y, client->border, client->h, scale));
+		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x + client->w - client->border, client->y, client->border, client->h, scale));
+		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x, client->y + client->h - client->border, client->w, client->border, scale));
+	}
 }
 
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
