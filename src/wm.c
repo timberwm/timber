@@ -442,20 +442,16 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 	struct tmbr_surface_render_data payload = {
 		c->server->renderer, output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale),
 	};
+	struct pixman_box32 extents = tmbr_box_to_pixman(tmbr_box_scaled(c->x, c->y, c->w, c->h, output->scale));
 
-	if (!pixman_region32_contains_rectangle(output_damage, &tmbr_box_to_pixman(payload.box)))
-		return;
-	if (c->border) {
+	if (c->border && pixman_region32_contains_rectangle(output_damage, &extents)) {
 		const float *color = (c == tmbr_server_find_focus(c->server)) ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE;
 		struct pixman_region32 borders;
 		struct pixman_box32 *rects;
 		int i, nrects;
 
 		pixman_region32_init_with_extents(&borders, &tmbr_box_to_pixman(payload.box));
-		pixman_region32_inverse(&borders, &borders, &(struct pixman_box32){
-			.x1 = c->x * output->scale, .x2 = (c->x + c->w) * output->scale,
-			.y1 = c->y * output->scale, .y2 = (c->y + c->h) * output->scale,
-		});
+		pixman_region32_inverse(&borders, &borders, &extents);
 		pixman_region32_intersect(&borders, &borders, output_damage);
 
 		for (i = 0, rects = pixman_region32_rectangles(&borders, &nrects); i < nrects; i++) {
@@ -464,7 +460,8 @@ static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_regi
 		}
 		pixman_region32_fini(&borders);
 	}
-	wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
+	if (pixman_region32_contains_rectangle(output_damage, &tmbr_box_to_pixman(payload.box)))
+		wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
 }
 
 static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
@@ -502,10 +499,19 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 {
+	struct wlr_output_damage *damage = client->desktop->screen->damage;
+	float scale = client->desktop->screen->output->scale;
+
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
 	if (focus)
 		tmbr_xdg_client_notify_focus(client);
-	tmbr_xdg_client_damage_whole(client);
+	if ((focus && tmbr_server_find_focus(client->server) != client) ||
+	    (!focus && tmbr_server_find_focus(client->server) == client)) {
+		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x, client->y, client->w, client->border, scale));
+		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x, client->y, client->border, client->h, scale));
+		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x + client->w - client->border, client->y, client->border, client->h, scale));
+		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x, client->y + client->h - client->border, client->w, client->border, scale));
+	}
 }
 
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -762,8 +768,6 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 		die("Cannot focus desktop for different screen");
 	if (screen->focus != desktop)
 		wlr_output_damage_add_whole(screen->damage);
-	if (screen->server->focussed_screen && screen->server->focussed_screen != screen)
-		wlr_output_damage_add_whole(screen->server->focussed_screen->damage);
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 	screen->focus = desktop;
 	screen->server->focussed_screen = screen;
