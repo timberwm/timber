@@ -768,8 +768,6 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 		die("Cannot focus desktop for different screen");
 	if (screen->focus != desktop)
 		wlr_output_damage_add_whole(screen->damage);
-	if (screen->server->focussed_screen && screen->server->focussed_screen != screen)
-		wlr_output_damage_add_whole(screen->server->focussed_screen->damage);
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 	screen->focus = desktop;
 	screen->server->focussed_screen = screen;
