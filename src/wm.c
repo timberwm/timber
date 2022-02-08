@@ -707,7 +707,6 @@ static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fulls
 	if (desktop->focus)
 		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
 	tmbr_desktop_recalculate(desktop);
-	wlr_output_damage_add_whole(desktop->screen->damage);
 }
 
 static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client, bool inputfocus)
