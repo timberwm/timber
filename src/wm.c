@@ -1364,23 +1364,20 @@ static void tmbr_cursor_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 static void tmbr_cursor_handle_motion(struct tmbr_server *server)
 {
 	struct tmbr_layer_client *layer_client = NULL;
-	struct tmbr_xdg_client *xdg_client = NULL;
 	struct tmbr_screen *screen = NULL;
 	double x = server->cursor->x, y = server->cursor->y;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
-	if (server->input_inhibit->active_client)
+	if (server->input_inhibit->active_client ||
+	    (screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
 		return;
 
-	if ((screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
-		return;
-	server->focussed_screen = screen;
 	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
-
 	if ((layer_client = tmbr_screen_find_layer_client_at(screen, x, y)) != NULL)
 		tmbr_layer_client_notify_focus(layer_client);
-	else if ((xdg_client = tmbr_screen_find_xdg_client_at(screen, x, y)) != NULL)
-		tmbr_desktop_focus_client(screen->focus, xdg_client, true);
+	else
+		tmbr_desktop_focus_client(screen->focus, tmbr_screen_find_xdg_client_at(screen, x, y), true);
+	server->focussed_screen = screen;
 }
 
 static void tmbr_cursor_on_motion(struct wl_listener *listener, void *payload)
