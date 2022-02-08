@@ -1369,18 +1369,16 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server)
 	double x = server->cursor->x, y = server->cursor->y;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
-	if (server->input_inhibit->active_client)
+	if (server->input_inhibit->active_client ||
+	    (screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
 		return;
 
-	if ((screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
-		return;
-	server->focussed_screen = screen;
 	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
-
 	if ((layer_client = tmbr_screen_find_layer_client_at(screen, x, y)) != NULL)
 		tmbr_layer_client_notify_focus(layer_client);
 	else if ((xdg_client = tmbr_screen_find_xdg_client_at(screen, x, y)) != NULL)
 		tmbr_desktop_focus_client(screen->focus, xdg_client, true);
+	server->focussed_screen = screen;
 }
 
 static void tmbr_cursor_on_motion(struct wl_listener *listener, void *payload)
