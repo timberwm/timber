@@ -203,6 +203,7 @@ struct tmbr_server {
 	struct wl_listener cursor_motion_absolute;
 	struct wl_listener cursor_touch_down;
 	struct wl_listener cursor_touch_up;
+	struct wl_listener cursor_touch_motion;
 	struct wl_listener cursor_frame;
 	struct wl_listener request_set_cursor;
 	struct wl_listener request_set_selection;
@@ -1455,6 +1456,25 @@ static void tmbr_cursor_on_touch_up(struct wl_listener *listener, void *payload)
 	}
 }
 
+static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_motion);
+	struct wlr_event_touch_motion *event = payload;
+	double lx, ly, sx, sy;
+
+	wlr_idle_notify_activity(server->idle, server->seat);
+	if (server->input_inhibit->active_client)
+		return;
+
+	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
+	if (server->touch_emulation_id == event->touch_id) {
+		wlr_cursor_move(server->cursor, event->device, lx - server->cursor->x, ly - server->cursor->y);
+		tmbr_cursor_handle_motion(server);
+	} else if (!server->touch_emulation_id && tmbr_server_surface_at(server, lx, ly, &sx, &sy)) {
+		wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, sx, sy);
+	}
+}
+
 static void tmbr_server_on_request_set_cursor(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, request_set_cursor);
@@ -1869,6 +1889,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute, tmbr_cursor_on_motion_absolute);
 	tmbr_register(&server.cursor->events.touch_down, &server.cursor_touch_down, tmbr_cursor_on_touch_down);
 	tmbr_register(&server.cursor->events.touch_up, &server.cursor_touch_up, tmbr_cursor_on_touch_up);
+	tmbr_register(&server.cursor->events.touch_motion, &server.cursor_touch_motion, tmbr_cursor_on_touch_motion);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.idle_inhibitor_new, tmbr_server_on_new_idle_inhibitor);
 	tmbr_register(&server.output_manager->events.apply, &server.apply_layout, tmbr_server_on_apply_layout);
