@@ -708,6 +708,8 @@ static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fulls
 
 static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client, bool inputfocus)
 {
+	if (desktop->focus != client)
+		tmbr_desktop_set_fullscreen(desktop, false);
 	if (inputfocus) {
 		struct tmbr_xdg_client *current_focus = tmbr_server_find_focus(desktop->screen->server);
 		if (current_focus && current_focus != client)
@@ -719,8 +721,6 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 			wlr_seat_pointer_notify_clear_focus(desktop->screen->server->seat);
 		}
 	}
-	if (desktop->focus != client)
-		tmbr_desktop_set_fullscreen(desktop, false);
 	desktop->focus = client;
 }
 
