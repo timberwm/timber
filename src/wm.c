@@ -1515,9 +1515,8 @@ static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void
 	wlr_idle_set_enabled(server->idle, server->seat, !++server->idle_inhibitors);
 }
 
-static void tmbr_server_on_apply_layout(struct wl_listener *listener, void *payload)
+static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener, void *payload)
 {
-	struct tmbr_server *server = wl_container_of(listener, server, apply_layout);
 	struct wlr_output_configuration_v1 *cfg = payload;
 	struct wlr_output_configuration_head_v1 *head;
 	bool successful = true;
