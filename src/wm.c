@@ -19,6 +19,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <linux/input-event-codes.h>
+
 #include <wlr/version.h>
 #include <wlr/backend.h>
 #if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
@@ -211,6 +213,7 @@ struct tmbr_server {
 	struct wl_listener idle_inhibitor_destroy;
 	struct wl_listener apply_layout;
 	int idle_inhibitors;
+	int touch_emulation_id;
 
 	struct wl_list bindings;
 	struct wl_list screens;
@@ -1426,16 +1429,30 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		return;
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
-	if ((surface = tmbr_server_surface_at(server, lx, ly, &sx, &sy)))
+	if ((surface = tmbr_server_surface_at(server, lx, ly, &sx, &sy)) && wlr_surface_accepts_touch(server->seat, surface)) {
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
+	} else if (!server->touch_emulation_id) {
+		server->touch_emulation_id = event->touch_id;
+		wlr_cursor_move(server->cursor, event->device, lx - server->cursor->x, ly - server->cursor->y);
+		tmbr_cursor_handle_motion(server);
+		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_PRESSED);
+		wlr_seat_pointer_notify_frame(server->seat);
+	}
 }
 
 static void tmbr_cursor_on_touch_up(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_up);
 	struct wlr_event_touch_up *event = payload;
+
 	wlr_idle_notify_activity(server->idle, server->seat);
-	wlr_seat_touch_notify_up(server->seat, event->time_msec, event->touch_id);
+	if (server->touch_emulation_id == event->touch_id) {
+		server->touch_emulation_id = 0;
+		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_RELEASED);
+		wlr_seat_pointer_notify_frame(server->seat);
+	} else if (!server->touch_emulation_id) {
+		wlr_seat_touch_notify_up(server->seat, event->time_msec, event->touch_id);
+	}
 }
 
 static void tmbr_server_on_request_set_cursor(struct wl_listener *listener, void *payload)
