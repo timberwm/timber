@@ -471,6 +471,9 @@ static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 	double x = client->server->cursor->x, y = client->server->cursor->y;
 	struct wlr_surface *subsurface;
 
+	if (!client->desktop)
+		die("Focus notification for client without desktop");
+
 	wlr_output_layout_output_coords(client->server->output_layout, client->desktop->screen->output, &x, &y);
 	subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
 	tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y);
@@ -735,15 +738,20 @@ static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_xd
 
 static void tmbr_desktop_remove_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client)
 {
+	if (client->desktop != desktop || !client->tree)
+		die("Trying to remove client not assigned to the desktop");
+
 	if (desktop->focus == client) {
 		enum tmbr_ctrl_selection sel = (client->tree->parent && client->tree->parent->left == client->tree)
 			? TMBR_CTRL_SELECTION_NEXT : TMBR_CTRL_SELECTION_PREV;
 		struct tmbr_tree *sibling = tmbr_tree_find_sibling(client->tree, sel);
 		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, true);
 	}
+
 	tmbr_tree_remove(&desktop->clients, client->tree);
 	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
+
 	client->desktop = NULL;
 	client->tree = NULL;
 }
@@ -905,7 +913,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 				wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
 			}
 
-			if (screen->focus->fullscreen) {
+			if (screen->focus->focus && screen->focus->fullscreen) {
 				tmbr_xdg_client_render(screen->focus->focus, &damage);
 			} else {
 				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
@@ -1600,8 +1608,8 @@ static void tmbr_cmd_client_resize(TMBR_UNUSED struct wl_client *client, struct 
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_INVALID_PARAM, "invalid direction");
 	}
 
-	for (tree = focus->tree; tree; tree = tree->parent) {
-		if (!tree->parent)
+	for (tree = focus->tree; ; tree = tree->parent) {
+		if (!tree || !tree->parent)
 			tmbr_return_error(resource, TMBR_CTRL_ERROR_CLIENT_NOT_FOUND, "client has no parent");
 		if (tmbr_tree_get_child(tree->parent, select) != tree ||
 		    tree->parent->split != split)
