@@ -18,7 +18,7 @@
     along with this program.  If not, see https://www.gnu.org/licenses/.
   </copyright>
 
-  <interface name="tmbr_ctrl" version="3">
+  <interface name="tmbr_ctrl" version="4">
     <description summary="control the timber window manager">
         This interface allows to control the timber window manager.
     </description>
@@ -124,6 +124,15 @@
             Focus screen relative to the currently focussed one.
         </description>
         <arg name="selection" type="uint" enum="selection"/>
+    </request>
+
+    <request name="screen_dpms">
+        <description summary="set screen DPMS state">
+            Set the DPMS state of a screen. If a zero state is
+            passed, then DPMS is disabled. Otherwise, it is turned enabled.
+        </description>
+        <arg name="screen" type="string"/>
+        <arg name="state" type="uint"/>
     </request>
 
     <request name="tree_rotate">
