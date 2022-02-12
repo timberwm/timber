@@ -208,8 +208,6 @@ struct tmbr_server {
 	struct wl_listener request_set_cursor;
 	struct wl_listener request_set_selection;
 	struct wl_listener request_set_primary_selection;
-	struct wl_listener seat_idle;
-	struct wl_listener seat_resume;
 	struct wl_listener idle_inhibitor_new;
 	struct wl_listener idle_inhibitor_destroy;
 	struct wl_listener apply_layout;
