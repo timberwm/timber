@@ -2,7 +2,7 @@ version = meson.project_version()
 
 git = find_program('git', required : false)
 if git.found()
-  git_version = run_command(git, '-C', meson.project_source_root(), 'describe')
+  git_version = run_command(git, '-C', meson.project_source_root(), 'describe', check: false)
   if git_version.returncode() == 0
     version = git_version.stdout().strip()
   endif

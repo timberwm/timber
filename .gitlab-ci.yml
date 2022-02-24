@@ -28,7 +28,9 @@ clang-analyzer:
   image: archlinux:latest
   script:
     - meson setup build .
-    - scan-build --status-bugs ninja -C build all
+    - printf '#!/bin/sh\nexec scan-build -v --status-bugs "$@"' >scan-build-wrapper
+    - chmod a+x scan-build-wrapper
+    - SCANBUILD="$(pwd)/scan-build-wrapper" ninja -C build scan-build
 
 coverity:
   extends: .install-dependencies
