@@ -92,8 +92,8 @@ static const struct {
 	{ "mod5",  WLR_MODIFIER_MOD5  }
 };
 
-static const char *directions[] = { "north", "south", "east", "west" };
-static const char *selections[] = { "prev", "next" };
+static const char * const directions[] = { "north", "south", "east", "west" };
+static const char * const selections[] = { "prev", "next" };
 
 static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 {
