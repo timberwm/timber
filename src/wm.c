@@ -45,6 +45,7 @@
 #include <wlr/types/wlr_output_damage.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
+#include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_server_decoration.h>
@@ -188,6 +189,7 @@ struct tmbr_server {
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct wlr_output_layout *output_layout;
 	struct wlr_output_manager_v1 *output_manager;
+	struct wlr_output_power_manager_v1 *output_power_manager;
 	struct wlr_seat *seat;
 	struct wlr_server_decoration_manager *decoration;
 	struct wlr_xcursor_manager *xcursor;
@@ -213,6 +215,7 @@ struct tmbr_server {
 	struct wl_listener idle_inhibitor_new;
 	struct wl_listener idle_inhibitor_destroy;
 	struct wl_listener apply_layout;
+	struct wl_listener output_power_set_mode;
 	int idle_inhibitors;
 	int touch_emulation_id;
 
@@ -1546,6 +1549,13 @@ static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener
 	wlr_output_configuration_v1_destroy(cfg);
 }
 
+static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener *listener, void *payload)
+{
+	struct wlr_output_power_v1_set_mode_event *event = payload;
+	wlr_output_enable(event->output, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
+	wlr_output_commit(event->output);
+}
+
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
@@ -1870,6 +1880,7 @@ int tmbr_wm(void)
 	    (server.layer_shell = wlr_layer_shell_v1_create(server.display)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
+	    (server.output_power_manager = wlr_output_power_manager_v1_create(server.display)) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
@@ -1896,6 +1907,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.idle_inhibitor_new, tmbr_server_on_new_idle_inhibitor);
 	tmbr_register(&server.output_manager->events.apply, &server.apply_layout, tmbr_server_on_apply_layout);
+	tmbr_register(&server.output_power_manager->events.set_mode, &server.output_power_set_mode, tmbr_server_on_output_power_set_mode);
 
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");

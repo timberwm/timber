@@ -4,6 +4,7 @@ wayland_scanner = dependency('wayland-scanner').get_variable(pkgconfig: 'wayland
 protos = {
   'timber.xml': true,
   'wlr-layer-shell-unstable-v1.xml': false,
+  'wlr-output-power-management-unstable-v1.xml': false,
   join_paths(wayland_protocols, 'stable', 'xdg-shell', 'xdg-shell.xml'): false,
 }
 proto_sources = []
