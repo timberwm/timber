@@ -33,9 +33,6 @@
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
-#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR < 14
-# include <wlr/types/wlr_gtk_primary_selection.h>
-#endif
 #include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_input_inhibitor.h>
@@ -65,11 +62,6 @@
 #define tmbr_box_scaled(vx, vy, vw, vh, s) (struct wlr_box){ .x = (vx)*(s), .y = (vy)*(s), .width = (vw)*(s), .height = (vh)*(s) }
 #define tmbr_box_from_pixman(b) (struct wlr_box) { .x = (b).x1, .y = (b).y1, .width = (b).x2 - (b).x1, .height = (b).y2 - (b).y1 }
 #define tmbr_box_to_pixman(b) (struct pixman_box32) { .x1 = (b).x, .x2 = (b).x + (b).width, .y1 = (b).y, .y2 = (b).y + (b).height }
-
-#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR < 13
-# define WL_KEYBOARD_KEY_STATE_PRESSED WLR_KEY_PRESSED
-# define wlr_backend_autocreate(backend) wlr_backend_autocreate((backend), NULL)
-#endif
 
 enum tmbr_split {
 	TMBR_SPLIT_VERTICAL,
@@ -1075,16 +1067,11 @@ static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *
 static void tmbr_screen_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, commit);
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR >= 13
 	struct wlr_output_event_commit *event = payload;
 	if (event->committed & WLR_OUTPUT_STATE_SCALE)
 		wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
 	if (event->committed & (WLR_OUTPUT_STATE_TRANSFORM|WLR_OUTPUT_STATE_SCALE))
 		tmbr_screen_recalculate(screen);
-#else
-	wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
-	tmbr_screen_recalculate(screen);
-#endif
 	tmbr_server_update_output_layout(screen->server);
 }
 
@@ -1101,11 +1088,7 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
-#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR < 13
-	tmbr_register(&output->events.scale, &screen->commit, tmbr_screen_on_commit);
-#else
 	tmbr_register(&output->events.commit, &screen->commit, tmbr_screen_on_commit);
-#endif
 	tmbr_register(&screen->damage->events.frame, &screen->frame, tmbr_screen_on_frame);
 
 	return screen;
@@ -1868,9 +1851,6 @@ int tmbr_wm(void)
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
-#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR < 14
-	    wlr_gtk_primary_selection_device_manager_create(server.display) == NULL ||
-#endif
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
