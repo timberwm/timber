@@ -19,7 +19,6 @@ build:
   parallel:
     matrix:
       - CC: [ "clang", "gcc" ]
-        # TODO: convert from Ubuntu "rolling" to "latest" to test LTS releases.
         IMAGE: [ "alpine:latest", "archlinux:latest", "debian:stable", "ubuntu:rolling" ]
 
 clang-analyzer:
