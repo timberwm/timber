@@ -144,7 +144,8 @@ struct tmbr_screen {
 	struct tmbr_server *server;
 
 	struct wlr_output *output;
-	struct wlr_output_damage *damage;
+	struct wlr_scene_output *scene_output;
+	struct wlr_scene_tree *scene_tree;
 	struct wl_list desktops;
 	struct wl_list layer_clients;
 	struct tmbr_desktop *focus;
@@ -343,7 +344,7 @@ static void tmbr_surface_damage_surface(struct wlr_surface *surface, int sx, int
 		wlr_surface_get_effective_damage(surface, &damage);
 		pixman_region32_translate(&damage, data->x + sx, data->y + sy);
 		wlr_region_scale(&damage, &damage, data->screen->output->scale);
-		wlr_output_damage_add(data->screen->damage, &damage);
+		wlr_output_damage_add(data->screen->scene_output->damage, &damage);
 		pixman_region32_fini(&damage);
 	}
 
@@ -381,7 +382,7 @@ static void tmbr_xdg_popup_damage_whole(struct tmbr_xdg_popup *p)
 	    surface_x = p->surface->current.geometry.x, surface_y = p->surface->current.geometry.y;
 
 	if (c->desktop && c->desktop == c->desktop->screen->focus)
-		wlr_output_damage_add_box(c->desktop->screen->damage, &tmbr_box_scaled(
+		wlr_output_damage_add_box(c->desktop->screen->scene_output->damage, &tmbr_box_scaled(
 			c->x + c->border + popup_x - surface_x, c->y + c->border + popup_y - surface_y,
 			popup_w + popup_x, popup_h + popup_y, c->desktop->screen->output->scale));
 }
@@ -420,7 +421,7 @@ static void tmbr_xdg_client_damage_whole(struct tmbr_xdg_client *c)
 {
 	if (c->desktop && c->desktop == c->desktop->screen->focus) {
 		struct wlr_box box = tmbr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
-		wlr_output_damage_add_box(c->desktop->screen->damage, &box);
+		wlr_output_damage_add_box(c->desktop->screen->scene_output->damage, &box);
 	}
 }
 
@@ -495,7 +496,7 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 {
-	struct wlr_output_damage *damage = client->desktop->screen->damage;
+	struct wlr_output_damage *damage = client->desktop->screen->scene_output->damage;
 	float scale = client->desktop->screen->output->scale;
 
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
@@ -762,7 +763,7 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
 	if (screen->focus != desktop)
-		wlr_output_damage_add_whole(screen->damage);
+		wlr_output_damage_add_whole(screen->scene_output->damage);
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 	screen->focus = desktop;
 	screen->server->focussed_screen = screen;
@@ -844,6 +845,8 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		wl_display_terminate(screen->server->display);
 	}
 
+	wlr_scene_node_destroy(&screen->scene_tree->node);
+	wlr_scene_output_destroy(screen->scene_output);
 	tmbr_server_update_output_layout(screen->server);
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
 	wl_list_remove(&screen->link);
@@ -878,7 +881,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		if (tree->client->pending_serial)
 			goto out;
 
-	if (!wlr_output_damage_attach_render(screen->damage, &needs_frame, &damage))
+	if (!wlr_output_damage_attach_render(screen->scene_output->damage, &needs_frame, &damage))
 		goto out;
 	if (needs_frame) {
 		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
@@ -888,6 +891,9 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		} else if (pixman_region32_not_empty(&damage)) {
 			struct pixman_box32 *rects;
 			int i, nrects;
+			double x, y;
+
+			wlr_output_layout_output_coords(screen->server->output_layout, screen->output, &x, &y);
 
 			for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
 				wlr_renderer_scissor(renderer, &tmbr_box_from_pixman(rects[i]));
@@ -899,6 +905,9 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 			} else {
 				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
 				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
+
+				wlr_scene_render_output(screen->server->scene, screen->output, x, y, &damage);
+
 				tmbr_tree_for_each(screen->focus->clients, tree)
 					tmbr_xdg_client_render(tree->client, &damage);
 				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
@@ -909,7 +918,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 		wlr_renderer_scissor(renderer, NULL);
 		wlr_output_render_software_cursors(screen->output, &damage);
 		wlr_renderer_end(renderer);
-		wlr_output_set_damage(screen->output, &screen->damage->current);
+		wlr_output_set_damage(screen->output, &screen->scene_output->damage->current);
 		wlr_output_commit(screen->output);
 	} else {
 		wlr_output_rollback(screen->output);
@@ -925,7 +934,7 @@ out:
 
 static void tmbr_layer_client_damage_whole(struct tmbr_layer_client *c)
 {
-	wlr_output_damage_add_box(c->screen->damage, &tmbr_box_scaled(c->x, c->y, c->w, c->h, c->screen->output->scale));
+	wlr_output_damage_add_box(c->screen->scene_output->damage, &tmbr_box_scaled(c->x, c->y, c->w, c->h, c->screen->output->scale));
 }
 
 static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
@@ -1060,7 +1069,8 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	struct tmbr_screen *screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
 	screen->output = output;
 	screen->server = server;
-	screen->damage = wlr_output_damage_create(output);
+	screen->scene_output = wlr_scene_output_create(server->scene, output);
+	screen->scene_tree = wlr_scene_tree_create(&server->scene->node);
 	wl_list_init(&screen->desktops);
 	wl_list_init(&screen->layer_clients);
 	tmbr_screen_recalculate(screen);
@@ -1069,7 +1079,7 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
 	tmbr_register(&output->events.commit, &screen->commit, tmbr_screen_on_commit);
-	tmbr_register(&screen->damage->events.frame, &screen->frame, tmbr_screen_on_frame);
+	tmbr_register(&screen->scene_output->damage->events.frame, &screen->frame, tmbr_screen_on_frame);
 
 	return screen;
 }
@@ -1506,7 +1516,7 @@ static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener 
 	wlr_output_enable(event->output, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 	wlr_output_commit(event->output);
 	if (event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON)
-		wlr_output_damage_add_whole(((struct tmbr_screen *) event->output->data)->damage);
+		wlr_output_damage_add_whole(((struct tmbr_screen *) event->output->data)->scene_output->damage);
 }
 
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
