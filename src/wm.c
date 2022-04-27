@@ -281,11 +281,6 @@ static void tmbr_unregister(struct wl_listener *listener, ...)
 	va_end(ap);
 }
 
-static void tmbr_surface_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, void *payload)
-{
-	wlr_surface_send_frame_done(surface, payload);
-}
-
 static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_surface *subsurface, struct tmbr_server *server, double x, double y)
 {
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
@@ -728,56 +723,17 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
-	struct wlr_renderer *renderer = screen->server->renderer;
-	struct tmbr_layer_client *layer_client;
-	struct pixman_region32 damage;
 	struct timespec time;
-	bool needs_frame;
-
-	clock_gettime(CLOCK_MONOTONIC, &time);
-	pixman_region32_init(&damage);
 
 	tmbr_tree_for_each(screen->focus->clients, tree)
 		if (tree->client->pending_serial)
 			goto out;
 
-	if (!wlr_output_damage_attach_render(screen->scene_output->damage, &needs_frame, &damage))
-		goto out;
-	if (needs_frame) {
-		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
-
-		if (!screen->focus->focus && wl_list_empty(&screen->layer_clients)) {
-			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
-		} else if (pixman_region32_not_empty(&damage)) {
-			struct pixman_box32 *rects;
-			int i, nrects;
-			double x, y;
-
-			wlr_output_layout_output_coords(screen->server->output_layout, screen->output, &x, &y);
-
-			for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
-				wlr_renderer_scissor(renderer, &tmbr_box_from_pixman(rects[i]));
-				wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
-			}
-
-			wlr_scene_render_output(screen->server->scene, screen->output, x, y, &damage);
-		}
-
-		wlr_renderer_scissor(renderer, NULL);
-		wlr_output_render_software_cursors(screen->output, &damage);
-		wlr_renderer_end(renderer);
-		wlr_output_set_damage(screen->output, &screen->scene_output->damage->current);
-		wlr_output_commit(screen->output);
-	} else {
-		wlr_output_rollback(screen->output);
-	}
+	wlr_scene_output_commit(screen->scene_output);
 
 out:
-	tmbr_tree_for_each(screen->focus->clients, tree)
-		wlr_xdg_surface_for_each_surface(tree->client->surface, tmbr_surface_send_frame_done, &time);
-	wl_list_for_each(layer_client, &screen->layer_clients, link)
-		wlr_layer_surface_v1_for_each_surface(layer_client->surface, tmbr_surface_send_frame_done, &time);
-	pixman_region32_fini(&damage);
+	clock_gettime(CLOCK_MONOTONIC, &time);
+	wlr_scene_output_send_frame_done(screen->scene_output, &time);
 }
 
 static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
@@ -937,7 +893,7 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
 	tmbr_register(&output->events.commit, &screen->commit, tmbr_screen_on_commit);
-	tmbr_register(&screen->scene_output->damage->events.frame, &screen->frame, tmbr_screen_on_frame);
+	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
 
 	return screen;
 }
