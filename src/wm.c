@@ -23,9 +23,7 @@
 
 #include <wlr/version.h>
 #include <wlr/backend.h>
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
-# include <wlr/render/allocator.h>
-#endif
+#include <wlr/render/allocator.h>
 #include <wlr/render/gles2.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
@@ -170,9 +168,7 @@ struct tmbr_layer_client {
 struct tmbr_server {
 	struct wl_display *display;
 	struct wlr_renderer *renderer;
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
 	struct wlr_allocator *allocator;
-#endif
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
 	struct wlr_idle *idle;
@@ -380,11 +376,7 @@ static void tmbr_xdg_popup_damage_whole(struct tmbr_xdg_popup *p)
 	struct tmbr_xdg_client *c = p->client;
 	int popup_x = p->surface->popup->geometry.x, popup_y = p->surface->popup->geometry.y,
 	    popup_w = p->surface->popup->geometry.width, popup_h = p->surface->popup->geometry.height,
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
 	    surface_x = p->surface->current.geometry.x, surface_y = p->surface->current.geometry.y;
-#else
-	    surface_x = p->surface->geometry.x, surface_y = p->surface->geometry.y;
-#endif
 
 	if (c->desktop && c->desktop == c->desktop->screen->focus)
 		wlr_output_damage_add_box(c->desktop->screen->damage, &tmbr_box_scaled(
@@ -527,17 +519,12 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, commit);
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
-	uint32_t serial = client->surface->current.configure_serial;
-#else
-	uint32_t serial = client->surface->configure_serial;
-#endif
 
 	if (client->desktop && client->desktop == client->desktop->screen->focus) {
 		struct tmbr_surface_damage_data damage_data = { client->desktop->screen, client->x + client->border, client->y + client->border };
 		wlr_xdg_surface_for_each_surface(client->surface, tmbr_surface_damage_surface, &damage_data);
 	}
-	if (client->pending_serial && client->pending_serial == serial) {
+	if (client->pending_serial && client->pending_serial == client->surface->current.configure_serial) {
 		tmbr_xdg_client_handle_configure_timer(client);
 		wl_event_source_timer_update(client->configure_timer, 0);
 	}
@@ -839,12 +826,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	struct tmbr_layer_client *c, *ctmp;
 
 	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link) {
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
 		wlr_layer_surface_v1_destroy(c->surface);
-#else
-		wlr_layer_surface_v1_close(c->surface);
-		c->screen = NULL;
-#endif
 	}
 	if (sibling) {
 		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
@@ -1014,11 +996,7 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 			}
 
 			if (box.width < 0 || box.height < 0) {
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
 				wlr_layer_surface_v1_destroy(c->surface);
-#else
-				wlr_layer_surface_v1_close(c->surface);
-#endif
 				continue;
 			}
 
@@ -1199,8 +1177,7 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 	struct tmbr_layer_client *client = wl_container_of(listener, client, destroy);
 	wl_list_remove(&client->link);
 	tmbr_unregister(&client->map, &client->unmap, &client->destroy, &client->commit, NULL);
-	if (client->screen)
-		tmbr_screen_recalculate(client->screen);
+	tmbr_screen_recalculate(client->screen);
 	free(client);
 }
 
@@ -1208,11 +1185,7 @@ static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSE
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, commit);
 	struct wlr_layer_surface_v1_state *c = &client->surface->current,
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
 					  *p = &client->surface->pending;
-#else
-					  *p = &client->surface->client_pending;
-#endif
 	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
 	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
 		tmbr_screen_recalculate(client->screen);
@@ -1249,10 +1222,7 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	struct wlr_output_mode *mode;
 	struct tmbr_screen *screen;
 
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
 	wlr_output_init_render(output, server->allocator, server->renderer);
-#endif
-
 	wlr_output_enable(output, true);
 	if ((mode = wlr_output_preferred_mode(output)) != NULL)
 		wlr_output_set_mode(output, mode);
@@ -1323,11 +1293,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_layer_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_layer_client_on_commit);
 
-#if WLR_VERSION_MAJOR > 0 || WLR_VERSION_MINOR > 14
 	surface->current = surface->pending;
-#else
-	surface->current = surface->client_pending;
-#endif
 	tmbr_screen_recalculate(client->screen);
 	surface->current = current_state;
 }
@@ -1835,15 +1801,10 @@ int tmbr_wm(void)
 		die("Could not create display");
 	if ((server.backend = wlr_backend_autocreate(server.display)) == NULL)
 		die("Could not create backend");
-#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR > 14
 	if ((server.renderer = wlr_renderer_autocreate(server.backend)) == NULL)
 		die("Could not create renderer");
 	if ((server.allocator = wlr_allocator_autocreate(server.backend, server.renderer)) == NULL)
 		die("Could not create allocator");
-#else
-	if ((server.renderer = wlr_backend_get_renderer(server.backend)) == NULL)
-		die("Could not create renderer");
-#endif
 	wlr_renderer_init_wl_display(server.renderer, server.display);
 
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
