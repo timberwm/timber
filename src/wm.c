@@ -230,6 +230,27 @@ static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server
 	return server->input_inhibit->active_client ? NULL : server->focussed_screen ? server->focussed_screen->focus->focus : NULL;
 }
 
+static struct tmbr_screen *tmbr_server_find_screen_at(struct tmbr_server *server, double x, double y)
+{
+	struct wlr_output *output = wlr_output_layout_output_at(server->output_layout, x, y);
+	return output ? output->data : NULL;
+}
+
+static struct wlr_surface *tmbr_server_find_surface_at(struct tmbr_server *server, double x, double y, double *sx, double *sy)
+{
+	struct wlr_scene_node *node;
+	struct tmbr_screen *screen;
+
+	if ((screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
+		return NULL;
+	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
+
+	node = wlr_scene_node_at(&screen->scene_tree->node, x, y, sx, sy);
+	if (!node || node->type != WLR_SCENE_NODE_SURFACE)
+		return NULL;
+	return ((struct wlr_scene_surface *) wl_container_of(node, (struct wlr_scene_surface *)NULL, node))->surface;
+}
+
 static void tmbr_server_update_output_layout(struct tmbr_server *server)
 {
 	struct wlr_output_configuration_v1 *cfg = wlr_output_configuration_v1_create();
@@ -247,12 +268,6 @@ static void tmbr_server_update_output_layout(struct tmbr_server *server)
 	}
 
 	wlr_output_manager_v1_set_configuration(server->output_manager, cfg);
-}
-
-static struct tmbr_screen *tmbr_server_find_screen_at(struct tmbr_server *server, double x, double y)
-{
-	struct wlr_output *output = wlr_output_layout_output_at(server->output_layout, x, y);
-	return output ? output->data : NULL;
 }
 
 static struct wl_list *tmbr_list_get(struct wl_list *head, struct wl_list *link, enum tmbr_ctrl_selection which)
@@ -1183,24 +1198,6 @@ static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *p
 	tmbr_cursor_handle_motion(server);
 }
 
-static struct wlr_surface *tmbr_server_surface_at(struct tmbr_server *server, double x, double y, double *sx, double *sy)
-{
-	struct tmbr_layer_client *layer_client = NULL;
-	struct tmbr_xdg_client *xdg_client = NULL;
-	struct tmbr_screen *screen;
-
-	if ((screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
-		return NULL;
-	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
-
-	if ((layer_client = tmbr_screen_find_layer_client_at(screen, x, y)) != NULL)
-		return wlr_layer_surface_v1_surface_at(layer_client->surface, x - layer_client->x, y - layer_client->y, sx, sy);
-	else if ((xdg_client = tmbr_screen_find_xdg_client_at(screen, x, y)) != NULL)
-		return wlr_xdg_surface_surface_at(xdg_client->surface, x - xdg_client->x, y - xdg_client->y, sx, sy);
-
-	return NULL;
-}
-
 static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_down);
@@ -1213,7 +1210,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		return;
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
-	if ((surface = tmbr_server_surface_at(server, lx, ly, &sx, &sy)) && wlr_surface_accepts_touch(server->seat, surface)) {
+	if ((surface = tmbr_server_find_surface_at(server, lx, ly, &sx, &sy)) && wlr_surface_accepts_touch(server->seat, surface)) {
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	} else if (!server->touch_emulation_id) {
 		server->touch_emulation_id = event->touch_id;
@@ -1253,7 +1250,7 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 	if (server->touch_emulation_id == event->touch_id) {
 		wlr_cursor_move(server->cursor, event->device, lx - server->cursor->x, ly - server->cursor->y);
 		tmbr_cursor_handle_motion(server);
-	} else if (!server->touch_emulation_id && tmbr_server_surface_at(server, lx, ly, &sx, &sy)) {
+	} else if (!server->touch_emulation_id && tmbr_server_find_surface_at(server, lx, ly, &sx, &sy)) {
 		wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, sx, sy);
 	}
 }
