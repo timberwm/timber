@@ -18,7 +18,7 @@ build:
   parallel:
     matrix:
       - CC: [ "clang", "gcc" ]
-        IMAGE: [ "alpine:latest", "archlinux:latest", "ubuntu:rolling" ]
+        IMAGE: [ "alpine:edge", "archlinux:latest", "ubuntu:rolling" ]
 
 clang-analyzer:
   extends: .install-dependencies
