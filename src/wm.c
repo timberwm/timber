@@ -40,6 +40,7 @@
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_output_power_management_v1.h>
+#include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_scene.h>
@@ -166,6 +167,7 @@ struct tmbr_server {
 	struct wlr_output_layout *output_layout;
 	struct wlr_output_manager_v1 *output_manager;
 	struct wlr_output_power_manager_v1 *output_power_manager;
+	struct wlr_presentation *presentation;
 	struct wlr_scene *scene;
 	struct wlr_scene_tree *scene_unowned_clients;
 	struct wlr_seat *seat;
@@ -1650,6 +1652,7 @@ int tmbr_wm(void)
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
 	    (server.output_power_manager = wlr_output_power_manager_v1_create(server.display)) == NULL ||
+	    (server.presentation = wlr_presentation_create(server.display, server.backend)) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
@@ -1658,6 +1661,7 @@ int tmbr_wm(void)
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
 	wlr_scene_attach_output_layout(server.scene, server.output_layout);
+	wlr_scene_set_presentation(server.scene, server.presentation);
 	wlr_scene_node_set_enabled(&server.scene_unowned_clients->node, false);
 	wlr_xcursor_manager_load(server.xcursor, 1);
 
