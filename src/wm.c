@@ -37,7 +37,6 @@
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
-#include <wlr/types/wlr_output_damage.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_output_power_management_v1.h>
@@ -622,11 +621,8 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 {
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
-	if (screen->focus != desktop) {
-		if (screen->focus)
-			wlr_scene_node_set_enabled(&screen->focus->scene_tree->node, false);
-		wlr_output_damage_add_whole(screen->scene_output->damage);
-	}
+	if (screen->focus && screen->focus != desktop)
+		wlr_scene_node_set_enabled(&screen->focus->scene_tree->node, false);
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 	wlr_scene_node_set_enabled(&desktop->scene_tree->node, true);
 	screen->focus = desktop;
