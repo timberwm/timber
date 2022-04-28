@@ -135,6 +135,7 @@ struct tmbr_desktop {
 	struct tmbr_screen *screen;
 	struct tmbr_tree *clients;
 	struct tmbr_xdg_client *focus;
+	struct wlr_scene_tree *scene_tree;
 	bool fullscreen;
 };
 
@@ -659,13 +660,16 @@ static void tmbr_tree_remove(struct tmbr_tree **tree, struct tmbr_tree *node)
 	free(node);
 }
 
-static struct tmbr_desktop *tmbr_desktop_new(void)
+static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_screen *parent)
 {
-	return tmbr_alloc(sizeof(struct tmbr_desktop), "Could not allocate desktop");
+	struct tmbr_desktop *desktop = tmbr_alloc(sizeof(struct tmbr_desktop), "Could not allocate desktop");
+	desktop->scene_tree = wlr_scene_tree_create(&parent->scene_tree->node);
+	return desktop;
 }
 
 static void tmbr_desktop_free(struct tmbr_desktop *desktop)
 {
+	wlr_scene_node_destroy(&desktop->scene_tree->node);
 	free(desktop);
 }
 
@@ -762,9 +766,13 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 {
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
-	if (screen->focus != desktop)
+	if (screen->focus != desktop) {
+		if (screen->focus)
+			wlr_scene_node_set_enabled(&screen->focus->scene_tree->node, false);
 		wlr_output_damage_add_whole(screen->scene_output->damage);
+	}
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
+	wlr_scene_node_set_enabled(&desktop->scene_tree->node, true);
 	screen->focus = desktop;
 	screen->server->focussed_screen = screen;
 }
@@ -786,6 +794,7 @@ static void tmbr_screen_remove_desktop(struct tmbr_screen *screen, struct tmbr_d
 static void tmbr_screen_add_desktop(struct tmbr_screen *screen, struct tmbr_desktop *desktop)
 {
 	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
+	wlr_scene_node_reparent(&desktop->scene_tree->node, &screen->scene_tree->node);
 	desktop->screen = screen;
 	tmbr_desktop_recalculate(desktop);
 	tmbr_screen_focus_desktop(screen, desktop);
@@ -1075,7 +1084,7 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	wl_list_init(&screen->layer_clients);
 	tmbr_screen_recalculate(screen);
 
-	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
+	tmbr_screen_add_desktop(screen, tmbr_desktop_new(screen));
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
 	tmbr_register(&output->events.commit, &screen->commit, tmbr_screen_on_commit);
@@ -1655,7 +1664,7 @@ static void tmbr_cmd_desktop_kill(TMBR_UNUSED struct wl_client *client, struct w
 static void tmbr_cmd_desktop_new(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	tmbr_screen_add_desktop(server->focussed_screen, tmbr_desktop_new());
+	tmbr_screen_add_desktop(server->focussed_screen, tmbr_desktop_new(server->focussed_screen));
 }
 
 static void tmbr_cmd_desktop_swap(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
