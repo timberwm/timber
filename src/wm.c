@@ -37,12 +37,12 @@
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
-#include <wlr/types/wlr_output_damage.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
+#include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_touch.h>
 #include <wlr/types/wlr_xcursor_manager.h>
@@ -83,23 +83,14 @@ struct tmbr_keyboard {
 	struct wl_listener modifiers;
 };
 
-struct tmbr_surface_render_data {
-	struct wlr_renderer *renderer;
-	struct pixman_region32 *damage;
-	struct wlr_output *output;
-	struct wlr_box box;
-};
-
-struct tmbr_surface_damage_data {
-	struct tmbr_screen *screen;
-	int x, y;
-};
-
 struct tmbr_xdg_client {
 	struct tmbr_server *server;
 	struct tmbr_desktop *desktop;
 	struct tmbr_tree *tree;
 	struct wlr_xdg_surface *surface;
+	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_node *scene_node;
+	struct wlr_scene_rect *scene_borders;
 	int h, w, x, y, border;
 	uint32_t pending_serial;
 
@@ -109,15 +100,6 @@ struct tmbr_xdg_client {
 	struct wl_listener destroy;
 	struct wl_listener commit;
 	struct wl_listener request_fullscreen;
-	struct wl_listener new_popup;
-};
-
-struct tmbr_xdg_popup {
-	struct wlr_xdg_surface *surface;
-	struct tmbr_xdg_client *client;
-	struct wl_listener map;
-	struct wl_listener unmap;
-	struct wl_listener destroy;
 };
 
 struct tmbr_tree {
@@ -134,6 +116,9 @@ struct tmbr_desktop {
 	struct tmbr_screen *screen;
 	struct tmbr_tree *clients;
 	struct tmbr_xdg_client *focus;
+	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_tree *scene_clients;
+	struct wlr_scene_tree *scene_fullscreen;
 	bool fullscreen;
 };
 
@@ -143,7 +128,9 @@ struct tmbr_screen {
 	struct tmbr_server *server;
 
 	struct wlr_output *output;
-	struct wlr_output_damage *damage;
+	struct wlr_scene_output *scene_output;
+	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_tree *scene_layers[5];
 	struct wl_list desktops;
 	struct wl_list layer_clients;
 	struct tmbr_desktop *focus;
@@ -157,6 +144,7 @@ struct tmbr_screen {
 struct tmbr_layer_client {
 	struct wlr_layer_surface_v1 *surface;
 	struct tmbr_screen *screen;
+	struct wlr_scene_node *scene_node;
 	int h, w, x, y;
 	struct wl_list link;
 	struct wl_listener map;
@@ -178,6 +166,8 @@ struct tmbr_server {
 	struct wlr_output_layout *output_layout;
 	struct wlr_output_manager_v1 *output_manager;
 	struct wlr_output_power_manager_v1 *output_power_manager;
+	struct wlr_scene *scene;
+	struct wlr_scene_tree *scene_unowned_clients;
 	struct wlr_seat *seat;
 	struct wlr_server_decoration_manager *decoration;
 	struct wlr_xcursor_manager *xcursor;
@@ -240,6 +230,27 @@ static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server
 	return server->input_inhibit->active_client ? NULL : server->focussed_screen ? server->focussed_screen->focus->focus : NULL;
 }
 
+static struct tmbr_screen *tmbr_server_find_screen_at(struct tmbr_server *server, double x, double y)
+{
+	struct wlr_output *output = wlr_output_layout_output_at(server->output_layout, x, y);
+	return output ? output->data : NULL;
+}
+
+static struct wlr_surface *tmbr_server_find_surface_at(struct tmbr_server *server, double x, double y, double *sx, double *sy)
+{
+	struct wlr_scene_node *node;
+	struct tmbr_screen *screen;
+
+	if ((screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
+		return NULL;
+	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
+
+	node = wlr_scene_node_at(&screen->scene_tree->node, x, y, sx, sy);
+	if (!node || node->type != WLR_SCENE_NODE_SURFACE)
+		return NULL;
+	return ((struct wlr_scene_surface *) wl_container_of(node, (struct wlr_scene_surface *)NULL, node))->surface;
+}
+
 static void tmbr_server_update_output_layout(struct tmbr_server *server)
 {
 	struct wlr_output_configuration_v1 *cfg = wlr_output_configuration_v1_create();
@@ -257,12 +268,6 @@ static void tmbr_server_update_output_layout(struct tmbr_server *server)
 	}
 
 	wlr_output_manager_v1_set_configuration(server->output_manager, cfg);
-}
-
-static struct tmbr_screen *tmbr_server_find_screen_at(struct tmbr_server *server, double x, double y)
-{
-	struct wlr_output *output = wlr_output_layout_output_at(server->output_layout, x, y);
-	return output ? output->data : NULL;
 }
 
 static struct wl_list *tmbr_list_get(struct wl_list *head, struct wl_list *link, enum tmbr_ctrl_selection which)
@@ -290,65 +295,6 @@ static void tmbr_unregister(struct wl_listener *listener, ...)
 	va_end(ap);
 }
 
-static void tmbr_surface_send_frame_done(struct wlr_surface *surface, TMBR_UNUSED int sx, TMBR_UNUSED int sy, void *payload)
-{
-	wlr_surface_send_frame_done(surface, payload);
-}
-
-static void tmbr_surface_render(struct wlr_surface *surface, int sx, int sy, void *payload)
-{
-	struct tmbr_surface_render_data *data = payload;
-	struct wlr_box bounds = data->box, extents = {
-		.x = bounds.x + sx * data->output->scale, .y = bounds.y + sy * data->output->scale,
-		.width = surface->current.width * data->output->scale, .height = surface->current.height * data->output->scale,
-	};
-	struct wlr_texture *texture;
-	struct pixman_region32 damage;
-	struct pixman_box32 *rects;
-	float matrix[9];
-	int i, nrects;
-
-	pixman_region32_init(&damage);
-	pixman_region32_union_rect(&damage, &damage, extents.x, extents.y, extents.width, extents.height);
-	pixman_region32_intersect_rect(&damage, &damage, bounds.x, bounds.y, bounds.width, bounds.height);
-	pixman_region32_intersect(&damage, &damage, data->damage);
-	if (!pixman_region32_not_empty(&damage) || (texture = wlr_surface_get_texture(surface)) == NULL)
-		goto out;
-	if (wlr_texture_is_gles2(texture)) {
-		struct wlr_gles2_texture_attribs attribs;
-		wlr_gles2_texture_get_attribs(texture, &attribs);
-		glBindTexture(attribs.target, attribs.tex);
-		glTexParameteri(attribs.target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	}
-	wlr_matrix_project_box(matrix, &extents, wlr_output_transform_invert(surface->current.transform), 0, data->output->transform_matrix);
-
-	for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
-		wlr_renderer_scissor(data->renderer, &tmbr_box_from_pixman(rects[i]));
-		wlr_render_texture_with_matrix(data->renderer, texture, matrix, 1);
-	}
-
-out:
-	pixman_region32_fini(&damage);
-}
-
-static void tmbr_surface_damage_surface(struct wlr_surface *surface, int sx, int sy, void *payload)
-{
-	struct tmbr_surface_damage_data *data = payload;
-
-	if (pixman_region32_not_empty(&surface->buffer_damage)) {
-		struct pixman_region32 damage;
-		pixman_region32_init(&damage);
-		wlr_surface_get_effective_damage(surface, &damage);
-		pixman_region32_translate(&damage, data->x + sx, data->y + sy);
-		wlr_region_scale(&damage, &damage, data->screen->output->scale);
-		wlr_output_damage_add(data->screen->damage, &damage);
-		pixman_region32_fini(&damage);
-	}
-
-	if (!wl_list_empty(&surface->current.frame_callback_list))
-		wlr_output_schedule_frame(data->screen->output);
-}
-
 static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_surface *subsurface, struct tmbr_server *server, double x, double y)
 {
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
@@ -371,88 +317,9 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 	}
 }
 
-static void tmbr_xdg_popup_damage_whole(struct tmbr_xdg_popup *p)
-{
-	struct tmbr_xdg_client *c = p->client;
-	int popup_x = p->surface->popup->geometry.x, popup_y = p->surface->popup->geometry.y,
-	    popup_w = p->surface->popup->geometry.width, popup_h = p->surface->popup->geometry.height,
-	    surface_x = p->surface->current.geometry.x, surface_y = p->surface->current.geometry.y;
-
-	if (c->desktop && c->desktop == c->desktop->screen->focus)
-		wlr_output_damage_add_box(c->desktop->screen->damage, &tmbr_box_scaled(
-			c->x + c->border + popup_x - surface_x, c->y + c->border + popup_y - surface_y,
-			popup_w + popup_x, popup_h + popup_y, c->desktop->screen->output->scale));
-}
-
-static void tmbr_xdg_popup_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, map);
-	tmbr_xdg_popup_damage_whole(popup);
-}
-
-static void tmbr_xdg_popup_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, unmap);
-	tmbr_xdg_popup_damage_whole(popup);
-}
-
-static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, destroy);
-	tmbr_unregister(&popup->map, &popup->unmap, NULL);
-	free(popup);
-}
-
-static void tmbr_xdg_client_on_new_popup(struct wl_listener *listener, void *payload)
-{
-	struct tmbr_xdg_client *client = wl_container_of(listener, client, new_popup);
-	struct tmbr_xdg_popup *popup = tmbr_alloc(sizeof(*popup), "could not allocate XDG popup");
-	popup->surface = ((struct wlr_xdg_popup *)payload)->base;
-	popup->client = client;
-	tmbr_register(&popup->surface->events.map, &popup->map, tmbr_xdg_popup_on_map);
-	tmbr_register(&popup->surface->events.unmap, &popup->unmap, tmbr_xdg_popup_on_unmap);
-	tmbr_register(&popup->surface->events.destroy, &popup->destroy, tmbr_xdg_popup_on_destroy);
-}
-
-static void tmbr_xdg_client_damage_whole(struct tmbr_xdg_client *c)
-{
-	if (c->desktop && c->desktop == c->desktop->screen->focus) {
-		struct wlr_box box = tmbr_box_scaled(c->x, c->y, c->w, c->h, c->desktop->screen->output->scale);
-		wlr_output_damage_add_box(c->desktop->screen->damage, &box);
-	}
-}
-
 static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
 {
 	wlr_xdg_toplevel_send_close(client->surface);
-}
-
-static void tmbr_xdg_client_render(struct tmbr_xdg_client *c, struct pixman_region32 *output_damage)
-{
-	struct wlr_output *output = c->desktop->screen->output;
-	struct tmbr_surface_render_data payload = {
-		c->server->renderer, output_damage, output, tmbr_box_scaled(c->x + c->border, c->y + c->border, c->w - 2 * c->border, c->h - 2 * c->border, output->scale),
-	};
-	struct pixman_box32 extents = tmbr_box_to_pixman(tmbr_box_scaled(c->x, c->y, c->w, c->h, output->scale));
-
-	if (c->border && pixman_region32_contains_rectangle(output_damage, &extents)) {
-		const float *color = (c == tmbr_server_find_focus(c->server)) ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE;
-		struct pixman_region32 borders;
-		struct pixman_box32 *rects;
-		int i, nrects;
-
-		pixman_region32_init_with_extents(&borders, &tmbr_box_to_pixman(payload.box));
-		pixman_region32_inverse(&borders, &borders, &extents);
-		pixman_region32_intersect(&borders, &borders, output_damage);
-
-		for (i = 0, rects = pixman_region32_rectangles(&borders, &nrects); i < nrects; i++) {
-			wlr_renderer_scissor(c->server->renderer, &tmbr_box_from_pixman(rects[i]));
-			wlr_renderer_clear(c->server->renderer, color);
-		}
-		pixman_region32_fini(&borders);
-	}
-	if (pixman_region32_contains_rectangle(output_damage, &tmbr_box_to_pixman(payload.box)))
-		wlr_xdg_surface_for_each_surface(c->surface, tmbr_surface_render, &payload);
 }
 
 static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
@@ -483,35 +350,27 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 		wl_event_source_timer_update(client->configure_timer, 50);
 	}
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
-		tmbr_xdg_client_damage_whole(client);
+		wlr_scene_node_set_position(client->scene_node, x + border, y + border);
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
-		tmbr_xdg_client_damage_whole(client);
 		if (tmbr_server_find_focus(client->server) == client)
 			tmbr_xdg_client_notify_focus(client);
+		wlr_scene_rect_set_size(client->scene_borders, w, h);
+		wlr_scene_node_set_position(&client->scene_borders->node, x, y);
 	}
 }
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 {
-	struct wlr_output_damage *damage = client->desktop->screen->damage;
-	float scale = client->desktop->screen->output->scale;
-
 	wlr_xdg_toplevel_set_activated(client->surface, focus);
+	wlr_scene_rect_set_color(client->scene_borders, focus ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE);
 	if (focus)
 		tmbr_xdg_client_notify_focus(client);
-	if ((focus && tmbr_server_find_focus(client->server) != client) ||
-	    (!focus && tmbr_server_find_focus(client->server) == client)) {
-		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x, client->y, client->w, client->border, scale));
-		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x, client->y, client->border, client->h, scale));
-		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x + client->w - client->border, client->y, client->border, client->h, scale));
-		wlr_output_damage_add_box(damage, &tmbr_box_scaled(client->x, client->y + client->h - client->border, client->w, client->border, scale));
-	}
 }
 
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, destroy);
-	tmbr_unregister(&client->destroy, &client->commit, &client->map, &client->unmap, &client->new_popup, &client->request_fullscreen, NULL);
+	tmbr_unregister(&client->destroy, &client->commit, &client->map, &client->unmap, &client->request_fullscreen, NULL);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
 }
@@ -520,10 +379,6 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, commit);
 
-	if (client->desktop && client->desktop == client->desktop->screen->focus) {
-		struct tmbr_surface_damage_data damage_data = { client->desktop->screen, client->x + client->border, client->y + client->border };
-		wlr_xdg_surface_for_each_surface(client->surface, tmbr_surface_damage_surface, &damage_data);
-	}
 	if (client->pending_serial && client->pending_serial == client->surface->current.configure_serial) {
 		tmbr_xdg_client_handle_configure_timer(client);
 		wl_event_source_timer_update(client->configure_timer, 0);
@@ -533,11 +388,19 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, struct wlr_xdg_surface *surface)
 {
 	struct tmbr_xdg_client *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
+
 	client->server = server;
 	client->surface = surface;
 	client->configure_timer = wl_event_loop_add_timer(wl_display_get_event_loop(server->display), tmbr_xdg_client_handle_configure_timer, client);
+	client->scene_tree = wlr_scene_tree_create(&server->scene_unowned_clients->node);
+	client->scene_node = wlr_scene_xdg_surface_create(&client->scene_tree->node, surface);
+	client->scene_node->data = client;
+	client->scene_borders = wlr_scene_rect_create(&client->scene_tree->node, 0, 0, TMBR_COLOR_INACTIVE);
+	wlr_scene_node_place_below(&client->scene_borders->node, client->scene_node);
+
+	surface->data = client->scene_node;
+
 	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_xdg_client_on_destroy);
-	tmbr_register(&surface->events.new_popup, &client->new_popup, tmbr_xdg_client_on_new_popup);
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_xdg_client_on_commit);
 	return client;
 }
@@ -656,13 +519,21 @@ static void tmbr_tree_remove(struct tmbr_tree **tree, struct tmbr_tree *node)
 	free(node);
 }
 
-static struct tmbr_desktop *tmbr_desktop_new(void)
+static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_screen *parent)
 {
-	return tmbr_alloc(sizeof(struct tmbr_desktop), "Could not allocate desktop");
+	struct tmbr_desktop *desktop = tmbr_alloc(sizeof(struct tmbr_desktop), "Could not allocate desktop");
+	desktop->scene_tree = wlr_scene_tree_create(&parent->scene_layers[2]->node);
+	desktop->scene_clients = wlr_scene_tree_create(&desktop->scene_tree->node);
+	desktop->scene_fullscreen = wlr_scene_tree_create(&desktop->scene_tree->node);
+	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, false);
+	return desktop;
 }
 
 static void tmbr_desktop_free(struct tmbr_desktop *desktop)
 {
+	wlr_scene_node_destroy(&desktop->scene_clients->node);
+	wlr_scene_node_destroy(&desktop->scene_fullscreen->node);
+	wlr_scene_node_destroy(&desktop->scene_tree->node);
 	free(desktop);
 }
 
@@ -689,8 +560,12 @@ static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fulls
 	if (desktop->fullscreen == fullscreen)
 		return;
 	desktop->fullscreen = fullscreen;
-	if (desktop->focus)
+	wlr_scene_node_set_enabled(&desktop->scene_clients->node, !fullscreen);
+	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, fullscreen);
+	if (desktop->focus) {
 		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
+		wlr_scene_node_reparent(&desktop->focus->scene_tree->node, fullscreen ? &desktop->scene_fullscreen->node : &desktop->scene_clients->node);
+	}
 	tmbr_desktop_recalculate(desktop);
 }
 
@@ -715,6 +590,7 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client)
 {
 	tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client);
+	wlr_scene_node_reparent(&client->scene_tree->node, &desktop->scene_clients->node);
 	client->desktop = desktop;
 	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
@@ -732,6 +608,7 @@ static void tmbr_desktop_remove_client(struct tmbr_desktop *desktop, struct tmbr
 		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, true);
 	}
 
+	wlr_scene_node_reparent(&client->scene_tree->node, &client->server->scene_unowned_clients->node);
 	tmbr_tree_remove(&desktop->clients, client->tree);
 	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
@@ -759,9 +636,10 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 {
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
-	if (screen->focus != desktop)
-		wlr_output_damage_add_whole(screen->damage);
+	if (screen->focus && screen->focus != desktop)
+		wlr_scene_node_set_enabled(&screen->focus->scene_tree->node, false);
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
+	wlr_scene_node_set_enabled(&desktop->scene_tree->node, true);
 	screen->focus = desktop;
 	screen->server->focussed_screen = screen;
 }
@@ -783,6 +661,7 @@ static void tmbr_screen_remove_desktop(struct tmbr_screen *screen, struct tmbr_d
 static void tmbr_screen_add_desktop(struct tmbr_screen *screen, struct tmbr_desktop *desktop)
 {
 	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
+	wlr_scene_node_reparent(&desktop->scene_tree->node, &screen->scene_layers[2]->node);
 	desktop->screen = screen;
 	tmbr_desktop_recalculate(desktop);
 	tmbr_screen_focus_desktop(screen, desktop);
@@ -842,88 +721,30 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		wl_display_terminate(screen->server->display);
 	}
 
+	wlr_scene_node_destroy(&screen->scene_tree->node);
+	for (unsigned i = 0; i < ARRAY_SIZE(screen->scene_layers); i++)
+		wlr_scene_node_destroy(&screen->scene_layers[i]->node);
+	wlr_scene_output_destroy(screen->scene_output);
 	tmbr_server_update_output_layout(screen->server);
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
 	wl_list_remove(&screen->link);
 	free(screen);
 }
 
-static void tmbr_screen_render_layer(struct tmbr_screen *screen, struct pixman_region32 *output_damage, enum zwlr_layer_shell_v1_layer layer)
-{
-		struct tmbr_layer_client *c;
-		wl_list_for_each(c, &screen->layer_clients, link) {
-			struct tmbr_surface_render_data data = {
-				c->screen->server->renderer, output_damage, screen->output, tmbr_box_scaled(c->x, c->y, c->w, c->h, screen->output->scale),
-			};
-			if (c->surface->current.layer == layer)
-				wlr_layer_surface_v1_for_each_surface(c->surface, tmbr_surface_render, &data);
-		}
-}
-
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
-	struct wlr_renderer *renderer = screen->server->renderer;
-	struct tmbr_layer_client *layer_client;
-	struct pixman_region32 damage;
 	struct timespec time;
-	bool needs_frame;
-
-	clock_gettime(CLOCK_MONOTONIC, &time);
-	pixman_region32_init(&damage);
 
 	tmbr_tree_for_each(screen->focus->clients, tree)
 		if (tree->client->pending_serial)
 			goto out;
 
-	if (!wlr_output_damage_attach_render(screen->damage, &needs_frame, &damage))
-		goto out;
-	if (needs_frame) {
-		wlr_renderer_begin(renderer, screen->output->width, screen->output->height);
-
-		if (!screen->focus->focus && wl_list_empty(&screen->layer_clients)) {
-			wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
-		} else if (pixman_region32_not_empty(&damage)) {
-			struct pixman_box32 *rects;
-			int i, nrects;
-
-			for (i = 0, rects = pixman_region32_rectangles(&damage, &nrects); i < nrects; i++) {
-				wlr_renderer_scissor(renderer, &tmbr_box_from_pixman(rects[i]));
-				wlr_renderer_clear(renderer, (float[4]){0.3, 0.3, 0.3, 1.0});
-			}
-
-			if (screen->focus->focus && screen->focus->fullscreen) {
-				tmbr_xdg_client_render(screen->focus->focus, &damage);
-			} else {
-				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
-				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
-				tmbr_tree_for_each(screen->focus->clients, tree)
-					tmbr_xdg_client_render(tree->client, &damage);
-				tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
-			}
-			tmbr_screen_render_layer(screen, &damage, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
-		}
-
-		wlr_renderer_scissor(renderer, NULL);
-		wlr_output_render_software_cursors(screen->output, &damage);
-		wlr_renderer_end(renderer);
-		wlr_output_set_damage(screen->output, &screen->damage->current);
-		wlr_output_commit(screen->output);
-	} else {
-		wlr_output_rollback(screen->output);
-	}
+	wlr_scene_output_commit(screen->scene_output);
 
 out:
-	tmbr_tree_for_each(screen->focus->clients, tree)
-		wlr_xdg_surface_for_each_surface(tree->client->surface, tmbr_surface_send_frame_done, &time);
-	wl_list_for_each(layer_client, &screen->layer_clients, link)
-		wlr_layer_surface_v1_for_each_surface(layer_client->surface, tmbr_surface_send_frame_done, &time);
-	pixman_region32_fini(&damage);
-}
-
-static void tmbr_layer_client_damage_whole(struct tmbr_layer_client *c)
-{
-	wlr_output_damage_add_box(c->screen->damage, &tmbr_box_scaled(c->x, c->y, c->w, c->h, c->screen->output->scale));
+	clock_gettime(CLOCK_MONOTONIC, &time);
+	wlr_scene_output_send_frame_done(screen->scene_output, &time);
 }
 
 static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
@@ -933,6 +754,7 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 
 		wl_list_for_each(c, &s->layer_clients, link) {
 			struct wlr_layer_surface_v1_state *state = &c->surface->current;
+			struct wlr_scene_tree *parent_scene;
 			struct wlr_box box = { .x = 0, .y = 0, .width = state->desired_width, .height = state->desired_height };
 			struct {
 				uint32_t singular_anchor, anchor_triplet;
@@ -1000,12 +822,21 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 				continue;
 			}
 
+			switch (state->layer) {
+			case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND: parent_scene = s->scene_layers[0]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM: parent_scene = s->scene_layers[1]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_TOP: parent_scene = s->scene_layers[3]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY: parent_scene = s->scene_layers[4]; break;
+			default:
+				die("Unexpected layer");
+			}
+			wlr_scene_node_reparent(c->scene_node, &parent_scene->node);
+
 			if (c->w != box.width || c->h != box.height)
 				wlr_layer_surface_v1_configure(c->surface, box.width, box.height);
 			if (c->w != box.width || c->h != box.height || c->x != box.x || c->y != box.y) {
-				tmbr_layer_client_damage_whole(c);
+				wlr_scene_node_set_position(c->scene_node, box.x, box.y);
 				c->w = box.width; c->h = box.height; c->x = box.x; c->y = box.y;
-				tmbr_layer_client_damage_whole(c);
 			}
 
 			for (size_t i = 0; exclusive && i < sizeof(edges) / sizeof(edges[0]); i++) {
@@ -1058,16 +889,22 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	struct tmbr_screen *screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
 	screen->output = output;
 	screen->server = server;
-	screen->damage = wlr_output_damage_create(output);
+	screen->scene_output = wlr_scene_output_create(server->scene, output);
+	screen->scene_tree = wlr_scene_tree_create(&server->scene->node);
+	for (unsigned i = 0; i < ARRAY_SIZE(screen->scene_layers); i++) {
+		screen->scene_layers[i] = wlr_scene_tree_create(&screen->scene_tree->node);
+		if (i > 0)
+			wlr_scene_node_place_above(&screen->scene_layers[i]->node, &screen->scene_layers[i - 1]->node);
+	}
 	wl_list_init(&screen->desktops);
 	wl_list_init(&screen->layer_clients);
 	tmbr_screen_recalculate(screen);
 
-	tmbr_screen_add_desktop(screen, tmbr_desktop_new());
+	tmbr_screen_add_desktop(screen, tmbr_desktop_new(screen));
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
 	tmbr_register(&output->events.commit, &screen->commit, tmbr_screen_on_commit);
-	tmbr_register(&screen->damage->events.frame, &screen->frame, tmbr_screen_on_frame);
+	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
 
 	return screen;
 }
@@ -1163,13 +1000,14 @@ static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED v
 	if ((client->surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY || client->surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP) &&
 	    client->surface->current.keyboard_interactive)
 		tmbr_layer_client_notify_focus(client);
+	wlr_scene_node_set_enabled(client->scene_node, true);
 }
 
 static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, unmap);
 	tmbr_screen_focus_desktop(client->screen, client->screen->focus);
-	tmbr_layer_client_damage_whole(client);
+	wlr_scene_node_set_enabled(client->scene_node, false);
 }
 
 static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1189,8 +1027,6 @@ static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSE
 	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
 	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
 		tmbr_screen_recalculate(client->screen);
-	wlr_layer_surface_v1_for_each_surface(client->surface, tmbr_surface_damage_surface,
-					      &(struct tmbr_surface_damage_data){ client->screen, client->x, client->y });
 }
 
 static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload)
@@ -1270,6 +1106,10 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 		tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
 		tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
+	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
+		struct wlr_xdg_surface *parent_surface = wlr_xdg_surface_from_wlr_surface(surface->popup->parent);
+		struct wlr_scene_node *parent_node = parent_surface->data;
+		surface->data = wlr_scene_xdg_surface_create(parent_node, surface);
 	}
 }
 
@@ -1285,6 +1125,8 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	client = tmbr_alloc(sizeof(*client), "Could not allocate layer shell client");
 	client->surface = surface;
 	client->screen = surface->output->data;
+	client->scene_node = wlr_scene_subsurface_tree_create(&server->scene_unowned_clients->node, surface->surface);
+	wlr_scene_node_set_enabled(client->scene_node, false);
 
 	wl_list_insert(&client->screen->layer_clients, &client->link);
 
@@ -1356,24 +1198,6 @@ static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *p
 	tmbr_cursor_handle_motion(server);
 }
 
-static struct wlr_surface *tmbr_server_surface_at(struct tmbr_server *server, double x, double y, double *sx, double *sy)
-{
-	struct tmbr_layer_client *layer_client = NULL;
-	struct tmbr_xdg_client *xdg_client = NULL;
-	struct tmbr_screen *screen;
-
-	if ((screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
-		return NULL;
-	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
-
-	if ((layer_client = tmbr_screen_find_layer_client_at(screen, x, y)) != NULL)
-		return wlr_layer_surface_v1_surface_at(layer_client->surface, x - layer_client->x, y - layer_client->y, sx, sy);
-	else if ((xdg_client = tmbr_screen_find_xdg_client_at(screen, x, y)) != NULL)
-		return wlr_xdg_surface_surface_at(xdg_client->surface, x - xdg_client->x, y - xdg_client->y, sx, sy);
-
-	return NULL;
-}
-
 static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_down);
@@ -1386,7 +1210,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		return;
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
-	if ((surface = tmbr_server_surface_at(server, lx, ly, &sx, &sy)) && wlr_surface_accepts_touch(server->seat, surface)) {
+	if ((surface = tmbr_server_find_surface_at(server, lx, ly, &sx, &sy)) && wlr_surface_accepts_touch(server->seat, surface)) {
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	} else if (!server->touch_emulation_id) {
 		server->touch_emulation_id = event->touch_id;
@@ -1426,7 +1250,7 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 	if (server->touch_emulation_id == event->touch_id) {
 		wlr_cursor_move(server->cursor, event->device, lx - server->cursor->x, ly - server->cursor->y);
 		tmbr_cursor_handle_motion(server);
-	} else if (!server->touch_emulation_id && tmbr_server_surface_at(server, lx, ly, &sx, &sy)) {
+	} else if (!server->touch_emulation_id && tmbr_server_find_surface_at(server, lx, ly, &sx, &sy)) {
 		wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, sx, sy);
 	}
 }
@@ -1501,10 +1325,10 @@ static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener
 static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener *listener, void *payload)
 {
 	struct wlr_output_power_v1_set_mode_event *event = payload;
+	struct tmbr_screen *screen = event->output->data;
 	wlr_output_enable(event->output, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 	wlr_output_commit(event->output);
-	if (event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON)
-		wlr_output_damage_add_whole(((struct tmbr_screen *) event->output->data)->damage);
+	wlr_scene_node_set_enabled(&screen->scene_tree->node, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 }
 
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
@@ -1643,7 +1467,7 @@ static void tmbr_cmd_desktop_kill(TMBR_UNUSED struct wl_client *client, struct w
 static void tmbr_cmd_desktop_new(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	tmbr_screen_add_desktop(server->focussed_screen, tmbr_desktop_new());
+	tmbr_screen_add_desktop(server->focussed_screen, tmbr_desktop_new(server->focussed_screen));
 }
 
 static void tmbr_cmd_desktop_swap(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t selection)
@@ -1816,6 +1640,8 @@ int tmbr_wm(void)
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
+	    (server.scene = wlr_scene_create()) == NULL ||
+	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->node)) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
 	    (server.idle = wlr_idle_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
@@ -1831,6 +1657,8 @@ int tmbr_wm(void)
 
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
+	wlr_scene_attach_output_layout(server.scene, server.output_layout);
+	wlr_scene_node_set_enabled(&server.scene_unowned_clients->node, false);
 	wlr_xcursor_manager_load(server.xcursor, 1);
 
 	tmbr_register(&server.backend->events.new_input, &server.new_input, tmbr_server_on_new_input);
