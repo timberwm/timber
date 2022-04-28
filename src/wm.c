@@ -1332,10 +1332,10 @@ static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener
 static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener *listener, void *payload)
 {
 	struct wlr_output_power_v1_set_mode_event *event = payload;
+	struct tmbr_screen *screen = event->output->data;
 	wlr_output_enable(event->output, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 	wlr_output_commit(event->output);
-	if (event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON)
-		wlr_output_damage_add_whole(((struct tmbr_screen *) event->output->data)->scene_output->damage);
+	wlr_scene_node_set_enabled(&screen->scene_tree->node, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 }
 
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
