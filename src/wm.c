@@ -694,29 +694,6 @@ static struct tmbr_screen *tmbr_screen_find_sibling(struct tmbr_screen *screen, 
 	return wl_container_of(sibling, screen, link);;
 }
 
-static struct tmbr_layer_client *tmbr_screen_find_layer_client_at(struct tmbr_screen *screen, double x, double y)
-{
-	struct tmbr_layer_client *c;
-	for (int l = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY; l >= ZWLR_LAYER_SHELL_V1_LAYER_TOP; l--)
-		wl_list_for_each_reverse(c, &screen->layer_clients, link)
-			if (c->surface->mapped && (int)c->surface->current.layer == l && c->surface->current.keyboard_interactive &&
-			    c->x <= x && c->x + c->w >= c->x && c->y <= y && c->y + c->h >= y)
-				return c;
-	return NULL;
-}
-
-static struct tmbr_xdg_client *tmbr_screen_find_xdg_client_at(struct tmbr_screen *screen, double x, double y)
-{
-	if (screen->focus->fullscreen)
-		return screen->focus->focus;
-	tmbr_tree_for_each(screen->focus->clients, t) {
-		if (t->client->x <= x && t->client->x + t->client->w >= x &&
-		    t->client->y <= y && t->client->y + t->client->h >= y)
-			return t->client;
-	}
-	return NULL;
-}
-
 static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, destroy), *sibling = tmbr_screen_find_sibling(screen, TMBR_CTRL_SELECTION_NEXT);
@@ -1184,21 +1161,21 @@ static void tmbr_cursor_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 
 static void tmbr_cursor_handle_motion(struct tmbr_server *server)
 {
-	struct tmbr_layer_client *layer_client = NULL;
-	struct tmbr_screen *screen = NULL;
-	double x = server->cursor->x, y = server->cursor->y;
+	struct wlr_surface *surface = NULL;
+	struct tmbr_client *client;
+	double x, y;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
-	if (server->input_inhibit->active_client ||
-	    (screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
+	if (server->input_inhibit->active_client)
 		return;
 
-	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
-	if ((layer_client = tmbr_screen_find_layer_client_at(screen, x, y)) != NULL)
-		tmbr_layer_client_notify_focus(layer_client);
-	else
-		tmbr_desktop_focus_client(screen->focus, tmbr_screen_find_xdg_client_at(screen, x, y), true);
-	server->focussed_screen = screen;
+	if ((client = tmbr_server_find_client_at(server, server->cursor->x, server->cursor->y, &surface, &x, &y)) == NULL)
+		return;
+	if (client->type == TMBR_CLIENT_LAYER_SURFACE)
+		tmbr_layer_client_notify_focus(wl_container_of(client, (struct tmbr_layer_client *) NULL, base));
+	else if (client->type == TMBR_CLIENT_XDG_SURFACE)
+		tmbr_desktop_focus_client(client->screen->focus, wl_container_of(client, (struct tmbr_xdg_client *) NULL, base), true);
+	server->focussed_screen = client->screen;
 }
 
 static void tmbr_cursor_on_motion(struct wl_listener *listener, void *payload)
