@@ -373,6 +373,7 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, destroy);
 	tmbr_unregister(&client->destroy, &client->commit, &client->map, &client->unmap, &client->request_fullscreen, NULL);
+	wlr_scene_node_destroy(&client->scene_tree->node);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
 }
@@ -533,8 +534,6 @@ static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_screen *parent)
 
 static void tmbr_desktop_free(struct tmbr_desktop *desktop)
 {
-	wlr_scene_node_destroy(&desktop->scene_clients->node);
-	wlr_scene_node_destroy(&desktop->scene_fullscreen->node);
 	wlr_scene_node_destroy(&desktop->scene_tree->node);
 	free(desktop);
 }
