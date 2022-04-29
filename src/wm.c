@@ -93,6 +93,11 @@ struct tmbr_client {
 	enum tmbr_client_type type;
 
 	struct tmbr_screen *screen;
+
+	struct wl_listener map;
+	struct wl_listener unmap;
+	struct wl_listener destroy;
+	struct wl_listener commit;
 };
 
 struct tmbr_xdg_client {
@@ -109,10 +114,6 @@ struct tmbr_xdg_client {
 	uint32_t pending_serial;
 
 	struct wl_event_source *configure_timer;
-	struct wl_listener map;
-	struct wl_listener unmap;
-	struct wl_listener destroy;
-	struct wl_listener commit;
 	struct wl_listener request_fullscreen;
 };
 
@@ -162,10 +163,6 @@ struct tmbr_layer_client {
 	struct wlr_scene_node *scene_node;
 	int h, w, x, y;
 	struct wl_list link;
-	struct wl_listener map;
-	struct wl_listener unmap;
-	struct wl_listener destroy;
-	struct wl_listener commit;
 };
 
 struct tmbr_server {
@@ -385,8 +382,8 @@ static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_xdg_client *client = wl_container_of(listener, client, destroy);
-	tmbr_unregister(&client->destroy, &client->commit, &client->map, &client->unmap, &client->request_fullscreen, NULL);
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.destroy);
+	tmbr_unregister(&client->base.destroy, &client->base.commit, &client->base.map, &client->base.unmap, &client->request_fullscreen, NULL);
 	wlr_scene_node_destroy(&client->scene_tree->node);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
@@ -394,7 +391,7 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_xdg_client *client = wl_container_of(listener, client, commit);
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.commit);
 
 	if (client->pending_serial && client->pending_serial == client->surface->current.configure_serial) {
 		tmbr_xdg_client_handle_configure_timer(client);
@@ -418,8 +415,8 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 
 	surface->data = client->scene_node;
 
-	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_xdg_client_on_destroy);
-	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_xdg_client_on_commit);
+	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
+	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_xdg_client_on_commit);
 	return client;
 }
 
@@ -1012,7 +1009,7 @@ static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 
 static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_layer_client *client = wl_container_of(listener, client, map);
+	struct tmbr_layer_client *client = wl_container_of(listener, client, base.map);
 	if ((client->surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY || client->surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP) &&
 	    client->surface->current.keyboard_interactive)
 		tmbr_layer_client_notify_focus(client);
@@ -1021,23 +1018,23 @@ static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED v
 
 static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_layer_client *client = wl_container_of(listener, client, unmap);
+	struct tmbr_layer_client *client = wl_container_of(listener, client, base.unmap);
 	tmbr_screen_focus_desktop(client->base.screen, client->base.screen->focus);
 	wlr_scene_node_set_enabled(client->scene_node, false);
 }
 
 static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_layer_client *client = wl_container_of(listener, client, destroy);
+	struct tmbr_layer_client *client = wl_container_of(listener, client, base.destroy);
 	wl_list_remove(&client->link);
-	tmbr_unregister(&client->map, &client->unmap, &client->destroy, &client->commit, NULL);
+	tmbr_unregister(&client->base.map, &client->base.unmap, &client->base.destroy, &client->base.commit, NULL);
 	tmbr_screen_recalculate(client->base.screen);
 	free(client);
 }
 
 static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_layer_client *client = wl_container_of(listener, client, commit);
+	struct tmbr_layer_client *client = wl_container_of(listener, client, base.commit);
 	struct wlr_layer_surface_v1_state *c = &client->surface->current,
 					  *p = &client->surface->pending;
 	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
@@ -1100,14 +1097,14 @@ static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void
 
 static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_xdg_client *client = wl_container_of(listener, client, map);
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.map);
 	tmbr_desktop_add_client(client->server->focussed_screen->focus, client);
 	tmbr_desktop_focus_client(client->server->focussed_screen->focus, client, true);
 }
 
 static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_xdg_client *client = wl_container_of(listener, client, unmap);
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.unmap);
 	if (client->desktop)
 		tmbr_desktop_remove_client(client->desktop, client);
 }
@@ -1119,8 +1116,8 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 
 	if (surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
 		struct tmbr_xdg_client *client = tmbr_xdg_client_new(server, surface);
-		tmbr_register(&surface->events.map, &client->map, tmbr_server_on_map);
-		tmbr_register(&surface->events.unmap, &client->unmap, tmbr_server_on_unmap);
+		tmbr_register(&surface->events.map, &client->base.map, tmbr_server_on_map);
+		tmbr_register(&surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
 		struct wlr_xdg_surface *parent_surface = wlr_xdg_surface_from_wlr_surface(surface->popup->parent);
@@ -1148,10 +1145,10 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 
 	wl_list_insert(&client->base.screen->layer_clients, &client->link);
 
-	tmbr_register(&surface->events.map, &client->map, tmbr_layer_client_on_map);
-	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_layer_client_on_unmap);
-	tmbr_register(&surface->events.destroy, &client->destroy, tmbr_layer_client_on_destroy);
-	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_layer_client_on_commit);
+	tmbr_register(&surface->events.map, &client->base.map, tmbr_layer_client_on_map);
+	tmbr_register(&surface->events.unmap, &client->base.unmap, tmbr_layer_client_on_unmap);
+	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_layer_client_on_destroy);
+	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_layer_client_on_commit);
 
 	surface->current = surface->pending;
 	tmbr_screen_recalculate(client->base.screen);
