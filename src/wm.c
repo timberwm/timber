@@ -84,7 +84,18 @@ struct tmbr_keyboard {
 	struct wl_listener modifiers;
 };
 
+enum tmbr_client_type {
+	TMBR_CLIENT_XDG_SURFACE,
+	TMBR_CLIENT_LAYER_SURFACE,
+};
+
+struct tmbr_client {
+	enum tmbr_client_type type;
+};
+
 struct tmbr_xdg_client {
+	struct tmbr_client base;
+
 	struct tmbr_server *server;
 	struct tmbr_desktop *desktop;
 	struct tmbr_tree *tree;
@@ -143,6 +154,8 @@ struct tmbr_screen {
 };
 
 struct tmbr_layer_client {
+	struct tmbr_client base;
+
 	struct wlr_layer_surface_v1 *surface;
 	struct tmbr_screen *screen;
 	struct wlr_scene_node *scene_node;
@@ -392,6 +405,7 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 {
 	struct tmbr_xdg_client *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
 
+	client->base.type = TMBR_CLIENT_XDG_SURFACE;
 	client->server = server;
 	client->surface = surface;
 	client->configure_timer = wl_event_loop_add_timer(wl_display_get_event_loop(server->display), tmbr_xdg_client_handle_configure_timer, client);
@@ -1122,6 +1136,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	if (!surface->output)
 		surface->output = server->focussed_screen->output;
 	client = tmbr_alloc(sizeof(*client), "Could not allocate layer shell client");
+	client->base.type = TMBR_CLIENT_LAYER_SURFACE;
 	client->surface = surface;
 	client->screen = surface->output->data;
 	client->scene_node = wlr_scene_subsurface_tree_create(&server->scene_unowned_clients->node, surface->surface);
