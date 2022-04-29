@@ -724,8 +724,6 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	}
 
 	wlr_scene_node_destroy(&screen->scene_tree->node);
-	for (unsigned i = 0; i < ARRAY_SIZE(screen->scene_layers); i++)
-		wlr_scene_node_destroy(&screen->scene_layers[i]->node);
 	wlr_scene_output_destroy(screen->scene_output);
 	tmbr_server_update_output_layout(screen->server);
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
