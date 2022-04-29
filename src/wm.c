@@ -1140,6 +1140,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	client->surface = surface;
 	client->screen = surface->output->data;
 	client->scene_node = wlr_scene_subsurface_tree_create(&server->scene_unowned_clients->node, surface->surface);
+	client->scene_node->data = client;
 	wlr_scene_node_set_enabled(client->scene_node, false);
 
 	wl_list_insert(&client->screen->layer_clients, &client->link);
