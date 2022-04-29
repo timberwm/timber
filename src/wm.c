@@ -249,7 +249,7 @@ static struct tmbr_screen *tmbr_server_find_screen_at(struct tmbr_server *server
 	return output ? output->data : NULL;
 }
 
-static struct wlr_surface *tmbr_server_find_surface_at(struct tmbr_server *server, double x, double y, double *sx, double *sy)
+static struct tmbr_client *tmbr_server_find_client_at(struct tmbr_server *server, double x, double y, struct wlr_surface **subsurface, double *sx, double *sy)
 {
 	struct wlr_scene_node *node;
 	struct tmbr_screen *screen;
@@ -261,7 +261,11 @@ static struct wlr_surface *tmbr_server_find_surface_at(struct tmbr_server *serve
 	node = wlr_scene_node_at(&screen->scene_tree->node, x, y, sx, sy);
 	if (!node || node->type != WLR_SCENE_NODE_SURFACE)
 		return NULL;
-	return ((struct wlr_scene_surface *) wl_container_of(node, (struct wlr_scene_surface *)NULL, node))->surface;
+	*subsurface = wlr_scene_surface_from_node(node)->surface;
+
+	while (node->parent && !node->data)
+		node = node->parent;
+	return node->data;
 }
 
 static void tmbr_server_update_output_layout(struct tmbr_server *server)
@@ -1225,7 +1229,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		return;
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
-	if ((surface = tmbr_server_find_surface_at(server, lx, ly, &sx, &sy)) && wlr_surface_accepts_touch(server->seat, surface)) {
+	if (tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy) && wlr_surface_accepts_touch(server->seat, surface)) {
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	} else if (!server->touch_emulation_id) {
 		server->touch_emulation_id = event->touch_id;
@@ -1255,6 +1259,7 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_motion);
 	struct wlr_event_touch_motion *event = payload;
+	struct wlr_surface *surface;
 	double lx, ly, sx, sy;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
@@ -1265,7 +1270,7 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 	if (server->touch_emulation_id == event->touch_id) {
 		wlr_cursor_move(server->cursor, event->device, lx - server->cursor->x, ly - server->cursor->y);
 		tmbr_cursor_handle_motion(server);
-	} else if (!server->touch_emulation_id && tmbr_server_find_surface_at(server, lx, ly, &sx, &sy)) {
+	} else if (!server->touch_emulation_id && tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy)) {
 		wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, sx, sy);
 	}
 }
