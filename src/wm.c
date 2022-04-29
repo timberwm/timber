@@ -534,8 +534,6 @@ static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_screen *parent)
 
 static void tmbr_desktop_free(struct tmbr_desktop *desktop)
 {
-	wlr_scene_node_destroy(&desktop->scene_clients->node);
-	wlr_scene_node_destroy(&desktop->scene_fullscreen->node);
 	wlr_scene_node_destroy(&desktop->scene_tree->node);
 	free(desktop);
 }
