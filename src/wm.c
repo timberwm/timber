@@ -91,6 +91,8 @@ enum tmbr_client_type {
 
 struct tmbr_client {
 	enum tmbr_client_type type;
+
+	struct tmbr_screen *screen;
 };
 
 struct tmbr_xdg_client {
@@ -157,7 +159,6 @@ struct tmbr_layer_client {
 	struct tmbr_client base;
 
 	struct wlr_layer_surface_v1 *surface;
-	struct tmbr_screen *screen;
 	struct wlr_scene_node *scene_node;
 	int h, w, x, y;
 	struct wl_list link;
@@ -345,7 +346,7 @@ static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 	if (!client->desktop)
 		die("Focus notification for client without desktop");
 
-	wlr_output_layout_output_coords(client->server->output_layout, client->desktop->screen->output, &x, &y);
+	wlr_output_layout_output_coords(client->server->output_layout, client->base.screen->output, &x, &y);
 	subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
 	tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y);
 }
@@ -606,6 +607,7 @@ static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_xd
 {
 	tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client);
 	wlr_scene_node_reparent(&client->scene_tree->node, &desktop->scene_clients->node);
+	client->base.screen = desktop->screen;
 	client->desktop = desktop;
 	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
@@ -628,6 +630,7 @@ static void tmbr_desktop_remove_client(struct tmbr_desktop *desktop, struct tmbr
 	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
 
+	client->base.screen = NULL;
 	client->desktop = NULL;
 	client->tree = NULL;
 }
@@ -996,15 +999,15 @@ static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_input_devic
 
 static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 {
-	double x = c->screen->server->cursor->x, y = c->screen->server->cursor->y;
+	double x = c->base.screen->server->cursor->x, y = c->base.screen->server->cursor->y;
 	struct wlr_surface *surface;
 
-	if (tmbr_server_find_focus(c->screen->server))
-		tmbr_xdg_client_focus(tmbr_server_find_focus(c->screen->server), false);
+	if (tmbr_server_find_focus(c->base.screen->server))
+		tmbr_xdg_client_focus(tmbr_server_find_focus(c->base.screen->server), false);
 
-	wlr_output_layout_output_coords(c->screen->server->output_layout, c->screen->output, &x, &y);
+	wlr_output_layout_output_coords(c->base.screen->server->output_layout, c->base.screen->output, &x, &y);
 	surface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
-	tmbr_surface_notify_focus(c->surface->surface, surface, c->screen->server, x, y);
+	tmbr_surface_notify_focus(c->surface->surface, surface, c->base.screen->server, x, y);
 }
 
 static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1019,7 +1022,7 @@ static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED v
 static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, unmap);
-	tmbr_screen_focus_desktop(client->screen, client->screen->focus);
+	tmbr_screen_focus_desktop(client->base.screen, client->base.screen->focus);
 	wlr_scene_node_set_enabled(client->scene_node, false);
 }
 
@@ -1028,7 +1031,7 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 	struct tmbr_layer_client *client = wl_container_of(listener, client, destroy);
 	wl_list_remove(&client->link);
 	tmbr_unregister(&client->map, &client->unmap, &client->destroy, &client->commit, NULL);
-	tmbr_screen_recalculate(client->screen);
+	tmbr_screen_recalculate(client->base.screen);
 	free(client);
 }
 
@@ -1039,7 +1042,7 @@ static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSE
 					  *p = &client->surface->pending;
 	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
 	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
-		tmbr_screen_recalculate(client->screen);
+		tmbr_screen_recalculate(client->base.screen);
 }
 
 static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload)
@@ -1137,13 +1140,13 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 		surface->output = server->focussed_screen->output;
 	client = tmbr_alloc(sizeof(*client), "Could not allocate layer shell client");
 	client->base.type = TMBR_CLIENT_LAYER_SURFACE;
+	client->base.screen = surface->output->data;
 	client->surface = surface;
-	client->screen = surface->output->data;
 	client->scene_node = wlr_scene_subsurface_tree_create(&server->scene_unowned_clients->node, surface->surface);
 	client->scene_node->data = client;
 	wlr_scene_node_set_enabled(client->scene_node, false);
 
-	wl_list_insert(&client->screen->layer_clients, &client->link);
+	wl_list_insert(&client->base.screen->layer_clients, &client->link);
 
 	tmbr_register(&surface->events.map, &client->map, tmbr_layer_client_on_map);
 	tmbr_register(&surface->events.unmap, &client->unmap, tmbr_layer_client_on_unmap);
@@ -1151,7 +1154,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	tmbr_register(&surface->surface->events.commit, &client->commit, tmbr_layer_client_on_commit);
 
 	surface->current = surface->pending;
-	tmbr_screen_recalculate(client->screen);
+	tmbr_screen_recalculate(client->base.screen);
 	surface->current = current_state;
 }
 
@@ -1451,7 +1454,7 @@ static void tmbr_cmd_client_to_screen(TMBR_UNUSED struct wl_client *client, stru
 	struct tmbr_xdg_client *focus;
 
 	if ((focus = tmbr_server_find_focus(server)) == NULL ||
-	    (screen = tmbr_screen_find_sibling(focus->desktop->screen, selection)) == NULL)
+	    (screen = tmbr_screen_find_sibling(focus->base.screen, selection)) == NULL)
 		tmbr_return_error(resource, TMBR_CTRL_ERROR_SCREEN_NOT_FOUND, "screen not found");
 	tmbr_desktop_remove_client(focus->desktop, focus);
 	tmbr_desktop_add_client(screen->focus, focus);
