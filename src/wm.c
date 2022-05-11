@@ -136,7 +136,6 @@ struct tmbr_screen {
 	struct tmbr_server *server;
 
 	struct wlr_output *output;
-	struct wlr_scene_output *scene_output;
 	struct wlr_scene_tree *scene_tree;
 	struct wlr_scene_tree *scene_layers[5];
 	struct wl_list desktops;
@@ -711,7 +710,6 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	}
 
 	wlr_scene_node_destroy(&screen->scene_tree->node);
-	wlr_scene_output_destroy(screen->scene_output);
 	tmbr_server_update_output_layout(screen->server);
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
 	wl_list_remove(&screen->link);
@@ -721,17 +719,17 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
+	struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(screen->server->scene, screen->output);
 	struct timespec time;
 
 	tmbr_tree_for_each(screen->focus->clients, tree)
 		if (tree->client->pending_serial)
 			goto out;
-
-	wlr_scene_output_commit(screen->scene_output);
+	wlr_scene_output_commit(scene_output);
 
 out:
 	clock_gettime(CLOCK_MONOTONIC, &time);
-	wlr_scene_output_send_frame_done(screen->scene_output, &time);
+	wlr_scene_output_send_frame_done(scene_output, &time);
 }
 
 static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
@@ -842,9 +840,12 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 
 static void tmbr_screen_recalculate(struct tmbr_screen *s)
 {
+	struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(s->server->scene, s->output);
 	struct tmbr_desktop *d;
 
-	s->box.x = s->box.y = 0;
+	s->box.x = scene_output->x;
+	s->box.y = scene_output->y;
+
 	wlr_output_effective_resolution(s->output, &s->box.width, &s->box.height);
 
 	tmbr_screen_recalculate_layers(s, true);
@@ -876,7 +877,6 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	struct tmbr_screen *screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
 	screen->output = output;
 	screen->server = server;
-	screen->scene_output = wlr_scene_output_create(server->scene, output);
 	screen->scene_tree = wlr_scene_tree_create(&server->scene->node);
 	for (unsigned i = 0; i < ARRAY_SIZE(screen->scene_layers); i++) {
 		screen->scene_layers[i] = wlr_scene_tree_create(&screen->scene_tree->node);
@@ -885,7 +885,6 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	}
 	wl_list_init(&screen->desktops);
 	wl_list_init(&screen->layer_clients);
-	tmbr_screen_recalculate(screen);
 
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new(screen));
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
@@ -1042,23 +1041,24 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_output);
 	struct wlr_output *output = payload;
-	struct wlr_output_mode *mode;
 	struct tmbr_screen *screen;
 
 	wlr_output_init_render(output, server->allocator, server->renderer);
-	wlr_output_enable(output, true);
-	if ((mode = wlr_output_preferred_mode(output)) != NULL)
-		wlr_output_set_mode(output, mode);
-	wlr_output_layout_add_auto(server->output_layout, output);
-	if (!wlr_output_commit(output))
-		return;
+	if (!wl_list_empty(&output->modes)) {
+		wlr_output_set_mode(output, wlr_output_preferred_mode(output));
+		wlr_output_enable(output, true);
+		if (!wlr_output_commit(output))
+			return;
+	}
 
 	screen = tmbr_screen_new(server, output);
 	wl_list_insert(&server->screens, &screen->link);
 	if (!server->focussed_screen)
 		server->focussed_screen = screen;
 	output->data = screen;
+	wlr_output_layout_add_auto(server->output_layout, output);
 	tmbr_server_update_output_layout(screen->server);
+	tmbr_screen_recalculate(screen);
 }
 
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
