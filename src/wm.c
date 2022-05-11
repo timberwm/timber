@@ -882,7 +882,6 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	}
 	wl_list_init(&screen->desktops);
 	wl_list_init(&screen->layer_clients);
-	tmbr_screen_recalculate(screen);
 
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new(screen));
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
@@ -1056,6 +1055,7 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	output->data = screen;
 	wlr_output_layout_add_auto(server->output_layout, output);
 	tmbr_server_update_output_layout(screen->server);
+	tmbr_screen_recalculate(screen);
 }
 
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
