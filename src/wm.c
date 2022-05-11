@@ -235,22 +235,11 @@ static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server
 	return server->input_inhibit->active_client ? NULL : server->focussed_screen ? server->focussed_screen->focus->focus : NULL;
 }
 
-static struct tmbr_screen *tmbr_server_find_screen_at(struct tmbr_server *server, double x, double y)
-{
-	struct wlr_output *output = wlr_output_layout_output_at(server->output_layout, x, y);
-	return output ? output->data : NULL;
-}
-
 static struct tmbr_client *tmbr_server_find_client_at(struct tmbr_server *server, double x, double y, struct wlr_surface **subsurface, double *sx, double *sy)
 {
 	struct wlr_scene_node *node;
-	struct tmbr_screen *screen;
 
-	if ((screen = tmbr_server_find_screen_at(server, x, y)) == NULL)
-		return NULL;
-	wlr_output_layout_output_coords(server->output_layout, screen->output, &x, &y);
-
-	node = wlr_scene_node_at(&screen->scene_tree->node, x, y, sx, sy);
+	node = wlr_scene_node_at(&server->scene->node, x, y, sx, sy);
 	if (!node || node->type != WLR_SCENE_NODE_SURFACE)
 		return NULL;
 	*subsurface = wlr_scene_surface_from_node(node)->surface;
@@ -339,7 +328,6 @@ static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 	if (!client->desktop)
 		die("Focus notification for client without desktop");
 
-	wlr_output_layout_output_coords(client->server->output_layout, client->base.screen->output, &x, &y);
 	subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
 	tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y);
 }
@@ -975,7 +963,6 @@ static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 	if (tmbr_server_find_focus(c->base.screen->server))
 		tmbr_xdg_client_focus(tmbr_server_find_focus(c->base.screen->server), false);
 
-	wlr_output_layout_output_coords(c->base.screen->server->output_layout, c->base.screen->output, &x, &y);
 	surface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
 	tmbr_surface_notify_focus(c->surface->surface, surface, c->base.screen->server, x, y);
 }
