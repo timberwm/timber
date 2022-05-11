@@ -328,7 +328,6 @@ static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 	if (!client->desktop)
 		die("Focus notification for client without desktop");
 
-	wlr_output_layout_output_coords(client->server->output_layout, client->base.screen->output, &x, &y);
 	subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
 	tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y);
 }
@@ -964,7 +963,6 @@ static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 	if (tmbr_server_find_focus(c->base.screen->server))
 		tmbr_xdg_client_focus(tmbr_server_find_focus(c->base.screen->server), false);
 
-	wlr_output_layout_output_coords(c->base.screen->server->output_layout, c->base.screen->output, &x, &y);
 	surface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
 	tmbr_surface_notify_focus(c->surface->surface, surface, c->base.screen->server, x, y);
 }
