@@ -136,7 +136,6 @@ struct tmbr_screen {
 	struct tmbr_server *server;
 
 	struct wlr_output *output;
-	struct wlr_scene_output *scene_output;
 	struct wlr_scene_tree *scene_tree;
 	struct wlr_scene_tree *scene_layers[5];
 	struct wl_list desktops;
@@ -711,7 +710,6 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	}
 
 	wlr_scene_node_destroy(&screen->scene_tree->node);
-	wlr_scene_output_destroy(screen->scene_output);
 	tmbr_server_update_output_layout(screen->server);
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
 	wl_list_remove(&screen->link);
@@ -721,17 +719,17 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, frame);
+	struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(screen->server->scene, screen->output);
 	struct timespec time;
 
 	tmbr_tree_for_each(screen->focus->clients, tree)
 		if (tree->client->pending_serial)
 			goto out;
-
-	wlr_scene_output_commit(screen->scene_output);
+	wlr_scene_output_commit(scene_output);
 
 out:
 	clock_gettime(CLOCK_MONOTONIC, &time);
-	wlr_scene_output_send_frame_done(screen->scene_output, &time);
+	wlr_scene_output_send_frame_done(scene_output, &time);
 }
 
 static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
@@ -876,7 +874,6 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	struct tmbr_screen *screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
 	screen->output = output;
 	screen->server = server;
-	screen->scene_output = wlr_scene_output_create(server->scene, output);
 	screen->scene_tree = wlr_scene_tree_create(&server->scene->node);
 	for (unsigned i = 0; i < ARRAY_SIZE(screen->scene_layers); i++) {
 		screen->scene_layers[i] = wlr_scene_tree_create(&screen->scene_tree->node);
