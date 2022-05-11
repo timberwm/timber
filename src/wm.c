@@ -1043,10 +1043,9 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	struct tmbr_screen *screen;
 
 	wlr_output_init_render(output, server->allocator, server->renderer);
-	wlr_output_enable(output, true);
 	if ((mode = wlr_output_preferred_mode(output)) != NULL)
 		wlr_output_set_mode(output, mode);
-	wlr_output_layout_add_auto(server->output_layout, output);
+	wlr_output_enable(output, true);
 	if (!wlr_output_commit(output))
 		return;
 
@@ -1055,6 +1054,7 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	if (!server->focussed_screen)
 		server->focussed_screen = screen;
 	output->data = screen;
+	wlr_output_layout_add_auto(server->output_layout, output);
 	tmbr_server_update_output_layout(screen->server);
 }
 
