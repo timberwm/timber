@@ -1057,8 +1057,8 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 		server->focussed_screen = screen;
 	output->data = screen;
 	wlr_output_layout_add_auto(server->output_layout, output);
-	tmbr_server_update_output_layout(screen->server);
 	tmbr_screen_recalculate(screen);
+	tmbr_server_update_output_layout(screen->server);
 }
 
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
