@@ -1039,15 +1039,15 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_output);
 	struct wlr_output *output = payload;
-	struct wlr_output_mode *mode;
 	struct tmbr_screen *screen;
 
 	wlr_output_init_render(output, server->allocator, server->renderer);
-	if ((mode = wlr_output_preferred_mode(output)) != NULL)
-		wlr_output_set_mode(output, mode);
-	wlr_output_enable(output, true);
-	if (!wlr_output_commit(output))
-		return;
+	if (!wl_list_empty(&output->modes)) {
+		wlr_output_set_mode(output, wlr_output_preferred_mode(output));
+		wlr_output_enable(output, true);
+		if (!wlr_output_commit(output))
+			return;
+	}
 
 	screen = tmbr_screen_new(server, output);
 	wl_list_insert(&server->screens, &screen->link);
