@@ -1079,9 +1079,13 @@ static void tmbr_server_on_new_surface(struct wl_listener *listener, void *paylo
 		tmbr_register(&surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-		struct wlr_xdg_surface *parent_surface = wlr_xdg_surface_from_wlr_surface(surface->popup->parent);
-		struct wlr_scene_node *parent_node = parent_surface->data;
-		surface->data = wlr_scene_xdg_surface_create(parent_node, surface);
+		if (wlr_surface_is_xdg_surface(surface->popup->parent)) {
+			struct wlr_xdg_surface *parent_surface = wlr_xdg_surface_from_wlr_surface(surface->popup->parent);
+			surface->data = wlr_scene_xdg_surface_create(parent_surface->data, surface);
+		} else if (wlr_surface_is_layer_surface(surface->popup->parent)) {
+			struct wlr_layer_surface_v1 *parent_surface = wlr_layer_surface_v1_from_wlr_surface(surface->popup->parent);
+			surface->data = wlr_scene_xdg_surface_create(parent_surface->data, surface);
+		}
 	}
 }
 
@@ -1101,6 +1105,8 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	client->scene_node = wlr_scene_subsurface_tree_create(&server->scene_unowned_clients->node, surface->surface);
 	client->scene_node->data = client;
 	wlr_scene_node_set_enabled(client->scene_node, false);
+
+	surface->data = client->scene_node;
 
 	wl_list_insert(&client->base.screen->layer_clients, &client->link);
 
