@@ -1528,7 +1528,7 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 			fprintf(f, "    clients:\n");
 			tmbr_tree_for_each(d->clients, tree) {
 				struct tmbr_xdg_client *c = tree->client;
-				fprintf(f, "    - title: %s\n", c->surface->toplevel->title);
+				fprintf(f, "    - title: '%s'\n", c->surface->toplevel->title);
 				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n", c->x, c->y, c->w, c->h);
 				fprintf(f, "      selected: %s\n", c == d->focus ? "true" : "false");
 			}
