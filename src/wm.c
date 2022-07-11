@@ -397,6 +397,7 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	client->scene_node->data = client;
 	client->scene_borders = wlr_scene_rect_create(&client->scene_tree->node, 0, 0, TMBR_COLOR_INACTIVE);
 	wlr_scene_node_place_below(&client->scene_borders->node, client->scene_node);
+	wlr_xdg_toplevel_set_tiled(surface, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
 
 	surface->data = client->scene_node;
 
