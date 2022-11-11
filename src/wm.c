@@ -324,7 +324,7 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 
 static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
 {
-	wlr_xdg_toplevel_send_close(client->surface);
+	wlr_xdg_toplevel_send_close(client->surface->toplevel);
 }
 
 static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
@@ -350,7 +350,7 @@ static int tmbr_xdg_client_handle_configure_timer(void *payload)
 static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
 {
 	if (client->w != w || client->h != h || client->border != border) {
-		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface->toplevel, w - 2 * border, h - 2 * border);
 		wl_event_source_timer_update(client->configure_timer, 50);
 	}
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
@@ -365,7 +365,7 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 {
-	wlr_xdg_toplevel_set_activated(client->surface, focus);
+	wlr_xdg_toplevel_set_activated(client->surface->toplevel, focus);
 	wlr_scene_rect_set_color(client->scene_borders, focus ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE);
 	if (focus)
 		tmbr_xdg_client_notify_focus(client);
@@ -403,7 +403,7 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	client->scene_node->data = client;
 	client->scene_borders = wlr_scene_rect_create(&client->scene_tree->node, 0, 0, TMBR_COLOR_INACTIVE);
 	wlr_scene_node_place_below(&client->scene_borders->node, client->scene_node);
-	wlr_xdg_toplevel_set_tiled(surface, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
+	wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
 
 	surface->data = client->scene_node;
 
@@ -568,7 +568,7 @@ static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fulls
 	wlr_scene_node_set_enabled(&desktop->scene_clients->node, !fullscreen);
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, fullscreen);
 	if (desktop->focus) {
-		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
+		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface->toplevel, fullscreen);
 		wlr_scene_node_reparent(&desktop->focus->scene_tree->node, fullscreen ? &desktop->scene_fullscreen->node : &desktop->scene_clients->node);
 	}
 	tmbr_desktop_recalculate(desktop);
