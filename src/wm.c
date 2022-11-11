@@ -75,7 +75,7 @@ struct tmbr_binding {
 
 struct tmbr_keyboard {
 	struct tmbr_server *server;
-	struct wlr_input_device *device;
+	struct wlr_keyboard *keyboard;
 
 	struct wl_listener destroy;
 	struct wl_listener key;
@@ -892,7 +892,7 @@ static void tmbr_keyboard_on_destroy(struct wl_listener *listener, TMBR_UNUSED v
 static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_keyboard *keyboard = wl_container_of(listener, keyboard, key);
-	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->device->keyboard);
+	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->keyboard);
 	struct wlr_keyboard_key_event *event = payload;
 	const xkb_keysym_t *keysyms;
 	xkb_layout_index_t layout;
@@ -903,8 +903,8 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	if (event->state != WL_KEYBOARD_KEY_STATE_PRESSED || keyboard->server->input_inhibit->active_client)
 		goto unhandled;
 
-	layout = xkb_state_key_get_layout(keyboard->device->keyboard->xkb_state, event->keycode + 8);
-	n = xkb_keymap_key_get_syms_by_level(keyboard->device->keyboard->keymap, event->keycode + 8, layout, 0, &keysyms);
+	layout = xkb_state_key_get_layout(keyboard->keyboard->xkb_state, event->keycode + 8);
+	n = xkb_keymap_key_get_syms_by_level(keyboard->keyboard->keymap, event->keycode + 8, layout, 0, &keysyms);
 
 	wl_list_for_each(binding, &keyboard->server->bindings, link) {
 		for (i = 0; i < n; i++) {
@@ -916,18 +916,18 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	}
 
 unhandled:
-	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->device);
+	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->keyboard);
 	wlr_seat_keyboard_notify_key(keyboard->server->seat, event->time_msec, event->keycode, event->state);
 }
 
 static void tmbr_keyboard_on_modifiers(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
-	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->device);
-	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->device->keyboard->modifiers);
+	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->keyboard);
+	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->keyboard->modifiers);
 }
 
-static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_input_device *device)
+static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_keyboard *wlr_keyboard)
 {
 	struct xkb_rule_names rules = {0};
 	struct xkb_context *context;
@@ -941,14 +941,14 @@ static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_input_devic
 
 	keyboard = tmbr_alloc(sizeof(*keyboard), "Could not allocate keyboard");
 	keyboard->server = server;
-	keyboard->device = device;
+	keyboard->keyboard = wlr_keyboard;
 
-	wlr_keyboard_set_keymap(device->keyboard, keymap);
-	wlr_keyboard_set_repeat_info(device->keyboard, 25, 600);
+	wlr_keyboard_set_keymap(wlr_keyboard, keymap);
+	wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
 
-	tmbr_register(&device->keyboard->events.destroy, &keyboard->destroy, tmbr_keyboard_on_destroy);
-	tmbr_register(&device->keyboard->events.key, &keyboard->key, tmbr_keyboard_on_key);
-	tmbr_register(&device->keyboard->events.modifiers, &keyboard->modifiers, tmbr_keyboard_on_modifiers);
+	tmbr_register(&wlr_keyboard->base.events.destroy, &keyboard->destroy, tmbr_keyboard_on_destroy);
+	tmbr_register(&wlr_keyboard->events.key, &keyboard->key, tmbr_keyboard_on_key);
+	tmbr_register(&wlr_keyboard->events.modifiers, &keyboard->modifiers, tmbr_keyboard_on_modifiers);
 
 	xkb_keymap_unref(keymap);
 	xkb_context_unref(context);
@@ -1015,7 +1015,7 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 		wlr_cursor_attach_input_device(server->cursor, device);
 		break;
 	case WLR_INPUT_DEVICE_KEYBOARD:
-		tmbr_keyboard_new(server, device);
+		tmbr_keyboard_new(server, wlr_keyboard_from_input_device(device));
 		break;
 	default:
 		break;
@@ -1028,7 +1028,7 @@ static void tmbr_server_on_new_virtual_keyboard(struct wl_listener *listener, vo
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_virtual_keyboard);
 	struct wlr_virtual_keyboard_v1 *keyboard = payload;
-	tmbr_keyboard_new(server, &keyboard->input_device);
+	tmbr_keyboard_new(server, &keyboard->keyboard);
 }
 
 static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
@@ -1184,7 +1184,7 @@ static void tmbr_cursor_on_motion_relative(struct wl_listener *listener, void *p
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_relative);
 	struct wlr_pointer_motion_event *event = payload;
-	tmbr_cursor_handle_motion(server, event->device, event->time_msec,
+	tmbr_cursor_handle_motion(server, &event->pointer->base, event->time_msec,
 				  event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy);
 }
 
@@ -1193,8 +1193,8 @@ static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *p
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_absolute);
 	struct wlr_pointer_motion_absolute_event *event = payload;
 	double lx, ly;
-	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
-	tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
+	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->pointer->base, event->x, event->y, &lx, &ly);
+	tmbr_cursor_handle_motion(server, &event->pointer->base, event->time_msec, lx - server->cursor->x,
 				  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
 }
 
@@ -1209,12 +1209,12 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 	if (server->input_inhibit->active_client)
 		return;
 
-	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
+	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y, &lx, &ly);
 	if (tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy) && wlr_surface_accepts_touch(server->seat, surface)) {
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	} else if (!server->touch_emulation_id) {
 		server->touch_emulation_id = event->touch_id;
-		tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
+		tmbr_cursor_handle_motion(server, &event->touch->base, event->time_msec, lx - server->cursor->x,
 					  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
 		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_PRESSED);
 		wlr_seat_pointer_notify_frame(server->seat);
@@ -1247,9 +1247,9 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 	if (server->input_inhibit->active_client)
 		return;
 
-	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
+	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y, &lx, &ly);
 	if (server->touch_emulation_id == event->touch_id)
-		tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
+		tmbr_cursor_handle_motion(server, &event->touch->base, event->time_msec, lx - server->cursor->x,
 					  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
 	else if (!server->touch_emulation_id && tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy))
 		wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, sx, sy);
