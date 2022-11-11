@@ -1665,7 +1665,7 @@ int tmbr_wm(void)
 	    (server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display)) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
-	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
+	    (server.xdg_shell = wlr_xdg_shell_create(server.display, 2)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
 		die("Could not create backends");
 
