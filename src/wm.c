@@ -111,6 +111,7 @@ struct tmbr_xdg_client {
 
 	struct wl_event_source *configure_timer;
 	struct wl_listener request_fullscreen;
+	struct wl_listener request_maximize;
 };
 
 struct tmbr_tree {
@@ -374,7 +375,7 @@ static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.destroy);
-	tmbr_unregister(&client->base.destroy, &client->base.commit, &client->base.map, &client->base.unmap, &client->request_fullscreen, NULL);
+	tmbr_unregister(&client->base.destroy, &client->base.commit, &client->base.map, &client->base.unmap, &client->request_fullscreen, &client->request_maximize, NULL);
 	wlr_scene_node_destroy(&client->scene_tree->node);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
@@ -1056,12 +1057,19 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	tmbr_server_update_output_layout(screen->server);
 }
 
-static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
+static void tmbr_server_on_request_maximize(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct wlr_xdg_toplevel_set_fullscreen_event *event = payload;
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, request_maximize);
+	wlr_xdg_surface_schedule_configure(client->surface);
+}
+
+static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, request_fullscreen);
 	if (client->desktop && client == tmbr_server_find_focus(client->server))
-		tmbr_desktop_set_fullscreen(client->desktop, event->fullscreen);
+		tmbr_desktop_set_fullscreen(client->desktop, client->surface->toplevel->requested.fullscreen);
+	else
+		wlr_xdg_surface_schedule_configure(client->surface);
 }
 
 static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1088,6 +1096,7 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 		tmbr_register(&surface->events.map, &client->base.map, tmbr_server_on_map);
 		tmbr_register(&surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
+		tmbr_register(&surface->toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
 	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
 		if (wlr_surface_is_xdg_surface(surface->popup->parent)) {
 			struct wlr_xdg_surface *parent_surface = wlr_xdg_surface_from_wlr_surface(surface->popup->parent);
