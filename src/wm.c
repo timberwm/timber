@@ -260,13 +260,13 @@ static void tmbr_server_update_output_layout(struct tmbr_server *server)
 
 	wl_list_for_each(s, &server->screens, link) {
 		struct wlr_output_configuration_head_v1 *head = wlr_output_configuration_head_v1_create(cfg, s->output);
-		struct wlr_box *geom = wlr_output_layout_get_box(server->output_layout, s->output);
+		struct wlr_box geom;
+
+		wlr_output_layout_get_box(server->output_layout, s->output, &geom);
 		head->state.enabled = s->output->enabled;
 		head->state.mode = s->output->current_mode;
-		if (geom) {
-			head->state.x = geom->x;
-			head->state.y = geom->y;
-		}
+		head->state.x = geom.x;
+		head->state.y = geom.y;
 	}
 
 	wlr_output_manager_v1_set_configuration(server->output_manager, cfg);
