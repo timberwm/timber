@@ -893,7 +893,7 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_keyboard *keyboard = wl_container_of(listener, keyboard, key);
 	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->device->keyboard);
-	struct wlr_event_keyboard_key *event = payload;
+	struct wlr_keyboard_key_event *event = payload;
 	const xkb_keysym_t *keysyms;
 	xkb_layout_index_t layout;
 	struct tmbr_binding *binding;
@@ -1133,7 +1133,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 static void tmbr_cursor_on_axis(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_axis);
-	struct wlr_event_pointer_axis *event = payload;
+	struct wlr_pointer_axis_event *event = payload;
 	wlr_idle_notify_activity(server->idle, server->seat);
 	wlr_seat_pointer_notify_axis(server->seat, event->time_msec, event->orientation,
 				     event->delta, event->delta_discrete, event->source);
@@ -1142,7 +1142,7 @@ static void tmbr_cursor_on_axis(struct wl_listener *listener, void *payload)
 static void tmbr_cursor_on_button(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_button);
-	struct wlr_event_pointer_button *event = payload;
+	struct wlr_pointer_button_event *event = payload;
 	wlr_idle_notify_activity(server->idle, server->seat);
 	wlr_seat_pointer_notify_button(server->seat, event->time_msec, event->button, event->state);
 }
@@ -1183,7 +1183,7 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 static void tmbr_cursor_on_motion_relative(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_relative);
-	struct wlr_event_pointer_motion *event = payload;
+	struct wlr_pointer_motion_event *event = payload;
 	tmbr_cursor_handle_motion(server, event->device, event->time_msec,
 				  event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy);
 }
@@ -1191,7 +1191,7 @@ static void tmbr_cursor_on_motion_relative(struct wl_listener *listener, void *p
 static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_absolute);
-	struct wlr_event_pointer_motion_absolute *event = payload;
+	struct wlr_pointer_motion_absolute_event *event = payload;
 	double lx, ly;
 	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
 	tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
@@ -1201,7 +1201,7 @@ static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *p
 static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_down);
-	struct wlr_event_touch_down *event = payload;
+	struct wlr_touch_down_event *event = payload;
 	struct wlr_surface *surface;
 	double lx, ly, sx, sy;
 
@@ -1224,7 +1224,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 static void tmbr_cursor_on_touch_up(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_up);
-	struct wlr_event_touch_up *event = payload;
+	struct wlr_touch_up_event *event = payload;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 	if (server->touch_emulation_id == event->touch_id) {
@@ -1239,7 +1239,7 @@ static void tmbr_cursor_on_touch_up(struct wl_listener *listener, void *payload)
 static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_motion);
-	struct wlr_event_touch_motion *event = payload;
+	struct wlr_touch_motion_event *event = payload;
 	struct wlr_surface *surface;
 	double lx, ly, sx, sy;
 
