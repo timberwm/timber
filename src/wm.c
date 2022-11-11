@@ -736,72 +736,9 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 		wl_list_for_each(c, &s->layer_clients, link) {
 			struct wlr_layer_surface_v1_state *state = &c->scene_layer_surface->layer_surface->current;
 			struct wlr_scene_tree *parent_scene;
-			struct wlr_box box = { .x = 0, .y = 0, .width = state->desired_width, .height = state->desired_height };
-			struct {
-				uint32_t singular_anchor, anchor_triplet;
-				int *positive_axis, *negative_axis, margin;
-			} edges[] = {
-				{
-					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
-					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
-					.positive_axis = &s->box.y,
-					.negative_axis = &s->box.height,
-					.margin = state->margin.top,
-				},
-				{
-					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
-					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
-					.negative_axis = &s->box.height,
-					.margin = state->margin.bottom,
-				},
-				{
-					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT,
-					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
-					.positive_axis = &s->box.x,
-					.negative_axis = &s->box.width,
-					.margin = state->margin.left,
-				},
-				{
-					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT,
-					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
-					.negative_axis = &s->box.width,
-					.margin = state->margin.right,
-				},
-			};
 
 			if ((int)state->layer != l || exclusive == !state->exclusive_zone)
 				continue;
-
-			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x, box.width = s->box.width; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x = s->box.x; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x + s->box.width - box.width; break;
-			default: box.x = s->box.x + s->box.width / 2 - box.width / 2; break;
-			}
-
-			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
-			case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM): box.y = s->box.y, box.height = s->box.height; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y = s->box.y; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y = s->box.y + s->box.height - box.height; break;
-			default: box.y = s->box.y + s->box.height / 2 - box.height / 2; break;
-			}
-
-			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.left; box.width -= state->margin.left + state->margin.right; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x += state->margin.left; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.right; break;
-			}
-
-			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.top; box.height -= state->margin.top + state->margin.bottom; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y += state->margin.top; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.bottom; break;
-			}
-
-			if (box.width < 0 || box.height < 0) {
-				wlr_layer_surface_v1_destroy(c->scene_layer_surface->layer_surface);
-				continue;
-			}
 
 			switch (state->layer) {
 			case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND: parent_scene = s->scene_layers[0]; break;
@@ -812,24 +749,7 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 				die("Unexpected layer");
 			}
 			wlr_scene_node_reparent(&c->scene_layer_surface->tree->node, parent_scene);
-
-			if (c->w != box.width || c->h != box.height)
-				wlr_layer_surface_v1_configure(c->scene_layer_surface->layer_surface, box.width, box.height);
-			if (c->w != box.width || c->h != box.height || c->x != box.x || c->y != box.y) {
-				wlr_scene_node_set_position(&c->scene_layer_surface->tree->node, box.x, box.y);
-				c->w = box.width; c->h = box.height; c->x = box.x; c->y = box.y;
-			}
-
-			for (size_t i = 0; exclusive && i < sizeof(edges) / sizeof(edges[0]); i++) {
-				if ((state->anchor  == edges[i].singular_anchor || state->anchor == edges[i].anchor_triplet) &&
-				    state->exclusive_zone + edges[i].margin > 0) {
-					if (edges[i].positive_axis)
-						*edges[i].positive_axis += state->exclusive_zone + edges[i].margin;
-					if (edges[i].negative_axis)
-						*edges[i].negative_axis -= state->exclusive_zone + edges[i].margin;
-					break;
-				}
-			}
+			wlr_scene_layer_surface_v1_configure(c->scene_layer_surface, &s->box, &s->box);
 		}
 	}
 }
