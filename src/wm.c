@@ -268,6 +268,7 @@ static void tmbr_server_update_output_layout(struct tmbr_server *server)
 		head->state.mode = s->output->current_mode;
 		head->state.x = geom.x;
 		head->state.y = geom.y;
+		head->state.adaptive_sync_enabled = s->output->adaptive_sync_status;
 	}
 
 	wlr_output_manager_v1_set_configuration(server->output_manager, cfg);
@@ -1238,6 +1239,7 @@ static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener
 			else
 				wlr_output_set_custom_mode(s->output, head->state.custom_mode.width, head->state.custom_mode.height,
 							   head->state.custom_mode.refresh / 1000.0);
+			wlr_output_enable_adaptive_sync(s->output, head->state.adaptive_sync_enabled);
 			wlr_output_set_transform(s->output, head->state.transform);
 			wlr_output_set_scale(s->output, head->state.scale);
 			wlr_output_layout_add(s->server->output_layout, s->output, head->state.x, head->state.y);
