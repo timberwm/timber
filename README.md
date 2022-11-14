@@ -15,7 +15,6 @@ Requirements
 In order to build timber you need to have the following dependencies installed:
 
     - meson >= 0.61.2
-    - pixman
     - wayland-protocol
     - wlroots >= 0.15.0
     - xkbcommon
