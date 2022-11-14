@@ -19,8 +19,6 @@ executable(
       proto_sources,
   ],
   dependencies: [
-    dependency('glesv2'),
-    dependency('pixman-1'),
     dependency('wayland-client'),
     dependency('wayland-server'),
     dependency('wlroots', version: '>=0.15.0'),
