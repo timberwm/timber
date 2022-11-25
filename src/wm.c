@@ -1081,7 +1081,7 @@ static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void 
 		tmbr_desktop_remove_client(client->desktop, client);
 }
 
-static void tmbr_server_on_new_surface(struct wl_listener *listener, void *payload)
+static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_surface);
 	struct wlr_xdg_surface *surface = payload;
@@ -1665,7 +1665,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.backend->events.new_input, &server.new_input, tmbr_server_on_new_input);
 	tmbr_register(&server.virtual_keyboard_manager->events.new_virtual_keyboard, &server.new_virtual_keyboard, tmbr_server_on_new_virtual_keyboard);
 	tmbr_register(&server.backend->events.new_output, &server.new_output, tmbr_server_on_new_output);
-	tmbr_register(&server.xdg_shell->events.new_surface, &server.new_surface, tmbr_server_on_new_surface);
+	tmbr_register(&server.xdg_shell->events.new_surface, &server.new_surface, tmbr_server_on_new_xdg_surface);
 	tmbr_register(&server.layer_shell->events.new_surface, &server.new_layer_shell_surface, tmbr_server_on_new_layer_shell_surface);
 	tmbr_register(&server.seat->events.request_set_cursor, &server.request_set_cursor, tmbr_server_on_request_set_cursor);
 	tmbr_register(&server.seat->events.request_set_selection, &server.request_set_selection, tmbr_server_on_request_set_selection);
