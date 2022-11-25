@@ -606,7 +606,8 @@ static void tmbr_desktop_remove_client(struct tmbr_desktop *desktop, struct tmbr
 		enum tmbr_ctrl_selection sel = (client->tree->parent && client->tree->parent->left == client->tree)
 			? TMBR_CTRL_SELECTION_NEXT : TMBR_CTRL_SELECTION_PREV;
 		struct tmbr_tree *sibling = tmbr_tree_find_sibling(client->tree, sel);
-		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL, true);
+		tmbr_desktop_focus_client(desktop, sibling ? sibling->client : NULL,
+					  tmbr_server_find_focus(desktop->screen->server) == client);
 	}
 
 	wlr_scene_node_reparent(&client->scene_tree->node, &client->server->scene_unowned_clients->node);
