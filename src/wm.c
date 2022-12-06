@@ -144,7 +144,6 @@ struct tmbr_screen {
 	struct wl_listener destroy;
 	struct wl_listener frame;
 	struct wl_listener commit;
-	struct wl_listener mode;
 };
 
 struct tmbr_layer_client {
@@ -702,7 +701,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 
 	wlr_scene_node_destroy(&screen->scene_tree->node);
 	tmbr_server_update_output_layout(screen->server);
-	tmbr_unregister(&screen->destroy, &screen->frame, &screen->mode, &screen->commit, NULL);
+	tmbr_unregister(&screen->destroy, &screen->frame, &screen->commit, NULL);
 	wl_list_remove(&screen->link);
 	free(screen);
 }
@@ -845,20 +844,13 @@ static void tmbr_screen_recalculate(struct tmbr_screen *s)
 		tmbr_desktop_recalculate(d);
 }
 
-static void tmbr_screen_on_mode(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_screen *screen = wl_container_of(listener, screen, mode);
-	tmbr_screen_recalculate(screen);
-	tmbr_server_update_output_layout(screen->server);
-}
-
 static void tmbr_screen_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, commit);
 	struct wlr_output_event_commit *event = payload;
 	if (event->committed & WLR_OUTPUT_STATE_SCALE)
 		wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
-	if (event->committed & (WLR_OUTPUT_STATE_TRANSFORM|WLR_OUTPUT_STATE_SCALE))
+	if (event->committed & (WLR_OUTPUT_STATE_TRANSFORM|WLR_OUTPUT_STATE_SCALE|WLR_OUTPUT_STATE_MODE))
 		tmbr_screen_recalculate(screen);
 	tmbr_server_update_output_layout(screen->server);
 }
@@ -879,7 +871,6 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 
 	tmbr_screen_add_desktop(screen, tmbr_desktop_new(screen));
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
-	tmbr_register(&output->events.mode, &screen->mode, tmbr_screen_on_mode);
 	tmbr_register(&output->events.commit, &screen->commit, tmbr_screen_on_commit);
 	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
 
