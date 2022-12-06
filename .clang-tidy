@@ -1,0 +1,4 @@
+---
+Checks: 'clang-analyzer-*,clang-diagnostic-*,misc-*,-misc-no-recursion,modernize-*,performance-*,portability-*'
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*'
