@@ -4,9 +4,9 @@ stages:
 
 .install-dependencies:
   before_script:
-    - test "${CI_JOB_IMAGE%:*}" = "alpine" && apk add clang curl gcc meson musl-dev wayland-protocols wlroots-dev
-    - test "${CI_JOB_IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang curl gcc meson perl pkg-config wayland-protocols wlroots
-    - test "${CI_JOB_IMAGE%:*}" = "ubuntu" && apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc clang curl meson pkg-config libwlroots-dev
+    - test "${CI_JOB_IMAGE%:*}" = "alpine" && apk add clang curl gcc git meson musl-dev wayland-protocols wlroots-dev
+    - test "${CI_JOB_IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang curl gcc git meson perl pkg-config wayland-protocols wlroots
+    - test "${CI_JOB_IMAGE%:*}" = "ubuntu" && apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc git clang curl meson pkg-config libwlroots-dev
 
 build:
   extends: .install-dependencies
@@ -20,15 +20,14 @@ build:
       - CC: [ "clang", "gcc" ]
         IMAGE: [ "alpine:latest", "archlinux:latest", "ubuntu:latest" ]
 
-clang-analyzer:
+clang-tidy:
   extends: .install-dependencies
   stage: analyze
   image: archlinux:latest
   script:
     - meson setup build .
-    - printf '#!/bin/sh\nexec scan-build -v --status-bugs "$@"' >scan-build-wrapper
-    - chmod a+x scan-build-wrapper
-    - SCANBUILD="$(pwd)/scan-build-wrapper" ninja -C build scan-build
+    - ninja -C build all
+    - ninja -C build clang-tidy
 
 coverity:
   extends: .install-dependencies
