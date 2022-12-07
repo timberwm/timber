@@ -188,7 +188,7 @@ struct tmbr_server {
 	struct wl_listener new_layer_shell_surface;
 	struct wl_listener cursor_axis;
 	struct wl_listener cursor_button;
-	struct wl_listener cursor_motion;
+	struct wl_listener cursor_motion_relative;
 	struct wl_listener cursor_motion_absolute;
 	struct wl_listener cursor_touch_down;
 	struct wl_listener cursor_touch_up;
@@ -1174,9 +1174,9 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server)
 	}
 }
 
-static void tmbr_cursor_on_motion(struct wl_listener *listener, void *payload)
+static void tmbr_cursor_on_motion_relative(struct wl_listener *listener, void *payload)
 {
-	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion);
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_relative);
 	struct wlr_event_pointer_motion *event = payload;
 	wlr_cursor_move(server->cursor, event->device, event->delta_x, event->delta_y);
 	tmbr_cursor_handle_motion(server);
@@ -1669,7 +1669,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.seat->events.request_set_primary_selection, &server.request_set_primary_selection, tmbr_server_on_request_set_primary_selection);
 	tmbr_register(&server.cursor->events.axis, &server.cursor_axis, tmbr_cursor_on_axis);
 	tmbr_register(&server.cursor->events.button, &server.cursor_button, tmbr_cursor_on_button);
-	tmbr_register(&server.cursor->events.motion, &server.cursor_motion, tmbr_cursor_on_motion);
+	tmbr_register(&server.cursor->events.motion, &server.cursor_motion_relative, tmbr_cursor_on_motion_relative);
 	tmbr_register(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute, tmbr_cursor_on_motion_absolute);
 	tmbr_register(&server.cursor->events.touch_down, &server.cursor_touch_down, tmbr_cursor_on_touch_down);
 	tmbr_register(&server.cursor->events.touch_up, &server.cursor_touch_up, tmbr_cursor_on_touch_up);
