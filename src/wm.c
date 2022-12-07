@@ -15,8 +15,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <errno.h>
 #include <stdlib.h>
 #include <sys/wait.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <linux/input-event-codes.h>
@@ -48,7 +50,6 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
-#include <wlr/util/log.h>
 
 #include "timber.h"
 #include "timber-protocol.h"
