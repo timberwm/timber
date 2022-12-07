@@ -43,6 +43,7 @@
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
+#include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_touch.h>
@@ -173,6 +174,7 @@ struct tmbr_server {
 	struct wlr_output_manager_v1 *output_manager;
 	struct wlr_output_power_manager_v1 *output_power_manager;
 	struct wlr_presentation *presentation;
+	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 	struct wlr_scene *scene;
 	struct wlr_scene_tree *scene_unowned_clients;
 	struct wlr_seat *seat;
@@ -1151,13 +1153,15 @@ static void tmbr_cursor_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	wlr_seat_pointer_notify_frame(server->seat);
 }
 
-static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_input_device *device,
-				      double dx, double dy)
+static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_input_device *device, uint32_t time_msec,
+				      double dx, double dy, double dx_unaccel, double dy_unaccel)
 {
 	struct wlr_surface *surface = NULL;
 	struct tmbr_client *client;
 	double sx, sy;
 
+	wlr_relative_pointer_manager_v1_send_relative_motion(server->relative_pointer_manager, server->seat,
+							     (uint64_t) time_msec * 1000, dx, dy, dx_unaccel, dy_unaccel);
 	wlr_cursor_move(server->cursor, device, dx, dy);
 	wlr_idle_notify_activity(server->idle, server->seat);
 	if (server->input_inhibit->active_client)
@@ -1180,7 +1184,8 @@ static void tmbr_cursor_on_motion_relative(struct wl_listener *listener, void *p
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_relative);
 	struct wlr_event_pointer_motion *event = payload;
-	tmbr_cursor_handle_motion(server, event->device, event->delta_x, event->delta_y);
+	tmbr_cursor_handle_motion(server, event->device, event->time_msec,
+				  event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy);
 }
 
 static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *payload)
@@ -1189,7 +1194,8 @@ static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *p
 	struct wlr_event_pointer_motion_absolute *event = payload;
 	double lx, ly;
 	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
-	tmbr_cursor_handle_motion(server, event->device, lx - server->cursor->x, ly - server->cursor->y);
+	tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
+				  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
 }
 
 static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payload)
@@ -1208,7 +1214,8 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	} else if (!server->touch_emulation_id) {
 		server->touch_emulation_id = event->touch_id;
-		tmbr_cursor_handle_motion(server, event->device, lx - server->cursor->x, ly - server->cursor->y);
+		tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
+					  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
 		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_PRESSED);
 		wlr_seat_pointer_notify_frame(server->seat);
 	}
@@ -1242,7 +1249,8 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
 	if (server->touch_emulation_id == event->touch_id)
-		tmbr_cursor_handle_motion(server, event->device, lx - server->cursor->x, ly - server->cursor->y);
+		tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
+					  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
 	else if (!server->touch_emulation_id && tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy))
 		wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, sx, sy);
 }
@@ -1645,6 +1653,7 @@ int tmbr_wm(void)
 	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
 	    (server.output_power_manager = wlr_output_power_manager_v1_create(server.display)) == NULL ||
 	    (server.presentation = wlr_presentation_create(server.display, server.backend)) == NULL ||
+	    (server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display)) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
