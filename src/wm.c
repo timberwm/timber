@@ -1151,17 +1151,19 @@ static void tmbr_cursor_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	wlr_seat_pointer_notify_frame(server->seat);
 }
 
-static void tmbr_cursor_handle_motion(struct tmbr_server *server)
+static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_input_device *device,
+				      double dx, double dy)
 {
 	struct wlr_surface *surface = NULL;
 	struct tmbr_client *client;
-	double x, y;
+	double sx, sy;
 
+	wlr_cursor_move(server->cursor, device, dx, dy);
 	wlr_idle_notify_activity(server->idle, server->seat);
 	if (server->input_inhibit->active_client)
 		return;
 
-	if ((client = tmbr_server_find_client_at(server, server->cursor->x, server->cursor->y, &surface, &x, &y)) == NULL)
+	if ((client = tmbr_server_find_client_at(server, server->cursor->x, server->cursor->y, &surface, &sx, &sy)) == NULL)
 		return;
 	if (client->type == TMBR_CLIENT_LAYER_SURFACE) {
 		struct tmbr_layer_client *layer_client = wl_container_of(client, layer_client, base);
@@ -1178,16 +1180,16 @@ static void tmbr_cursor_on_motion_relative(struct wl_listener *listener, void *p
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_relative);
 	struct wlr_event_pointer_motion *event = payload;
-	wlr_cursor_move(server->cursor, event->device, event->delta_x, event->delta_y);
-	tmbr_cursor_handle_motion(server);
+	tmbr_cursor_handle_motion(server, event->device, event->delta_x, event->delta_y);
 }
 
 static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_absolute);
 	struct wlr_event_pointer_motion_absolute *event = payload;
-	wlr_cursor_warp_absolute(server->cursor, event->device, event->x, event->y);
-	tmbr_cursor_handle_motion(server);
+	double lx, ly;
+	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
+	tmbr_cursor_handle_motion(server, event->device, lx - server->cursor->x, ly - server->cursor->y);
 }
 
 static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payload)
@@ -1206,8 +1208,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	} else if (!server->touch_emulation_id) {
 		server->touch_emulation_id = event->touch_id;
-		wlr_cursor_move(server->cursor, event->device, lx - server->cursor->x, ly - server->cursor->y);
-		tmbr_cursor_handle_motion(server);
+		tmbr_cursor_handle_motion(server, event->device, lx - server->cursor->x, ly - server->cursor->y);
 		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_PRESSED);
 		wlr_seat_pointer_notify_frame(server->seat);
 	}
@@ -1240,12 +1241,10 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 		return;
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
-	if (server->touch_emulation_id == event->touch_id) {
-		wlr_cursor_move(server->cursor, event->device, lx - server->cursor->x, ly - server->cursor->y);
-		tmbr_cursor_handle_motion(server);
-	} else if (!server->touch_emulation_id && tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy)) {
+	if (server->touch_emulation_id == event->touch_id)
+		tmbr_cursor_handle_motion(server, event->device, lx - server->cursor->x, ly - server->cursor->y);
+	else if (!server->touch_emulation_id && tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy))
 		wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, sx, sy);
-	}
 }
 
 static void tmbr_server_on_request_set_cursor(struct wl_listener *listener, void *payload)
