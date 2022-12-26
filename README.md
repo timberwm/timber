@@ -2,7 +2,6 @@ timber - tree-based Wayland compositor
 ======================================
 
 [![GitLab Build Status](https://gitlab.com/timberwm/timber/badges/main/pipeline.svg)](https://gitlab.com/timberwm/timber/-/commits/main)
-[![Coverity Status](https://scan.coverity.com/projects/17917/badge.svg)](https://scan.coverity.com/projects/timber)
 
 The timber window manager is a simple Wayland compositor which is
 heavily inspired by dwm[1] and bspwm[2]. As with bspwm, timber

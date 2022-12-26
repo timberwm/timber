@@ -4,9 +4,9 @@ stages:
 
 .install-dependencies:
   before_script:
-    - test "${CI_JOB_IMAGE%:*}" = "alpine" && apk add clang curl gcc git meson musl-dev wayland-protocols wlroots-dev
-    - test "${CI_JOB_IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang curl gcc git meson perl pkg-config wayland-protocols wlroots
-    - test "${CI_JOB_IMAGE%:*}" = "ubuntu" && apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc git clang curl meson pkg-config libwlroots-dev
+    - test "${CI_JOB_IMAGE%:*}" = "alpine" && apk add clang gcc git meson musl-dev wayland-protocols wlroots-dev
+    - test "${CI_JOB_IMAGE%:*}" = "archlinux" && pacman -Syu --noconfirm clang gcc git meson perl pkg-config wayland-protocols wlroots
+    - test "${CI_JOB_IMAGE%:*}" = "ubuntu" && apt update && DEBIAN_FRONTEND=noninteractive apt install -y gcc git clang meson pkg-config libwlroots-dev
 
 build:
   extends: .install-dependencies
@@ -28,20 +28,3 @@ clang-tidy:
     - meson setup build .
     - ninja -C build all
     - ninja -C build clang-tidy
-
-coverity:
-  extends: .install-dependencies
-  stage: analyze
-  image: ubuntu:latest
-  script:
-    - curl https://scan.coverity.com/download/linux64 --form project=$COVERITY_PROJECT --form token=$COVERITY_TOKEN | tar xz
-    - meson setup build . --werror
-    - cov-analysis-linux64-*/bin/cov-build --dir cov-int ninja -C build all
-    - tar czf cov-int.tar.gz cov-int
-    - curl https://scan.coverity.com/builds?project=$COVERITY_PROJECT --form token=$COVERITY_TOKEN --form email=$GITLAB_USER_EMAIL --form file=@cov-int.tar.gz --form version=$CI_COMMIT_SHA --form description="$CI_COMMIT_SHA / $CI_COMMIT_TITLE / $CI_COMMIT_REF_NAME:$CI_PIPELINE_ID"
-  artifacts:
-    paths:
-      - cov-int.tar.gz
-  only:
-    refs:
-      - main
