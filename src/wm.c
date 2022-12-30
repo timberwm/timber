@@ -965,7 +965,6 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	wlr_output_init_render(output, server->allocator, server->renderer);
 	if (!wl_list_empty(&output->modes)) {
 		wlr_output_set_mode(output, wlr_output_preferred_mode(output));
-		wlr_output_enable_adaptive_sync(output, true);
 		wlr_output_enable(output, true);
 		if (!wlr_output_commit(output))
 			return;
