@@ -18,7 +18,7 @@ build:
   parallel:
     matrix:
       - CC: [ "clang", "gcc" ]
-        IMAGE: [ "alpine:latest", "archlinux:latest", "ubuntu:latest" ]
+        IMAGE: [ "alpine:edge", "archlinux:latest" ]
 
 clang-tidy:
   extends: .install-dependencies
