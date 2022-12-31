@@ -896,6 +896,7 @@ static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED v
 	    state->keyboard_interactive)
 		tmbr_layer_client_notify_focus(client);
 	wlr_scene_node_set_enabled(&client->scene_layer_surface->tree->node, true);
+	tmbr_screen_recalculate(client->screen);
 }
 
 static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -903,6 +904,7 @@ static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.unmap);
 	tmbr_screen_focus_desktop(client->screen, client->screen->focus);
 	wlr_scene_node_set_enabled(&client->scene_layer_surface->tree->node, false);
+	tmbr_screen_recalculate(client->screen);
 }
 
 static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
