@@ -406,6 +406,7 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	client->scene_borders = wlr_scene_rect_create(client->scene_tree, 0, 0, TMBR_COLOR_INACTIVE);
 	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
 	wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
+	wlr_xdg_toplevel_set_wm_capabilities(surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
 
 	surface->data = client->scene_xdg_surface;
 
@@ -1589,7 +1590,7 @@ int tmbr_wm(void)
 	    (server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display)) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
-	    (server.xdg_shell = wlr_xdg_shell_create(server.display, 2)) == NULL ||
+	    (server.xdg_shell = wlr_xdg_shell_create(server.display, 5)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
 		die("Could not create backends");
 
