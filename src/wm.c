@@ -46,6 +46,7 @@
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_server_decoration.h>
+#include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_touch.h>
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
@@ -75,7 +76,7 @@ struct tmbr_binding {
 
 struct tmbr_keyboard {
 	struct tmbr_server *server;
-	struct wlr_input_device *device;
+	struct wlr_keyboard *keyboard;
 
 	struct wl_listener destroy;
 	struct wl_listener key;
@@ -104,13 +105,14 @@ struct tmbr_xdg_client {
 	struct tmbr_tree *tree;
 	struct wlr_xdg_surface *surface;
 	struct wlr_scene_tree *scene_tree;
-	struct wlr_scene_node *scene_node;
+	struct wlr_scene_tree *scene_xdg_surface;
 	struct wlr_scene_rect *scene_borders;
 	int h, w, x, y, border;
 	uint32_t pending_serial;
 
 	struct wl_event_source *configure_timer;
 	struct wl_listener request_fullscreen;
+	struct wl_listener request_maximize;
 };
 
 struct tmbr_tree {
@@ -154,8 +156,7 @@ struct tmbr_layer_client {
 	struct tmbr_client base;
 
 	struct tmbr_screen *screen;
-	struct wlr_layer_surface_v1 *surface;
-	struct wlr_scene_node *scene_node;
+	struct wlr_scene_layer_surface_v1 *scene_layer_surface;
 	int h, w, x, y;
 	struct wl_list link;
 };
@@ -241,16 +242,16 @@ static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server
 
 static struct tmbr_client *tmbr_server_find_client_at(struct tmbr_server *server, double x, double y, struct wlr_surface **subsurface, double *sx, double *sy)
 {
-	struct wlr_scene_node *node;
-
-	node = wlr_scene_node_at(&server->scene->node, x, y, sx, sy);
-	if (!node || node->type != WLR_SCENE_NODE_SURFACE)
+	struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node, x, y, sx, sy);
+	if (!node || node->type != WLR_SCENE_NODE_BUFFER)
 		return NULL;
-	*subsurface = wlr_scene_surface_from_node(node)->surface;
 
-	while (node->parent && !node->data)
-		node = node->parent;
-	return node->data;
+	*subsurface = wlr_scene_surface_from_buffer(wlr_scene_buffer_from_node(node))->surface;
+
+	for (struct wlr_scene_tree *p = node->parent; p; p = p->node.parent)
+		if (p->node.data)
+			return p->node.data;
+	return NULL;
 }
 
 static void tmbr_server_update_output_layout(struct tmbr_server *server)
@@ -260,13 +261,14 @@ static void tmbr_server_update_output_layout(struct tmbr_server *server)
 
 	wl_list_for_each(s, &server->screens, link) {
 		struct wlr_output_configuration_head_v1 *head = wlr_output_configuration_head_v1_create(cfg, s->output);
-		struct wlr_box *geom = wlr_output_layout_get_box(server->output_layout, s->output);
+		struct wlr_box geom;
+
+		wlr_output_layout_get_box(server->output_layout, s->output, &geom);
 		head->state.enabled = s->output->enabled;
 		head->state.mode = s->output->current_mode;
-		if (geom) {
-			head->state.x = geom->x;
-			head->state.y = geom->y;
-		}
+		head->state.x = geom.x;
+		head->state.y = geom.y;
+		head->state.adaptive_sync_enabled = s->output->adaptive_sync_status;
 	}
 
 	wlr_output_manager_v1_set_configuration(server->output_manager, cfg);
@@ -324,7 +326,7 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 
 static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
 {
-	wlr_xdg_toplevel_send_close(client->surface);
+	wlr_xdg_toplevel_send_close(client->surface->toplevel);
 }
 
 static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
@@ -350,11 +352,11 @@ static int tmbr_xdg_client_handle_configure_timer(void *payload)
 static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
 {
 	if (client->w != w || client->h != h || client->border != border) {
-		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface, w - 2 * border, h - 2 * border);
+		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface->toplevel, w - 2 * border, h - 2 * border);
 		wl_event_source_timer_update(client->configure_timer, 50);
 	}
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
-		wlr_scene_node_set_position(client->scene_node, x + border, y + border);
+		wlr_scene_node_set_position(&client->scene_xdg_surface->node, x + border, y + border);
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
 		if (tmbr_server_find_focus(client->server) == client)
 			tmbr_xdg_client_notify_focus(client);
@@ -365,7 +367,7 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 {
-	wlr_xdg_toplevel_set_activated(client->surface, focus);
+	wlr_xdg_toplevel_set_activated(client->surface->toplevel, focus);
 	wlr_scene_rect_set_color(client->scene_borders, focus ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE);
 	if (focus)
 		tmbr_xdg_client_notify_focus(client);
@@ -374,7 +376,7 @@ static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.destroy);
-	tmbr_unregister(&client->base.destroy, &client->base.commit, &client->base.map, &client->base.unmap, &client->request_fullscreen, NULL);
+	tmbr_unregister(&client->base.destroy, &client->base.commit, &client->base.map, &client->base.unmap, &client->request_fullscreen, &client->request_maximize, NULL);
 	wlr_scene_node_destroy(&client->scene_tree->node);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
@@ -398,14 +400,14 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	client->server = server;
 	client->surface = surface;
 	client->configure_timer = wl_event_loop_add_timer(wl_display_get_event_loop(server->display), tmbr_xdg_client_handle_configure_timer, client);
-	client->scene_tree = wlr_scene_tree_create(&server->scene_unowned_clients->node);
-	client->scene_node = wlr_scene_xdg_surface_create(&client->scene_tree->node, surface);
-	client->scene_node->data = client;
-	client->scene_borders = wlr_scene_rect_create(&client->scene_tree->node, 0, 0, TMBR_COLOR_INACTIVE);
-	wlr_scene_node_place_below(&client->scene_borders->node, client->scene_node);
-	wlr_xdg_toplevel_set_tiled(surface, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
+	client->scene_tree = wlr_scene_tree_create(server->scene_unowned_clients);
+	client->scene_xdg_surface = wlr_scene_xdg_surface_create(client->scene_tree, surface);
+	client->scene_xdg_surface->node.data = client;
+	client->scene_borders = wlr_scene_rect_create(client->scene_tree, 0, 0, TMBR_COLOR_INACTIVE);
+	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
+	wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
 
-	surface->data = client->scene_node;
+	surface->data = client->scene_xdg_surface;
 
 	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_xdg_client_on_commit);
@@ -529,9 +531,9 @@ static void tmbr_tree_remove(struct tmbr_tree **tree, struct tmbr_tree *node)
 static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_screen *parent)
 {
 	struct tmbr_desktop *desktop = tmbr_alloc(sizeof(struct tmbr_desktop), "Could not allocate desktop");
-	desktop->scene_tree = wlr_scene_tree_create(&parent->scene_layers[2]->node);
-	desktop->scene_clients = wlr_scene_tree_create(&desktop->scene_tree->node);
-	desktop->scene_fullscreen = wlr_scene_tree_create(&desktop->scene_tree->node);
+	desktop->scene_tree = wlr_scene_tree_create(parent->scene_layers[2]);
+	desktop->scene_clients = wlr_scene_tree_create(desktop->scene_tree);
+	desktop->scene_fullscreen = wlr_scene_tree_create(desktop->scene_tree);
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, false);
 	return desktop;
 }
@@ -568,8 +570,8 @@ static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fulls
 	wlr_scene_node_set_enabled(&desktop->scene_clients->node, !fullscreen);
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, fullscreen);
 	if (desktop->focus) {
-		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface, fullscreen);
-		wlr_scene_node_reparent(&desktop->focus->scene_tree->node, fullscreen ? &desktop->scene_fullscreen->node : &desktop->scene_clients->node);
+		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface->toplevel, fullscreen);
+		wlr_scene_node_reparent(&desktop->focus->scene_tree->node, fullscreen ? desktop->scene_fullscreen : desktop->scene_clients);
 	}
 	tmbr_desktop_recalculate(desktop);
 }
@@ -595,7 +597,7 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client)
 {
 	tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client);
-	wlr_scene_node_reparent(&client->scene_tree->node, &desktop->scene_clients->node);
+	wlr_scene_node_reparent(&client->scene_tree->node, desktop->scene_clients);
 	client->desktop = desktop;
 	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
@@ -614,7 +616,7 @@ static void tmbr_desktop_remove_client(struct tmbr_desktop *desktop, struct tmbr
 					  tmbr_server_find_focus(desktop->screen->server) == client);
 	}
 
-	wlr_scene_node_reparent(&client->scene_tree->node, &client->server->scene_unowned_clients->node);
+	wlr_scene_node_reparent(&client->scene_tree->node, client->server->scene_unowned_clients);
 	tmbr_tree_remove(&desktop->clients, client->tree);
 	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
@@ -667,7 +669,7 @@ static void tmbr_screen_remove_desktop(struct tmbr_screen *screen, struct tmbr_d
 static void tmbr_screen_add_desktop(struct tmbr_screen *screen, struct tmbr_desktop *desktop)
 {
 	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
-	wlr_scene_node_reparent(&desktop->scene_tree->node, &screen->scene_layers[2]->node);
+	wlr_scene_node_reparent(&desktop->scene_tree->node, screen->scene_layers[2]);
 	desktop->screen = screen;
 	tmbr_desktop_recalculate(desktop);
 	tmbr_screen_focus_desktop(screen, desktop);
@@ -688,7 +690,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	struct tmbr_layer_client *c, *ctmp;
 
 	wl_list_for_each_safe(c, ctmp, &screen->layer_clients, link) {
-		wlr_layer_surface_v1_destroy(c->surface);
+		wlr_layer_surface_v1_destroy(c->scene_layer_surface->layer_surface);
 	}
 	if (sibling) {
 		wl_list_for_each_safe(desktop, tmp, &screen->desktops, link)
@@ -733,74 +735,11 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 		struct tmbr_layer_client *c;
 
 		wl_list_for_each(c, &s->layer_clients, link) {
-			struct wlr_layer_surface_v1_state *state = &c->surface->current;
+			struct wlr_layer_surface_v1_state *state = &c->scene_layer_surface->layer_surface->current;
 			struct wlr_scene_tree *parent_scene;
-			struct wlr_box box = { .x = 0, .y = 0, .width = state->desired_width, .height = state->desired_height };
-			struct {
-				uint32_t singular_anchor, anchor_triplet;
-				int *positive_axis, *negative_axis, margin;
-			} edges[] = {
-				{
-					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
-					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
-					.positive_axis = &s->box.y,
-					.negative_axis = &s->box.height,
-					.margin = state->margin.top,
-				},
-				{
-					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
-					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
-					.negative_axis = &s->box.height,
-					.margin = state->margin.bottom,
-				},
-				{
-					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT,
-					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
-					.positive_axis = &s->box.x,
-					.negative_axis = &s->box.width,
-					.margin = state->margin.left,
-				},
-				{
-					.singular_anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT,
-					.anchor_triplet = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM,
-					.negative_axis = &s->box.width,
-					.margin = state->margin.right,
-				},
-			};
 
 			if ((int)state->layer != l || exclusive == !state->exclusive_zone)
 				continue;
-
-			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x, box.width = s->box.width; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x = s->box.x; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x = s->box.x + s->box.width - box.width; break;
-			default: box.x = s->box.x + s->box.width / 2 - box.width / 2; break;
-			}
-
-			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
-			case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM): box.y = s->box.y, box.height = s->box.height; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y = s->box.y; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y = s->box.y + s->box.height - box.height; break;
-			default: box.y = s->box.y + s->box.height / 2 - box.height / 2; break;
-			}
-
-			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)) {
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.left; box.width -= state->margin.left + state->margin.right; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT: box.x += state->margin.left; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT: box.x += state->margin.right; break;
-			}
-
-			switch (state->anchor & (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)) {
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.top; box.height -= state->margin.top + state->margin.bottom; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP: box.y += state->margin.top; break;
-			case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM: box.y += state->margin.bottom; break;
-			}
-
-			if (box.width < 0 || box.height < 0) {
-				wlr_layer_surface_v1_destroy(c->surface);
-				continue;
-			}
 
 			switch (state->layer) {
 			case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND: parent_scene = s->scene_layers[0]; break;
@@ -810,25 +749,8 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 			default:
 				die("Unexpected layer");
 			}
-			wlr_scene_node_reparent(c->scene_node, &parent_scene->node);
-
-			if (c->w != box.width || c->h != box.height)
-				wlr_layer_surface_v1_configure(c->surface, box.width, box.height);
-			if (c->w != box.width || c->h != box.height || c->x != box.x || c->y != box.y) {
-				wlr_scene_node_set_position(c->scene_node, box.x, box.y);
-				c->w = box.width; c->h = box.height; c->x = box.x; c->y = box.y;
-			}
-
-			for (size_t i = 0; exclusive && i < sizeof(edges) / sizeof(edges[0]); i++) {
-				if ((state->anchor  == edges[i].singular_anchor || state->anchor == edges[i].anchor_triplet) &&
-				    state->exclusive_zone + edges[i].margin > 0) {
-					if (edges[i].positive_axis)
-						*edges[i].positive_axis += state->exclusive_zone + edges[i].margin;
-					if (edges[i].negative_axis)
-						*edges[i].negative_axis -= state->exclusive_zone + edges[i].margin;
-					break;
-				}
-			}
+			wlr_scene_node_reparent(&c->scene_layer_surface->tree->node, parent_scene);
+			wlr_scene_layer_surface_v1_configure(c->scene_layer_surface, &s->box, &s->box);
 		}
 	}
 }
@@ -865,9 +787,9 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	struct tmbr_screen *screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
 	screen->output = output;
 	screen->server = server;
-	screen->scene_tree = wlr_scene_tree_create(&server->scene->node);
+	screen->scene_tree = wlr_scene_tree_create(&server->scene->tree);
 	for (unsigned i = 0; i < ARRAY_SIZE(screen->scene_layers); i++) {
-		screen->scene_layers[i] = wlr_scene_tree_create(&screen->scene_tree->node);
+		screen->scene_layers[i] = wlr_scene_tree_create(screen->scene_tree);
 		if (i > 0)
 			wlr_scene_node_place_above(&screen->scene_layers[i]->node, &screen->scene_layers[i - 1]->node);
 	}
@@ -892,8 +814,8 @@ static void tmbr_keyboard_on_destroy(struct wl_listener *listener, TMBR_UNUSED v
 static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_keyboard *keyboard = wl_container_of(listener, keyboard, key);
-	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->device->keyboard);
-	struct wlr_event_keyboard_key *event = payload;
+	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->keyboard);
+	struct wlr_keyboard_key_event *event = payload;
 	const xkb_keysym_t *keysyms;
 	xkb_layout_index_t layout;
 	struct tmbr_binding *binding;
@@ -903,8 +825,8 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	if (event->state != WL_KEYBOARD_KEY_STATE_PRESSED || keyboard->server->input_inhibit->active_client)
 		goto unhandled;
 
-	layout = xkb_state_key_get_layout(keyboard->device->keyboard->xkb_state, event->keycode + 8);
-	n = xkb_keymap_key_get_syms_by_level(keyboard->device->keyboard->keymap, event->keycode + 8, layout, 0, &keysyms);
+	layout = xkb_state_key_get_layout(keyboard->keyboard->xkb_state, event->keycode + 8);
+	n = xkb_keymap_key_get_syms_by_level(keyboard->keyboard->keymap, event->keycode + 8, layout, 0, &keysyms);
 
 	wl_list_for_each(binding, &keyboard->server->bindings, link) {
 		for (i = 0; i < n; i++) {
@@ -916,18 +838,18 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	}
 
 unhandled:
-	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->device);
+	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->keyboard);
 	wlr_seat_keyboard_notify_key(keyboard->server->seat, event->time_msec, event->keycode, event->state);
 }
 
 static void tmbr_keyboard_on_modifiers(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
-	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->device);
-	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->device->keyboard->modifiers);
+	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->keyboard);
+	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->keyboard->modifiers);
 }
 
-static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_input_device *device)
+static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_keyboard *wlr_keyboard)
 {
 	struct xkb_rule_names rules = {0};
 	struct xkb_context *context;
@@ -941,14 +863,14 @@ static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_input_devic
 
 	keyboard = tmbr_alloc(sizeof(*keyboard), "Could not allocate keyboard");
 	keyboard->server = server;
-	keyboard->device = device;
+	keyboard->keyboard = wlr_keyboard;
 
-	wlr_keyboard_set_keymap(device->keyboard, keymap);
-	wlr_keyboard_set_repeat_info(device->keyboard, 25, 600);
+	wlr_keyboard_set_keymap(wlr_keyboard, keymap);
+	wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
 
-	tmbr_register(&device->keyboard->events.destroy, &keyboard->destroy, tmbr_keyboard_on_destroy);
-	tmbr_register(&device->keyboard->events.key, &keyboard->key, tmbr_keyboard_on_key);
-	tmbr_register(&device->keyboard->events.modifiers, &keyboard->modifiers, tmbr_keyboard_on_modifiers);
+	tmbr_register(&wlr_keyboard->base.events.destroy, &keyboard->destroy, tmbr_keyboard_on_destroy);
+	tmbr_register(&wlr_keyboard->events.key, &keyboard->key, tmbr_keyboard_on_key);
+	tmbr_register(&wlr_keyboard->events.modifiers, &keyboard->modifiers, tmbr_keyboard_on_modifiers);
 
 	xkb_keymap_unref(keymap);
 	xkb_context_unref(context);
@@ -956,31 +878,34 @@ static void tmbr_keyboard_new(struct tmbr_server *server, struct wlr_input_devic
 
 static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 {
-	bool adjust_keyboard_focus = c->surface->current.keyboard_interactive != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
+	bool adjust_keyboard_focus = c->scene_layer_surface->layer_surface->current.keyboard_interactive != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
 	double x = c->screen->server->cursor->x, y = c->screen->server->cursor->y;
 	struct wlr_surface *surface;
 
 	if (adjust_keyboard_focus && tmbr_server_find_focus(c->screen->server))
 		tmbr_xdg_client_focus(tmbr_server_find_focus(c->screen->server), false);
 
-	surface = wlr_layer_surface_v1_surface_at(c->surface, x - c->x, y - c->y, &x, &y);
-	tmbr_surface_notify_focus(c->surface->surface, surface, c->screen->server, x, y, adjust_keyboard_focus);
+	surface = wlr_layer_surface_v1_surface_at(c->scene_layer_surface->layer_surface, x - c->x, y - c->y, &x, &y);
+	tmbr_surface_notify_focus(c->scene_layer_surface->layer_surface->surface, surface, c->screen->server, x, y, adjust_keyboard_focus);
 }
 
 static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.map);
-	if ((client->surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY || client->surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP) &&
-	    client->surface->current.keyboard_interactive)
+	struct wlr_layer_surface_v1_state *state = &client->scene_layer_surface->layer_surface->current;
+	if ((state->layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY || state->layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP) &&
+	    state->keyboard_interactive)
 		tmbr_layer_client_notify_focus(client);
-	wlr_scene_node_set_enabled(client->scene_node, true);
+	wlr_scene_node_set_enabled(&client->scene_layer_surface->tree->node, true);
+	tmbr_screen_recalculate(client->screen);
 }
 
 static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.unmap);
 	tmbr_screen_focus_desktop(client->screen, client->screen->focus);
-	wlr_scene_node_set_enabled(client->scene_node, false);
+	wlr_scene_node_set_enabled(&client->scene_layer_surface->tree->node, false);
+	tmbr_screen_recalculate(client->screen);
 }
 
 static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -995,8 +920,8 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.commit);
-	struct wlr_layer_surface_v1_state *c = &client->surface->current,
-					  *p = &client->surface->pending;
+	struct wlr_layer_surface_v1_state *c = &client->scene_layer_surface->layer_surface->current,
+					  *p = &client->scene_layer_surface->layer_surface->pending;
 	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
 	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
 		tmbr_screen_recalculate(client->screen);
@@ -1015,7 +940,7 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 		wlr_cursor_attach_input_device(server->cursor, device);
 		break;
 	case WLR_INPUT_DEVICE_KEYBOARD:
-		tmbr_keyboard_new(server, device);
+		tmbr_keyboard_new(server, wlr_keyboard_from_input_device(device));
 		break;
 	default:
 		break;
@@ -1028,7 +953,7 @@ static void tmbr_server_on_new_virtual_keyboard(struct wl_listener *listener, vo
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_virtual_keyboard);
 	struct wlr_virtual_keyboard_v1 *keyboard = payload;
-	tmbr_keyboard_new(server, &keyboard->input_device);
+	tmbr_keyboard_new(server, &keyboard->keyboard);
 }
 
 static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
@@ -1040,7 +965,6 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	wlr_output_init_render(output, server->allocator, server->renderer);
 	if (!wl_list_empty(&output->modes)) {
 		wlr_output_set_mode(output, wlr_output_preferred_mode(output));
-		wlr_output_enable_adaptive_sync(output, true);
 		wlr_output_enable(output, true);
 		if (!wlr_output_commit(output))
 			return;
@@ -1056,12 +980,19 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	tmbr_server_update_output_layout(screen->server);
 }
 
-static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, void *payload)
+static void tmbr_server_on_request_maximize(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct wlr_xdg_toplevel_set_fullscreen_event *event = payload;
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, request_maximize);
+	wlr_xdg_surface_schedule_configure(client->surface);
+}
+
+static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, request_fullscreen);
 	if (client->desktop && client == tmbr_server_find_focus(client->server))
-		tmbr_desktop_set_fullscreen(client->desktop, event->fullscreen);
+		tmbr_desktop_set_fullscreen(client->desktop, client->surface->toplevel->requested.fullscreen);
+	else
+		wlr_xdg_surface_schedule_configure(client->surface);
 }
 
 static void tmbr_server_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1088,6 +1019,7 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 		tmbr_register(&surface->events.map, &client->base.map, tmbr_server_on_map);
 		tmbr_register(&surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
+		tmbr_register(&surface->toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
 	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
 		if (wlr_surface_is_xdg_surface(surface->popup->parent)) {
 			struct wlr_xdg_surface *parent_surface = wlr_xdg_surface_from_wlr_surface(surface->popup->parent);
@@ -1111,12 +1043,11 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	client = tmbr_alloc(sizeof(*client), "Could not allocate layer shell client");
 	client->base.type = TMBR_CLIENT_LAYER_SURFACE;
 	client->screen = surface->output->data;
-	client->surface = surface;
-	client->scene_node = wlr_scene_subsurface_tree_create(&server->scene_unowned_clients->node, surface->surface);
-	client->scene_node->data = client;
-	wlr_scene_node_set_enabled(client->scene_node, false);
+	client->scene_layer_surface = wlr_scene_layer_surface_v1_create(server->scene_unowned_clients, surface);
+	client->scene_layer_surface->tree->node.data = client;
+	wlr_scene_node_set_enabled(&client->scene_layer_surface->tree->node, false);
 
-	surface->data = client->scene_node;
+	surface->data = client->scene_layer_surface;
 
 	wl_list_insert(&client->screen->layer_clients, &client->link);
 
@@ -1133,7 +1064,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 static void tmbr_cursor_on_axis(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_axis);
-	struct wlr_event_pointer_axis *event = payload;
+	struct wlr_pointer_axis_event *event = payload;
 	wlr_idle_notify_activity(server->idle, server->seat);
 	wlr_seat_pointer_notify_axis(server->seat, event->time_msec, event->orientation,
 				     event->delta, event->delta_discrete, event->source);
@@ -1142,7 +1073,7 @@ static void tmbr_cursor_on_axis(struct wl_listener *listener, void *payload)
 static void tmbr_cursor_on_button(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_button);
-	struct wlr_event_pointer_button *event = payload;
+	struct wlr_pointer_button_event *event = payload;
 	wlr_idle_notify_activity(server->idle, server->seat);
 	wlr_seat_pointer_notify_button(server->seat, event->time_msec, event->button, event->state);
 }
@@ -1183,25 +1114,25 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 static void tmbr_cursor_on_motion_relative(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_relative);
-	struct wlr_event_pointer_motion *event = payload;
-	tmbr_cursor_handle_motion(server, event->device, event->time_msec,
+	struct wlr_pointer_motion_event *event = payload;
+	tmbr_cursor_handle_motion(server, &event->pointer->base, event->time_msec,
 				  event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy);
 }
 
 static void tmbr_cursor_on_motion_absolute(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_motion_absolute);
-	struct wlr_event_pointer_motion_absolute *event = payload;
+	struct wlr_pointer_motion_absolute_event *event = payload;
 	double lx, ly;
-	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
-	tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
+	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->pointer->base, event->x, event->y, &lx, &ly);
+	tmbr_cursor_handle_motion(server, &event->pointer->base, event->time_msec, lx - server->cursor->x,
 				  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
 }
 
 static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_down);
-	struct wlr_event_touch_down *event = payload;
+	struct wlr_touch_down_event *event = payload;
 	struct wlr_surface *surface;
 	double lx, ly, sx, sy;
 
@@ -1209,12 +1140,12 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 	if (server->input_inhibit->active_client)
 		return;
 
-	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
+	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y, &lx, &ly);
 	if (tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy) && wlr_surface_accepts_touch(server->seat, surface)) {
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	} else if (!server->touch_emulation_id) {
 		server->touch_emulation_id = event->touch_id;
-		tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
+		tmbr_cursor_handle_motion(server, &event->touch->base, event->time_msec, lx - server->cursor->x,
 					  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
 		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_PRESSED);
 		wlr_seat_pointer_notify_frame(server->seat);
@@ -1224,7 +1155,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 static void tmbr_cursor_on_touch_up(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_up);
-	struct wlr_event_touch_up *event = payload;
+	struct wlr_touch_up_event *event = payload;
 
 	wlr_idle_notify_activity(server->idle, server->seat);
 	if (server->touch_emulation_id == event->touch_id) {
@@ -1239,7 +1170,7 @@ static void tmbr_cursor_on_touch_up(struct wl_listener *listener, void *payload)
 static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_motion);
-	struct wlr_event_touch_motion *event = payload;
+	struct wlr_touch_motion_event *event = payload;
 	struct wlr_surface *surface;
 	double lx, ly, sx, sy;
 
@@ -1247,9 +1178,9 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 	if (server->input_inhibit->active_client)
 		return;
 
-	wlr_cursor_absolute_to_layout_coords(server->cursor, event->device, event->x, event->y, &lx, &ly);
+	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y, &lx, &ly);
 	if (server->touch_emulation_id == event->touch_id)
-		tmbr_cursor_handle_motion(server, event->device, event->time_msec, lx - server->cursor->x,
+		tmbr_cursor_handle_motion(server, &event->touch->base, event->time_msec, lx - server->cursor->x,
 					  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
 	else if (!server->touch_emulation_id && tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy))
 		wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, sx, sy);
@@ -1307,6 +1238,7 @@ static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener
 			else
 				wlr_output_set_custom_mode(s->output, head->state.custom_mode.width, head->state.custom_mode.height,
 							   head->state.custom_mode.refresh / 1000.0);
+			wlr_output_enable_adaptive_sync(s->output, head->state.adaptive_sync_enabled);
 			wlr_output_set_transform(s->output, head->state.transform);
 			wlr_output_set_scale(s->output, head->state.scale);
 			wlr_output_layout_add(s->server->output_layout, s->output, head->state.x, head->state.y);
@@ -1633,6 +1565,7 @@ int tmbr_wm(void)
 
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
 	    wlr_compositor_create(server.display, server.renderer) == NULL ||
+	    wlr_subcompositor_create(server.display) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_data_control_manager_v1_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
@@ -1643,7 +1576,7 @@ int tmbr_wm(void)
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
 	    (server.scene = wlr_scene_create()) == NULL ||
-	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->node)) == NULL ||
+	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
 	    (server.idle = wlr_idle_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
@@ -1656,7 +1589,7 @@ int tmbr_wm(void)
 	    (server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display)) == NULL ||
 	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
-	    (server.xdg_shell = wlr_xdg_shell_create(server.display)) == NULL ||
+	    (server.xdg_shell = wlr_xdg_shell_create(server.display, 2)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
 		die("Could not create backends");
 
