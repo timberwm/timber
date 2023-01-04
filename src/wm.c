@@ -32,8 +32,8 @@
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
-#include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
+#include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_input_inhibitor.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -167,8 +167,8 @@ struct tmbr_server {
 	struct wlr_allocator *allocator;
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
-	struct wlr_idle *idle;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
+	struct wlr_idle_notifier_v1 *idle_notifier;
 	struct wlr_input_inhibit_manager *input_inhibit;
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct wlr_output_layout *output_layout;
@@ -821,7 +821,7 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	struct tmbr_binding *binding;
 	int i, n;
 
-	wlr_idle_notify_activity(keyboard->server->idle, keyboard->server->seat);
+	wlr_idle_notifier_v1_notify_activity(keyboard->server->idle_notifier, keyboard->server->seat);
 	if (event->state != WL_KEYBOARD_KEY_STATE_PRESSED || keyboard->server->input_inhibit->active_client)
 		goto unhandled;
 
@@ -1065,7 +1065,7 @@ static void tmbr_cursor_on_axis(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = payload;
-	wlr_idle_notify_activity(server->idle, server->seat);
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	wlr_seat_pointer_notify_axis(server->seat, event->time_msec, event->orientation,
 				     event->delta, event->delta_discrete, event->source);
 }
@@ -1074,7 +1074,7 @@ static void tmbr_cursor_on_button(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_button);
 	struct wlr_pointer_button_event *event = payload;
-	wlr_idle_notify_activity(server->idle, server->seat);
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	wlr_seat_pointer_notify_button(server->seat, event->time_msec, event->button, event->state);
 }
 
@@ -1094,7 +1094,7 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 	wlr_relative_pointer_manager_v1_send_relative_motion(server->relative_pointer_manager, server->seat,
 							     (uint64_t) time_msec * 1000, dx, dy, dx_unaccel, dy_unaccel);
 	wlr_cursor_move(server->cursor, device, dx, dy);
-	wlr_idle_notify_activity(server->idle, server->seat);
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	if (server->input_inhibit->active_client)
 		return;
 
@@ -1136,7 +1136,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 	struct wlr_surface *surface;
 	double lx, ly, sx, sy;
 
-	wlr_idle_notify_activity(server->idle, server->seat);
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	if (server->input_inhibit->active_client)
 		return;
 
@@ -1157,7 +1157,7 @@ static void tmbr_cursor_on_touch_up(struct wl_listener *listener, void *payload)
 	struct tmbr_server *server = wl_container_of(listener, server, cursor_touch_up);
 	struct wlr_touch_up_event *event = payload;
 
-	wlr_idle_notify_activity(server->idle, server->seat);
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	if (server->touch_emulation_id == event->touch_id) {
 		server->touch_emulation_id = 0;
 		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_RELEASED);
@@ -1174,7 +1174,7 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 	struct wlr_surface *surface;
 	double lx, ly, sx, sy;
 
-	wlr_idle_notify_activity(server->idle, server->seat);
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	if (server->input_inhibit->active_client)
 		return;
 
@@ -1212,7 +1212,7 @@ static void tmbr_server_on_request_set_primary_selection(struct wl_listener *lis
 static void tmbr_server_on_destroy_idle_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_destroy);
-	wlr_idle_set_enabled(server->idle, server->seat, !--server->idle_inhibitors);
+	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, !--server->idle_inhibitors);
 }
 
 static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void *payload)
@@ -1220,7 +1220,7 @@ static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void
 	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_new);
 	struct wlr_idle_inhibitor_v1 *inhibitor = payload;
 	tmbr_register(&inhibitor->events.destroy, &server->idle_inhibitor_destroy, tmbr_server_on_destroy_idle_inhibitor);
-	wlr_idle_set_enabled(server->idle, server->seat, !++server->idle_inhibitors);
+	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, true);
 }
 
 static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener, void *payload)
@@ -1578,8 +1578,8 @@ int tmbr_wm(void)
 	    (server.scene = wlr_scene_create()) == NULL ||
 	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
-	    (server.idle = wlr_idle_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
+	    (server.idle_notifier = wlr_idle_notifier_v1_create(server.display)) == NULL ||
 	    (server.input_inhibit = wlr_input_inhibit_manager_create(server.display)) == NULL ||
 	    (server.layer_shell = wlr_layer_shell_v1_create(server.display)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
