@@ -46,6 +46,7 @@
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_server_decoration.h>
+#include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_touch.h>
 #include <wlr/types/wlr_viewporter.h>
@@ -1572,6 +1573,7 @@ int tmbr_wm(void)
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
+	    wlr_single_pixel_buffer_manager_v1_create(server.display) == NULL ||
 	    wlr_viewporter_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
