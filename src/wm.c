@@ -1035,7 +1035,8 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 			surface->data = wlr_scene_xdg_surface_create(parent_surface->data, surface);
 		} else if (wlr_surface_is_layer_surface(surface->popup->parent)) {
 			struct wlr_layer_surface_v1 *parent_surface = wlr_layer_surface_v1_from_wlr_surface(surface->popup->parent);
-			surface->data = wlr_scene_xdg_surface_create(parent_surface->data, surface);
+			struct wlr_scene_layer_surface_v1 *layer_surface = parent_surface->data;
+			surface->data = wlr_scene_xdg_surface_create(layer_surface->tree, surface);
 		}
 	}
 }
