@@ -16,7 +16,9 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <string.h>
 #include <unistd.h>
@@ -227,6 +229,11 @@ static void tmbr_spawn(const char *path, char * const argv[])
 			die("Could not prepare child process: %s", strerror(errno));
 		for (i = 0; i < 1024; i++)
 			close(i);
+		if (open("/dev/null", O_RDONLY) != STDIN_FILENO ||
+		    open("/dev/null", O_WRONLY) != STDOUT_FILENO ||
+		    open("/dev/null", O_WRONLY) != STDERR_FILENO)
+			die("Could not redirect standard streams");
+
 		if (fork() == 0 && execv(path, argv) < 0)
 			die("Could not execute '%s': %s", path, strerror(errno));
 
