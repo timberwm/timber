@@ -34,11 +34,13 @@
 	if (i == ARRAY_SIZE(array)) \
 		i = -1;
 
-#define TMBR_ARG_SEL    (1 << 0)
-#define TMBR_ARG_DIR    (1 << 1)
-#define TMBR_ARG_INT    (1 << 2)
-#define TMBR_ARG_KEY    (1 << 3)
-#define TMBR_ARG_CMD    (1 << 4)
+enum {
+	TMBR_ARG_SEL = (1 << 0),
+	TMBR_ARG_DIR = (1 << 1),
+	TMBR_ARG_INT = (1 << 2),
+	TMBR_ARG_KEY = (1 << 3),
+	TMBR_ARG_CMD = (1 << 4),
+};
 
 static const struct {
 	const char *cmd;
