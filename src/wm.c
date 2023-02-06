@@ -207,7 +207,6 @@ struct tmbr_server {
 	struct wl_listener idle_inhibitor_destroy;
 	struct wl_listener apply_layout;
 	struct wl_listener output_power_set_mode;
-	int idle_inhibitors;
 	int touch_emulation_id;
 
 	struct wl_list bindings;
@@ -1222,7 +1221,7 @@ static void tmbr_server_on_request_set_primary_selection(struct wl_listener *lis
 static void tmbr_server_on_destroy_idle_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_destroy);
-	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, !--server->idle_inhibitors);
+	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, wl_list_length(&server->idle_inhibit->inhibitors) == 1);
 }
 
 static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void *payload)
