@@ -139,7 +139,7 @@ struct tmbr_desktop {
 };
 
 struct tmbr_screen {
-	struct wlr_box box;
+	struct wlr_box full_area, usable_area;
 	struct wl_list link;
 	struct tmbr_server *server;
 
@@ -563,11 +563,11 @@ static struct tmbr_desktop *tmbr_desktop_find_sibling(struct tmbr_desktop *deskt
 static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 {
 	if (desktop->fullscreen && desktop->focus)
-		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->box.x, desktop->screen->box.y,
-					desktop->screen->box.width, desktop->screen->box.height, 0);
+		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
+					desktop->screen->usable_area.width, desktop->screen->usable_area.height, 0);
 	else
-		tmbr_tree_recalculate(desktop->clients, desktop->screen->box.x, desktop->screen->box.y,
-				      desktop->screen->box.width, desktop->screen->box.height);
+		tmbr_tree_recalculate(desktop->clients, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
+				      desktop->screen->usable_area.width, desktop->screen->usable_area.height);
 }
 
 static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fullscreen)
@@ -758,7 +758,7 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 				die("Unexpected layer");
 			}
 			wlr_scene_node_reparent(&c->scene_layer_surface->tree->node, parent_scene);
-			wlr_scene_layer_surface_v1_configure(c->scene_layer_surface, &s->box, &s->box);
+			wlr_scene_layer_surface_v1_configure(c->scene_layer_surface, &s->full_area, &s->usable_area);
 		}
 	}
 }
@@ -768,10 +768,10 @@ static void tmbr_screen_recalculate(struct tmbr_screen *s)
 	struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(s->server->scene, s->output);
 	struct tmbr_desktop *d;
 
-	s->box.x = scene_output->x;
-	s->box.y = scene_output->y;
-
-	wlr_output_effective_resolution(s->output, &s->box.width, &s->box.height);
+	s->full_area.x = scene_output->x;
+	s->full_area.y = scene_output->y;
+	wlr_output_effective_resolution(s->output, &s->full_area.width, &s->full_area.height);
+	s->usable_area = s->full_area;
 
 	tmbr_screen_recalculate_layers(s, true);
 	tmbr_screen_recalculate_layers(s, false);
@@ -1465,7 +1465,7 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 
 		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		fprintf(f, "- name: %s\n", s->output->name);
-		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", (int)x, (int)y, s->box.width, s->box.height);
+		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", (int)x, (int)y, s->full_area.width, s->full_area.height);
 		fprintf(f, "  selected: %s\n", s == server->focussed_screen ? "true" : "false");
 		fprintf(f, "  modes:\n");
 		wl_list_for_each(mode, &s->output->modes, link)
