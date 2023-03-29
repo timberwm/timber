@@ -1461,11 +1461,9 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 	wl_list_for_each(s, &server->screens, link) {
 		struct wlr_output_mode *mode;
 		struct tmbr_desktop *d;
-		double x = 0, y = 0;
 
-		wlr_output_layout_output_coords(s->server->output_layout, s->output, &x, &y);
 		fprintf(f, "- name: %s\n", s->output->name);
-		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", (int)x, (int)y, s->full_area.width, s->full_area.height);
+		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", s->full_area.x, s->full_area.y, s->full_area.width, s->full_area.height);
 		fprintf(f, "  selected: %s\n", s == server->focussed_screen ? "true" : "false");
 		fprintf(f, "  modes:\n");
 		wl_list_for_each(mode, &s->output->modes, link)
