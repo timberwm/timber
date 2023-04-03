@@ -340,12 +340,16 @@ static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 {
 	double x = client->server->cursor->x, y = client->server->cursor->y;
 	struct wlr_surface *subsurface;
+	struct tmbr_client *found;
 
 	if (!client->desktop)
 		die("Focus notification for client without desktop");
 
-	subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
-	tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y, true);
+	if ((found = tmbr_server_find_client_at(client->server, x, y, &subsurface, &x, &y)) != NULL &&
+	    found->type == TMBR_CLIENT_XDG_SURFACE && wl_container_of(found, (struct tmbr_xdg_client *) NULL, base) == client)
+		tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y, true);
+	else
+		tmbr_surface_notify_focus(client->surface->surface, NULL, client->server, 0, 0, true);
 }
 
 static int tmbr_xdg_client_handle_configure_timer(void *payload)
