@@ -747,7 +747,7 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 			struct wlr_layer_surface_v1_state *state = &c->scene_layer_surface->layer_surface->current;
 			struct wlr_scene_tree *parent_scene;
 
-			if ((int)state->layer != l || exclusive == !state->exclusive_zone)
+			if ((int)state->layer != l || exclusive != (state->exclusive_zone > 0))
 				continue;
 
 			switch (state->layer) {
