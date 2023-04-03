@@ -161,7 +161,6 @@ struct tmbr_layer_client {
 
 	struct tmbr_screen *screen;
 	struct wlr_scene_layer_surface_v1 *scene_layer_surface;
-	int h, w, x, y;
 	struct wl_list link;
 };
 
@@ -341,12 +340,16 @@ static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 {
 	double x = client->server->cursor->x, y = client->server->cursor->y;
 	struct wlr_surface *subsurface;
+	struct tmbr_client *found;
 
 	if (!client->desktop)
 		die("Focus notification for client without desktop");
 
-	subsurface = wlr_xdg_surface_surface_at(client->surface, x - client->x, y - client->y, &x, &y);
-	tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y, true);
+	if ((found = tmbr_server_find_client_at(client->server, x, y, &subsurface, &x, &y)) != NULL &&
+	    found->type == TMBR_CLIENT_XDG_SURFACE && wl_container_of(found, (struct tmbr_xdg_client *) NULL, base) == client)
+		tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y, true);
+	else
+		tmbr_surface_notify_focus(client->surface->surface, NULL, client->server, 0, 0, true);
 }
 
 static int tmbr_xdg_client_handle_configure_timer(void *payload)
@@ -889,13 +892,15 @@ static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 {
 	bool adjust_keyboard_focus = c->scene_layer_surface->layer_surface->current.keyboard_interactive != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
 	double x = c->screen->server->cursor->x, y = c->screen->server->cursor->y;
-	struct wlr_surface *surface;
+	struct wlr_surface *subsurface;
+	struct tmbr_client *found;
 
 	if (adjust_keyboard_focus && tmbr_server_find_focus(c->screen->server))
 		tmbr_xdg_client_focus(tmbr_server_find_focus(c->screen->server), false);
 
-	surface = wlr_layer_surface_v1_surface_at(c->scene_layer_surface->layer_surface, x - c->x, y - c->y, &x, &y);
-	tmbr_surface_notify_focus(c->scene_layer_surface->layer_surface->surface, surface, c->screen->server, x, y, adjust_keyboard_focus);
+	if ((found = tmbr_server_find_client_at(c->screen->server, x, y, &subsurface, &x, &y)) != NULL &&
+	    found->type == TMBR_CLIENT_LAYER_SURFACE && wl_container_of(found, (struct tmbr_layer_client *) NULL, base) == c)
+		tmbr_surface_notify_focus(c->scene_layer_surface->layer_surface->surface, subsurface, c->screen->server, x, y, adjust_keyboard_focus);
 }
 
 static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
