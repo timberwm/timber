@@ -901,6 +901,8 @@ static void tmbr_layer_client_notify_focus(struct tmbr_layer_client *c)
 	if ((found = tmbr_server_find_client_at(c->screen->server, x, y, &subsurface, &x, &y)) != NULL &&
 	    found->type == TMBR_CLIENT_LAYER_SURFACE && wl_container_of(found, (struct tmbr_layer_client *) NULL, base) == c)
 		tmbr_surface_notify_focus(c->scene_layer_surface->layer_surface->surface, subsurface, c->screen->server, x, y, adjust_keyboard_focus);
+	else
+		tmbr_surface_notify_focus(c->scene_layer_surface->layer_surface->surface, NULL, c->screen->server, 0, 0, adjust_keyboard_focus);
 }
 
 static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED void *payload)
