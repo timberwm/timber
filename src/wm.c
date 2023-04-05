@@ -108,7 +108,7 @@ struct tmbr_xdg_client {
 	struct tmbr_desktop *desktop;
 	struct tmbr_tree *tree;
 	struct wlr_xdg_surface *surface;
-	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_tree *scene_client;
 	struct wlr_scene_tree *scene_xdg_surface;
 	struct wlr_scene_rect *scene_borders;
 	int h, w, x, y, border;
@@ -133,10 +133,19 @@ struct tmbr_desktop {
 	struct tmbr_screen *screen;
 	struct tmbr_tree *clients;
 	struct tmbr_xdg_client *focus;
-	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_tree *scene_desktop;
 	struct wlr_scene_tree *scene_clients;
 	struct wlr_scene_tree *scene_fullscreen;
 	bool fullscreen;
+};
+
+enum tmbr_scene_layer {
+	TMBR_SCENE_LAYER_BACKGROUND,
+	TMBR_SCENE_LAYER_BOTTOM,
+	TMBR_SCENE_LAYER_DESKTOP,
+	TMBR_SCENE_LAYER_TOP,
+	TMBR_SCENE_LAYER_OVERLAY,
+	TMBR_SCENE_LAYER_MAX,
 };
 
 struct tmbr_screen {
@@ -145,8 +154,8 @@ struct tmbr_screen {
 	struct tmbr_server *server;
 
 	struct wlr_output *output;
-	struct wlr_scene_tree *scene_tree;
-	struct wlr_scene_tree *scene_layers[5];
+	struct wlr_scene_tree *scene_screen;
+	struct wlr_scene_tree *scene_layers[TMBR_SCENE_LAYER_MAX];
 	struct wl_list desktops;
 	struct wl_list layer_clients;
 	struct tmbr_desktop *focus;
@@ -388,7 +397,7 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.destroy);
 	tmbr_unregister(&client->base.destroy, &client->base.commit, &client->base.map, &client->base.unmap, &client->request_fullscreen, &client->request_maximize, NULL);
-	wlr_scene_node_destroy(&client->scene_tree->node);
+	wlr_scene_node_destroy(&client->scene_client->node);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
 }
@@ -411,10 +420,10 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	client->server = server;
 	client->surface = surface;
 	client->configure_timer = wl_event_loop_add_timer(wl_display_get_event_loop(server->display), tmbr_xdg_client_handle_configure_timer, client);
-	client->scene_tree = wlr_scene_tree_create(server->scene_unowned_clients);
-	client->scene_xdg_surface = wlr_scene_xdg_surface_create(client->scene_tree, surface);
+	client->scene_client = wlr_scene_tree_create(server->scene_unowned_clients);
+	client->scene_xdg_surface = wlr_scene_xdg_surface_create(client->scene_client, surface);
 	client->scene_xdg_surface->node.data = client;
-	client->scene_borders = wlr_scene_rect_create(client->scene_tree, 0, 0, TMBR_COLOR_INACTIVE);
+	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0, TMBR_COLOR_INACTIVE);
 	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
 	wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
 	wlr_xdg_toplevel_set_wm_capabilities(surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
@@ -543,16 +552,16 @@ static void tmbr_tree_remove(struct tmbr_tree **tree, struct tmbr_tree *node)
 static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_screen *parent)
 {
 	struct tmbr_desktop *desktop = tmbr_alloc(sizeof(struct tmbr_desktop), "Could not allocate desktop");
-	desktop->scene_tree = wlr_scene_tree_create(parent->scene_layers[2]);
-	desktop->scene_clients = wlr_scene_tree_create(desktop->scene_tree);
-	desktop->scene_fullscreen = wlr_scene_tree_create(desktop->scene_tree);
+	desktop->scene_desktop = wlr_scene_tree_create(parent->scene_layers[TMBR_SCENE_LAYER_DESKTOP]);
+	desktop->scene_clients = wlr_scene_tree_create(desktop->scene_desktop);
+	desktop->scene_fullscreen = wlr_scene_tree_create(desktop->scene_desktop);
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, false);
 	return desktop;
 }
 
 static void tmbr_desktop_free(struct tmbr_desktop *desktop)
 {
-	wlr_scene_node_destroy(&desktop->scene_tree->node);
+	wlr_scene_node_destroy(&desktop->scene_desktop->node);
 	free(desktop);
 }
 
@@ -583,7 +592,7 @@ static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fulls
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, fullscreen);
 	if (desktop->focus) {
 		wlr_xdg_toplevel_set_fullscreen(desktop->focus->surface->toplevel, fullscreen);
-		wlr_scene_node_reparent(&desktop->focus->scene_tree->node, fullscreen ? desktop->scene_fullscreen : desktop->scene_clients);
+		wlr_scene_node_reparent(&desktop->focus->scene_client->node, fullscreen ? desktop->scene_fullscreen : desktop->scene_clients);
 	}
 	tmbr_desktop_recalculate(desktop);
 }
@@ -609,7 +618,7 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 static void tmbr_desktop_add_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client)
 {
 	tmbr_tree_insert(desktop->focus ? &desktop->focus->tree : &desktop->clients, client);
-	wlr_scene_node_reparent(&client->scene_tree->node, desktop->scene_clients);
+	wlr_scene_node_reparent(&client->scene_client->node, desktop->scene_clients);
 	client->desktop = desktop;
 	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
@@ -628,7 +637,7 @@ static void tmbr_desktop_remove_client(struct tmbr_desktop *desktop, struct tmbr
 					  tmbr_server_find_focus(desktop->screen->server) == client);
 	}
 
-	wlr_scene_node_reparent(&client->scene_tree->node, client->server->scene_unowned_clients);
+	wlr_scene_node_reparent(&client->scene_client->node, client->server->scene_unowned_clients);
 	tmbr_tree_remove(&desktop->clients, client->tree);
 	tmbr_desktop_set_fullscreen(desktop, false);
 	tmbr_desktop_recalculate(desktop);
@@ -657,9 +666,9 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
 	if (screen->focus && screen->focus != desktop)
-		wlr_scene_node_set_enabled(&screen->focus->scene_tree->node, false);
+		wlr_scene_node_set_enabled(&screen->focus->scene_desktop->node, false);
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
-	wlr_scene_node_set_enabled(&desktop->scene_tree->node, true);
+	wlr_scene_node_set_enabled(&desktop->scene_desktop->node, true);
 	screen->focus = desktop;
 	screen->server->focussed_screen = screen;
 }
@@ -681,7 +690,7 @@ static void tmbr_screen_remove_desktop(struct tmbr_screen *screen, struct tmbr_d
 static void tmbr_screen_add_desktop(struct tmbr_screen *screen, struct tmbr_desktop *desktop)
 {
 	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
-	wlr_scene_node_reparent(&desktop->scene_tree->node, screen->scene_layers[2]);
+	wlr_scene_node_reparent(&desktop->scene_desktop->node, screen->scene_layers[TMBR_SCENE_LAYER_DESKTOP]);
 	desktop->screen = screen;
 	tmbr_desktop_recalculate(desktop);
 	tmbr_screen_focus_desktop(screen, desktop);
@@ -718,7 +727,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		wl_display_terminate(screen->server->display);
 	}
 
-	wlr_scene_node_destroy(&screen->scene_tree->node);
+	wlr_scene_node_destroy(&screen->scene_screen->node);
 	tmbr_server_update_output_layout(screen->server);
 	tmbr_unregister(&screen->destroy, &screen->frame, &screen->commit, NULL);
 	wl_list_remove(&screen->link);
@@ -754,10 +763,10 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 				continue;
 
 			switch (state->layer) {
-			case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND: parent_scene = s->scene_layers[0]; break;
-			case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM: parent_scene = s->scene_layers[1]; break;
-			case ZWLR_LAYER_SHELL_V1_LAYER_TOP: parent_scene = s->scene_layers[3]; break;
-			case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY: parent_scene = s->scene_layers[4]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND: parent_scene = s->scene_layers[TMBR_SCENE_LAYER_BACKGROUND]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM: parent_scene = s->scene_layers[TMBR_SCENE_LAYER_BOTTOM]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_TOP: parent_scene = s->scene_layers[TMBR_SCENE_LAYER_TOP]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY: parent_scene = s->scene_layers[TMBR_SCENE_LAYER_OVERLAY]; break;
 			default:
 				die("Unexpected layer");
 			}
@@ -799,9 +808,9 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	struct tmbr_screen *screen = tmbr_alloc(sizeof(*screen), "Could not allocate screen");
 	screen->output = output;
 	screen->server = server;
-	screen->scene_tree = wlr_scene_tree_create(&server->scene->tree);
+	screen->scene_screen = wlr_scene_tree_create(&server->scene->tree);
 	for (unsigned i = 0; i < ARRAY_SIZE(screen->scene_layers); i++) {
-		screen->scene_layers[i] = wlr_scene_tree_create(screen->scene_tree);
+		screen->scene_layers[i] = wlr_scene_tree_create(screen->scene_screen);
 		if (i > 0)
 			wlr_scene_node_place_above(&screen->scene_layers[i]->node, &screen->scene_layers[i - 1]->node);
 	}
@@ -1277,7 +1286,7 @@ static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener 
 	struct tmbr_screen *screen = event->output->data;
 	wlr_output_enable(event->output, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 	wlr_output_commit(event->output);
-	wlr_scene_node_set_enabled(&screen->scene_tree->node, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
+	wlr_scene_node_set_enabled(&screen->scene_screen->node, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 }
 
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
