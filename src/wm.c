@@ -111,7 +111,7 @@ struct tmbr_xdg_client {
 	struct wlr_scene_tree *scene_client;
 	struct wlr_scene_tree *scene_xdg_surface;
 	struct wlr_scene_rect *scene_borders;
-	int h, w, x, y, border;
+	int h, w, border;
 	uint32_t pending_serial;
 
 	struct wl_event_source *configure_timer;
@@ -374,9 +374,8 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 	if (client->w != w || client->h != h || client->border != border) {
 		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface->toplevel, w - 2 * border, h - 2 * border);
 		wl_event_source_timer_update(client->configure_timer, 50);
+		client->w = w; client->h = h; client->border = border;
 	}
-
-	client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
 
 	wlr_scene_node_set_position(&client->scene_xdg_surface->node, x + border, y + border);
 	wlr_scene_rect_set_size(client->scene_borders, w, h);
@@ -1501,8 +1500,10 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 			fprintf(f, "    clients:\n");
 			tmbr_tree_for_each(d->clients, tree) {
 				struct tmbr_xdg_client *c = tree->client;
+
 				fprintf(f, "    - title: '%s'\n", c->surface->toplevel->title);
-				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n", c->x, c->y, c->w, c->h);
+				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n",
+					c->scene_client->node.x, c->scene_client->node.y, c->w, c->h);
 				fprintf(f, "      selected: %s\n", c == d->focus ? "true" : "false");
 			}
 		}
