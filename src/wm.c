@@ -375,12 +375,12 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface->toplevel, w - 2 * border, h - 2 * border);
 		wl_event_source_timer_update(client->configure_timer, 50);
 	}
-	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
-		wlr_scene_node_set_position(&client->scene_xdg_surface->node, x + border, y + border);
-		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
-		wlr_scene_rect_set_size(client->scene_borders, w, h);
-		wlr_scene_node_set_position(&client->scene_borders->node, x, y);
-	}
+
+	client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
+
+	wlr_scene_node_set_position(&client->scene_xdg_surface->node, x + border, y + border);
+	wlr_scene_rect_set_size(client->scene_borders, w, h);
+	wlr_scene_node_set_position(&client->scene_borders->node, x, y);
 }
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
