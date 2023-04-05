@@ -139,6 +139,15 @@ struct tmbr_desktop {
 	bool fullscreen;
 };
 
+enum tmbr_scene_layer {
+	TMBR_SCENE_LAYER_BACKGROUND,
+	TMBR_SCENE_LAYER_BOTTOM,
+	TMBR_SCENE_LAYER_DESKTOP,
+	TMBR_SCENE_LAYER_TOP,
+	TMBR_SCENE_LAYER_OVERLAY,
+	TMBR_SCENE_LAYER_MAX,
+};
+
 struct tmbr_screen {
 	struct wlr_box full_area, usable_area;
 	struct wl_list link;
@@ -146,7 +155,7 @@ struct tmbr_screen {
 
 	struct wlr_output *output;
 	struct wlr_scene_tree *scene_tree;
-	struct wlr_scene_tree *scene_layers[5];
+	struct wlr_scene_tree *scene_layers[TMBR_SCENE_LAYER_MAX];
 	struct wl_list desktops;
 	struct wl_list layer_clients;
 	struct tmbr_desktop *focus;
@@ -543,7 +552,7 @@ static void tmbr_tree_remove(struct tmbr_tree **tree, struct tmbr_tree *node)
 static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_screen *parent)
 {
 	struct tmbr_desktop *desktop = tmbr_alloc(sizeof(struct tmbr_desktop), "Could not allocate desktop");
-	desktop->scene_tree = wlr_scene_tree_create(parent->scene_layers[2]);
+	desktop->scene_tree = wlr_scene_tree_create(parent->scene_layers[TMBR_SCENE_LAYER_DESKTOP]);
 	desktop->scene_clients = wlr_scene_tree_create(desktop->scene_tree);
 	desktop->scene_fullscreen = wlr_scene_tree_create(desktop->scene_tree);
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, false);
@@ -681,7 +690,7 @@ static void tmbr_screen_remove_desktop(struct tmbr_screen *screen, struct tmbr_d
 static void tmbr_screen_add_desktop(struct tmbr_screen *screen, struct tmbr_desktop *desktop)
 {
 	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
-	wlr_scene_node_reparent(&desktop->scene_tree->node, screen->scene_layers[2]);
+	wlr_scene_node_reparent(&desktop->scene_tree->node, screen->scene_layers[TMBR_SCENE_LAYER_DESKTOP]);
 	desktop->screen = screen;
 	tmbr_desktop_recalculate(desktop);
 	tmbr_screen_focus_desktop(screen, desktop);
@@ -754,10 +763,10 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 				continue;
 
 			switch (state->layer) {
-			case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND: parent_scene = s->scene_layers[0]; break;
-			case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM: parent_scene = s->scene_layers[1]; break;
-			case ZWLR_LAYER_SHELL_V1_LAYER_TOP: parent_scene = s->scene_layers[3]; break;
-			case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY: parent_scene = s->scene_layers[4]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND: parent_scene = s->scene_layers[TMBR_SCENE_LAYER_BACKGROUND]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM: parent_scene = s->scene_layers[TMBR_SCENE_LAYER_BOTTOM]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_TOP: parent_scene = s->scene_layers[TMBR_SCENE_LAYER_TOP]; break;
+			case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY: parent_scene = s->scene_layers[TMBR_SCENE_LAYER_OVERLAY]; break;
 			default:
 				die("Unexpected layer");
 			}
