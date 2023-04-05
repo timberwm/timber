@@ -378,8 +378,6 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
 		wlr_scene_node_set_position(&client->scene_xdg_surface->node, x + border, y + border);
 		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
-		if (tmbr_server_find_focus(client->server) == client)
-			tmbr_xdg_client_notify_focus(client);
 		wlr_scene_rect_set_size(client->scene_borders, w, h);
 		wlr_scene_node_set_position(&client->scene_borders->node, x, y);
 	}
@@ -575,12 +573,23 @@ static struct tmbr_desktop *tmbr_desktop_find_sibling(struct tmbr_desktop *deskt
 
 static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 {
+	struct tmbr_xdg_client *focus;
+
 	if (desktop->fullscreen && desktop->focus)
 		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
 					desktop->screen->usable_area.width, desktop->screen->usable_area.height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
 				      desktop->screen->usable_area.width, desktop->screen->usable_area.height);
+
+	/*
+	 * After recalculating the layout it may happen that the pointer's
+	 * position changes relative to the currently-focussed window. In that
+	 * case we want to send the client a new focus notification to tell it
+	 * about the updated cursor position.
+	 */
+	if ((focus = tmbr_server_find_focus(desktop->screen->server)) != NULL)
+		tmbr_xdg_client_notify_focus(focus);
 }
 
 static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fullscreen)
