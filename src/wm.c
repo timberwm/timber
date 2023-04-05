@@ -190,6 +190,7 @@ struct tmbr_server {
 	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 	struct wlr_scene *scene;
 	struct wlr_scene_tree *scene_unowned_clients;
+	struct wlr_scene_tree *scene_drag;
 	struct wlr_seat *seat;
 	struct wlr_server_decoration_manager *decoration;
 	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
@@ -212,6 +213,9 @@ struct tmbr_server {
 	struct wl_listener request_set_cursor;
 	struct wl_listener request_set_selection;
 	struct wl_listener request_set_primary_selection;
+	struct wl_listener request_start_drag;
+	struct wl_listener start_drag;
+	struct wl_listener destroy_drag_icon;
 	struct wl_listener idle_inhibitor_new;
 	struct wl_listener idle_inhibitor_destroy;
 	struct wl_listener apply_layout;
@@ -1122,6 +1126,7 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 				      double dx, double dy, double dx_unaccel, double dy_unaccel)
 {
 	struct wlr_surface *surface = NULL;
+	struct wlr_drag_icon *drag_icon;
 	struct tmbr_client *client;
 	double sx, sy;
 
@@ -1131,6 +1136,11 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	if (server->input_inhibit->active_client)
 		return;
+
+	if (server->seat->drag && (drag_icon = server->seat->drag->icon))
+		wlr_scene_node_set_position(drag_icon->data,
+					    server->cursor->x + drag_icon->surface->sx,
+					    server->cursor->y + drag_icon->surface->sy);
 
 	if ((client = tmbr_server_find_client_at(server, server->cursor->x, server->cursor->y, &surface, &sx, &sy)) == NULL)
 		return;
@@ -1241,6 +1251,34 @@ static void tmbr_server_on_request_set_primary_selection(struct wl_listener *lis
 	struct tmbr_server *server = wl_container_of(listener, server, request_set_primary_selection);
 	struct wlr_seat_request_set_primary_selection_event *event = payload;
 	wlr_seat_set_primary_selection(server->seat, event->source, event->serial);
+}
+
+static void tmbr_server_on_destroy_drag_icon(TMBR_UNUSED struct wl_listener *listener, void *payload)
+{
+	struct wlr_drag_icon *icon = payload;
+	wlr_scene_node_destroy(icon->data);
+}
+
+static void tmbr_server_on_start_drag(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, start_drag);
+	struct wlr_drag *drag = payload;
+
+	if (drag->icon) {
+		drag->icon->data = wlr_scene_subsurface_tree_create(server->scene_drag, drag->icon->surface);
+		tmbr_register(&drag->icon->events.destroy, &server->destroy_drag_icon, tmbr_server_on_destroy_drag_icon);
+	}
+}
+
+static void tmbr_server_on_request_start_drag(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, request_start_drag);
+	struct wlr_seat_request_start_drag_event *event = payload;
+
+	if (wlr_seat_validate_pointer_grab_serial(server->seat, event->origin, event->serial))
+		wlr_seat_start_pointer_drag(server->seat, event->drag, event->serial);
+	else
+		wlr_data_source_destroy(event->drag->source);
 }
 
 static void tmbr_server_on_destroy_idle_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1612,6 +1650,7 @@ int tmbr_wm(void)
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
 	    (server.scene = wlr_scene_create()) == NULL ||
+	    (server.scene_drag = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
@@ -1644,6 +1683,8 @@ int tmbr_wm(void)
 	tmbr_register(&server.seat->events.request_set_cursor, &server.request_set_cursor, tmbr_server_on_request_set_cursor);
 	tmbr_register(&server.seat->events.request_set_selection, &server.request_set_selection, tmbr_server_on_request_set_selection);
 	tmbr_register(&server.seat->events.request_set_primary_selection, &server.request_set_primary_selection, tmbr_server_on_request_set_primary_selection);
+	tmbr_register(&server.seat->events.request_start_drag, &server.request_start_drag, tmbr_server_on_request_start_drag);
+	tmbr_register(&server.seat->events.start_drag, &server.start_drag, tmbr_server_on_start_drag);
 	tmbr_register(&server.cursor->events.axis, &server.cursor_axis, tmbr_cursor_on_axis);
 	tmbr_register(&server.cursor->events.button, &server.cursor_button, tmbr_cursor_on_button);
 	tmbr_register(&server.cursor->events.motion, &server.cursor_motion_relative, tmbr_cursor_on_motion_relative);
