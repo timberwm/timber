@@ -111,7 +111,7 @@ struct tmbr_xdg_client {
 	struct wlr_scene_tree *scene_client;
 	struct wlr_scene_tree *scene_xdg_surface;
 	struct wlr_scene_rect *scene_borders;
-	int h, w, x, y, border;
+	int h, w, border;
 	uint32_t pending_serial;
 
 	struct wl_event_source *configure_timer;
@@ -374,15 +374,12 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 	if (client->w != w || client->h != h || client->border != border) {
 		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface->toplevel, w - 2 * border, h - 2 * border);
 		wl_event_source_timer_update(client->configure_timer, 50);
+		client->w = w; client->h = h; client->border = border;
 	}
-	if (client->w != w || client->h != h || client->border != border || client->x != x || client->y != y) {
-		wlr_scene_node_set_position(&client->scene_xdg_surface->node, x + border, y + border);
-		client->w = w; client->h = h; client->x = x; client->y = y; client->border = border;
-		if (tmbr_server_find_focus(client->server) == client)
-			tmbr_xdg_client_notify_focus(client);
-		wlr_scene_rect_set_size(client->scene_borders, w, h);
-		wlr_scene_node_set_position(&client->scene_borders->node, x, y);
-	}
+
+	wlr_scene_node_set_position(&client->scene_xdg_surface->node, x + border, y + border);
+	wlr_scene_rect_set_size(client->scene_borders, w, h);
+	wlr_scene_node_set_position(&client->scene_borders->node, x, y);
 }
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
@@ -575,12 +572,23 @@ static struct tmbr_desktop *tmbr_desktop_find_sibling(struct tmbr_desktop *deskt
 
 static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 {
+	struct tmbr_xdg_client *focus;
+
 	if (desktop->fullscreen && desktop->focus)
 		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
 					desktop->screen->usable_area.width, desktop->screen->usable_area.height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
 				      desktop->screen->usable_area.width, desktop->screen->usable_area.height);
+
+	/*
+	 * After recalculating the layout it may happen that the pointer's
+	 * position changes relative to the currently-focussed window. In that
+	 * case we want to send the client a new focus notification to tell it
+	 * about the updated cursor position.
+	 */
+	if ((focus = tmbr_server_find_focus(desktop->screen->server)) != NULL)
+		tmbr_xdg_client_notify_focus(focus);
 }
 
 static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fullscreen)
@@ -1492,8 +1500,10 @@ static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUS
 			fprintf(f, "    clients:\n");
 			tmbr_tree_for_each(d->clients, tree) {
 				struct tmbr_xdg_client *c = tree->client;
+
 				fprintf(f, "    - title: '%s'\n", c->surface->toplevel->title);
-				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n", c->x, c->y, c->w, c->h);
+				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n",
+					c->scene_client->node.x, c->scene_client->node.y, c->w, c->h);
 				fprintf(f, "      selected: %s\n", c == d->focus ? "true" : "false");
 			}
 		}
