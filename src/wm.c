@@ -1311,6 +1311,14 @@ static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener
 			wlr_output_set_transform(s->output, head->state.transform);
 			wlr_output_set_scale(s->output, head->state.scale);
 			wlr_output_layout_add(s->server->output_layout, s->output, head->state.x, head->state.y);
+
+			/*
+			 * We need to explicitly recalculate the screen. While mode
+			 * changes et cetera would lead to a recalculation already via
+			 * the `commit` event, changing the screen's position in the
+			 * layout goes undetected.
+			 */
+			tmbr_screen_recalculate(s);
 		}
 
 		successful &= wlr_output_commit(s->output);
