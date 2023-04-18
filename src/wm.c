@@ -790,13 +790,10 @@ static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive
 
 static void tmbr_screen_recalculate(struct tmbr_screen *s)
 {
-	struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(s->server->scene, s->output);
 	struct tmbr_desktop *d;
 
-	s->full_area.x = scene_output->x;
-	s->full_area.y = scene_output->y;
-	wlr_output_effective_resolution(s->output, &s->full_area.width, &s->full_area.height);
-	s->usable_area = s->full_area;
+	wlr_output_layout_get_box(s->server->output_layout, s->output, &s->full_area);
+	wlr_output_layout_get_box(s->server->output_layout, s->output, &s->usable_area);
 
 	tmbr_screen_recalculate_layers(s, true);
 	tmbr_screen_recalculate_layers(s, false);
