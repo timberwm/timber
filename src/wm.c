@@ -581,8 +581,8 @@ static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 	struct tmbr_xdg_client *focus;
 
 	if (desktop->fullscreen && desktop->focus)
-		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
-					desktop->screen->usable_area.width, desktop->screen->usable_area.height, 0);
+		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->full_area.x, desktop->screen->full_area.y,
+					desktop->screen->full_area.width, desktop->screen->full_area.height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
 				      desktop->screen->usable_area.width, desktop->screen->usable_area.height);
