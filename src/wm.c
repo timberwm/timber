@@ -144,6 +144,7 @@ enum tmbr_scene_layer {
 	TMBR_SCENE_LAYER_BOTTOM,
 	TMBR_SCENE_LAYER_DESKTOP,
 	TMBR_SCENE_LAYER_TOP,
+	TMBR_SCENE_LAYER_FULLSCREEN,
 	TMBR_SCENE_LAYER_OVERLAY,
 	TMBR_SCENE_LAYER_MAX,
 };
@@ -555,7 +556,7 @@ static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_screen *parent)
 	struct tmbr_desktop *desktop = tmbr_alloc(sizeof(struct tmbr_desktop), "Could not allocate desktop");
 	desktop->scene_desktop = wlr_scene_tree_create(parent->scene_layers[TMBR_SCENE_LAYER_DESKTOP]);
 	desktop->scene_clients = wlr_scene_tree_create(desktop->scene_desktop);
-	desktop->scene_fullscreen = wlr_scene_tree_create(desktop->scene_desktop);
+	desktop->scene_fullscreen = wlr_scene_tree_create(parent->scene_layers[TMBR_SCENE_LAYER_FULLSCREEN]);
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, false);
 	return desktop;
 }
@@ -563,6 +564,7 @@ static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_screen *parent)
 static void tmbr_desktop_free(struct tmbr_desktop *desktop)
 {
 	wlr_scene_node_destroy(&desktop->scene_desktop->node);
+	wlr_scene_node_destroy(&desktop->scene_fullscreen->node);
 	free(desktop);
 }
 
@@ -579,8 +581,8 @@ static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 	struct tmbr_xdg_client *focus;
 
 	if (desktop->fullscreen && desktop->focus)
-		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
-					desktop->screen->usable_area.width, desktop->screen->usable_area.height, 0);
+		tmbr_xdg_client_set_box(desktop->focus, desktop->screen->full_area.x, desktop->screen->full_area.y,
+					desktop->screen->full_area.width, desktop->screen->full_area.height, 0);
 	else
 		tmbr_tree_recalculate(desktop->clients, desktop->screen->usable_area.x, desktop->screen->usable_area.y,
 				      desktop->screen->usable_area.width, desktop->screen->usable_area.height);
@@ -677,10 +679,13 @@ static void tmbr_screen_focus_desktop(struct tmbr_screen *screen, struct tmbr_de
 {
 	if (desktop->screen != screen)
 		die("Cannot focus desktop for different screen");
-	if (screen->focus && screen->focus != desktop)
+	if (screen->focus && screen->focus != desktop) {
 		wlr_scene_node_set_enabled(&screen->focus->scene_desktop->node, false);
+		wlr_scene_node_set_enabled(&screen->focus->scene_fullscreen->node, false);
+	}
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 	wlr_scene_node_set_enabled(&desktop->scene_desktop->node, true);
+	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, true);
 	screen->focus = desktop;
 	screen->server->focussed_screen = screen;
 }
@@ -703,6 +708,7 @@ static void tmbr_screen_add_desktop(struct tmbr_screen *screen, struct tmbr_desk
 {
 	wl_list_insert(screen->focus ? &screen->focus->link : &screen->desktops, &desktop->link);
 	wlr_scene_node_reparent(&desktop->scene_desktop->node, screen->scene_layers[TMBR_SCENE_LAYER_DESKTOP]);
+	wlr_scene_node_reparent(&desktop->scene_fullscreen->node, screen->scene_layers[TMBR_SCENE_LAYER_FULLSCREEN]);
 	desktop->screen = screen;
 	tmbr_desktop_recalculate(desktop);
 	tmbr_screen_focus_desktop(screen, desktop);
