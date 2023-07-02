@@ -864,9 +864,19 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 	layout = xkb_state_key_get_layout(keyboard->keyboard->xkb_state, event->keycode + 8);
 	n = xkb_keymap_key_get_syms_by_level(keyboard->keyboard->keymap, event->keycode + 8, layout, 0, &keysyms);
 
-	wl_list_for_each(binding, &keyboard->server->bindings, link) {
-		for (i = 0; i < n; i++) {
-			if (binding->keycode != keysyms[i] || binding->modifiers != modifiers)
+	for (i = 0; i < n; i++) {
+		xkb_keysym_t keysym = keysyms[i];
+
+		if (modifiers == (WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT) &&
+		    keysym >= XKB_KEY_F1 && keysym <= XKB_KEY_F12) {
+			struct wlr_session *session = wlr_backend_get_session(keyboard->server->backend);
+			if (session)
+				wlr_session_change_vt(session, keysym - XKB_KEY_F1 + 1);
+			return;
+		}
+
+		wl_list_for_each(binding, &keyboard->server->bindings, link) {
+			if (binding->keycode != keysym || binding->modifiers != modifiers)
 				continue;
 			tmbr_spawn("/bin/sh", (char * const[]){ "/bin/sh", "-c", binding->command, NULL });
 			return;
