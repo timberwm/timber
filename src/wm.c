@@ -1019,14 +1019,18 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	struct tmbr_server *server = wl_container_of(listener, server, new_output);
 	struct wlr_output *output = payload;
 	struct wlr_output_layout_output *layout_output;
+	struct wlr_output_mode *preferred_mode;
 	struct wlr_scene_output *scene_output;
 	struct tmbr_screen *screen;
 
 	wlr_output_init_render(output, server->allocator, server->renderer);
-	if (!wl_list_empty(&output->modes)) {
-		wlr_output_set_mode(output, wlr_output_preferred_mode(output));
-		wlr_output_enable(output, true);
-		if (!wlr_output_commit(output))
+
+	if ((preferred_mode = wlr_output_preferred_mode(output)) != NULL) {
+		struct wlr_output_state state;
+		wlr_output_state_init(&state);
+		wlr_output_state_set_mode(&state, preferred_mode);
+		wlr_output_state_set_enabled(&state, true);
+		if (!wlr_output_commit_state(output, &state))
 			return;
 	}
 
@@ -1331,28 +1335,35 @@ static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener
 
 	wl_list_for_each(head, &cfg->heads, link) {
 		struct tmbr_screen *s = head->state.output->data;
-		wlr_output_enable(s->output, head->state.enabled);
+		struct wlr_output_state state;
+
+		wlr_output_state_init(&state);
+		wlr_output_state_set_enabled(&state, head->state.enabled);
 		if (head->state.enabled) {
 			if (head->state.mode != NULL)
-				wlr_output_set_mode(s->output, head->state.mode);
+				wlr_output_state_set_mode(&state, head->state.mode);
 			else
-				wlr_output_set_custom_mode(s->output, head->state.custom_mode.width, head->state.custom_mode.height,
-							   head->state.custom_mode.refresh / 1000.0);
-			wlr_output_enable_adaptive_sync(s->output, head->state.adaptive_sync_enabled);
-			wlr_output_set_transform(s->output, head->state.transform);
-			wlr_output_set_scale(s->output, head->state.scale);
-			wlr_output_layout_add(s->server->output_layout, s->output, head->state.x, head->state.y);
-
-			/*
-			 * We need to explicitly recalculate the screen. While mode
-			 * changes et cetera would lead to a recalculation already via
-			 * the `commit` event, changing the screen's position in the
-			 * layout goes undetected.
-			 */
-			tmbr_screen_recalculate(s);
+				wlr_output_state_set_custom_mode(&state, head->state.custom_mode.width, head->state.custom_mode.height,
+								 head->state.custom_mode.refresh / 1000.0);
+			wlr_output_state_set_adaptive_sync_enabled(&state, head->state.adaptive_sync_enabled);
+			wlr_output_state_set_transform(&state, head->state.transform);
+			wlr_output_state_set_scale(&state, head->state.scale);
 		}
 
-		successful &= wlr_output_commit(s->output);
+		if (!wlr_output_commit_state(s->output, &state)) {
+			successful = false;
+			continue;
+		}
+
+		wlr_output_layout_add(s->server->output_layout, s->output, head->state.x, head->state.y);
+
+		/*
+		 * We need to explicitly recalculate the screen. While mode
+		 * changes et cetera would lead to a recalculation already via
+		 * the `commit` event, changing the screen's position in the
+		 * layout goes undetected.
+		 */
+		tmbr_screen_recalculate(s);
 	}
 
 	if (successful)
