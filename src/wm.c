@@ -264,10 +264,15 @@ static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server
 static struct tmbr_client *tmbr_server_find_client_at(struct tmbr_server *server, double x, double y, struct wlr_surface **subsurface, double *sx, double *sy)
 {
 	struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node, x, y, sx, sy);
+	struct wlr_scene_surface *scene_surface;
+
 	if (!node || node->type != WLR_SCENE_NODE_BUFFER)
 		return NULL;
 
-	*subsurface = wlr_scene_surface_from_buffer(wlr_scene_buffer_from_node(node))->surface;
+	scene_surface = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
+	if (!scene_surface)
+		return NULL;
+	*subsurface = scene_surface->surface;
 
 	for (struct wlr_scene_tree *p = node->parent; p; p = p->node.parent)
 		if (p->node.data)
@@ -1071,13 +1076,14 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 		tmbr_register(&surface->toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
 	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-		if (wlr_surface_is_xdg_surface(surface->popup->parent)) {
-			struct wlr_xdg_surface *parent_surface = wlr_xdg_surface_from_wlr_surface(surface->popup->parent);
-			surface->data = wlr_scene_xdg_surface_create(parent_surface->data, surface);
-		} else if (wlr_surface_is_layer_surface(surface->popup->parent)) {
-			struct wlr_layer_surface_v1 *parent_surface = wlr_layer_surface_v1_from_wlr_surface(surface->popup->parent);
-			struct wlr_scene_layer_surface_v1 *layer_surface = parent_surface->data;
-			surface->data = wlr_scene_xdg_surface_create(layer_surface->tree, surface);
+		struct wlr_xdg_surface *xdg_surface;
+		struct wlr_layer_surface_v1 *layer_surface;
+
+		if ((xdg_surface = wlr_xdg_surface_try_from_wlr_surface(surface->popup->parent))) {
+			surface->data = wlr_scene_xdg_surface_create(xdg_surface->data, surface);
+		} else if ((layer_surface = wlr_layer_surface_v1_try_from_wlr_surface(surface->popup->parent))) {
+			struct wlr_scene_layer_surface_v1 *scene_layer_surface = layer_surface->data;
+			surface->data = wlr_scene_xdg_surface_create(scene_layer_surface->tree, surface);
 		}
 	}
 }
