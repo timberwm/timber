@@ -1071,8 +1071,8 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 
 	if (surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
 		struct tmbr_xdg_client *client = tmbr_xdg_client_new(server, surface);
-		tmbr_register(&surface->events.map, &client->base.map, tmbr_server_on_map);
-		tmbr_register(&surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
+		tmbr_register(&surface->surface->events.map, &client->base.map, tmbr_server_on_map);
+		tmbr_register(&surface->surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 		tmbr_register(&surface->toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
 	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
@@ -1108,8 +1108,8 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 
 	wl_list_insert(&client->screen->layer_clients, &client->link);
 
-	tmbr_register(&surface->events.map, &client->base.map, tmbr_layer_client_on_map);
-	tmbr_register(&surface->events.unmap, &client->base.unmap, tmbr_layer_client_on_unmap);
+	tmbr_register(&surface->surface->events.map, &client->base.map, tmbr_layer_client_on_map);
+	tmbr_register(&surface->surface->events.unmap, &client->base.unmap, tmbr_layer_client_on_unmap);
 	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_layer_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_layer_client_on_commit);
 
