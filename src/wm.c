@@ -1021,18 +1021,17 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	struct wlr_output_layout_output *layout_output;
 	struct wlr_output_mode *preferred_mode;
 	struct wlr_scene_output *scene_output;
+	struct wlr_output_state state;
 	struct tmbr_screen *screen;
 
 	wlr_output_init_render(output, server->allocator, server->renderer);
 
-	if ((preferred_mode = wlr_output_preferred_mode(output)) != NULL) {
-		struct wlr_output_state state;
-		wlr_output_state_init(&state);
+	wlr_output_state_init(&state);
+	wlr_output_state_set_enabled(&state, true);
+	if ((preferred_mode = wlr_output_preferred_mode(output)) != NULL)
 		wlr_output_state_set_mode(&state, preferred_mode);
-		wlr_output_state_set_enabled(&state, true);
-		if (!wlr_output_commit_state(output, &state))
-			return;
-	}
+	if (!wlr_output_commit_state(output, &state))
+		return;
 
 	screen = tmbr_screen_new(server, output);
 	wl_list_insert(&server->screens, &screen->link);
