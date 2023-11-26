@@ -816,9 +816,9 @@ static void tmbr_screen_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 {
 	struct tmbr_screen *screen = wl_container_of(listener, screen, commit);
 	struct wlr_output_event_commit *event = payload;
-	if (event->committed & WLR_OUTPUT_STATE_SCALE)
+	if (event->state->committed & WLR_OUTPUT_STATE_SCALE)
 		wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
-	if (event->committed & (WLR_OUTPUT_STATE_TRANSFORM|WLR_OUTPUT_STATE_SCALE|WLR_OUTPUT_STATE_MODE))
+	if (event->state->committed & (WLR_OUTPUT_STATE_TRANSFORM|WLR_OUTPUT_STATE_SCALE|WLR_OUTPUT_STATE_MODE))
 		tmbr_screen_recalculate(screen);
 	tmbr_server_update_output_layout(screen->server);
 }
