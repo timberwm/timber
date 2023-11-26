@@ -1158,8 +1158,8 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 
 	if (server->seat->drag && (drag_icon = server->seat->drag->icon))
 		wlr_scene_node_set_position(drag_icon->data,
-					    server->cursor->x + drag_icon->surface->sx,
-					    server->cursor->y + drag_icon->surface->sy);
+					    server->cursor->x + drag_icon->surface->current.dx,
+					    server->cursor->y + drag_icon->surface->current.dy);
 
 	if ((client = tmbr_server_find_client_at(server, server->cursor->x, server->cursor->y, &surface, &sx, &sy)) == NULL)
 		return;
