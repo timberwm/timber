@@ -165,6 +165,7 @@ struct tmbr_screen {
 	struct wl_listener destroy;
 	struct wl_listener frame;
 	struct wl_listener commit;
+	struct wl_listener request_state;
 };
 
 struct tmbr_layer_client {
@@ -757,7 +758,7 @@ static void tmbr_screen_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 
 	wlr_scene_node_destroy(&screen->scene_screen->node);
 	tmbr_server_update_output_layout(screen->server);
-	tmbr_unregister(&screen->destroy, &screen->frame, &screen->commit, NULL);
+	tmbr_unregister(&screen->destroy, &screen->frame, &screen->commit, &screen->request_state, NULL);
 	wl_list_remove(&screen->link);
 	free(screen);
 }
@@ -776,6 +777,13 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 out:
 	clock_gettime(CLOCK_MONOTONIC, &time);
 	wlr_scene_output_send_frame_done(scene_output, &time);
+}
+
+static void tmbr_screen_on_request_state(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_screen *screen = wl_container_of(listener, screen, request_state);
+	struct wlr_output_event_request_state *event = payload;
+	wlr_output_commit_state(screen->output, event->state);
 }
 
 static void tmbr_screen_recalculate_layers(struct tmbr_screen *s, bool exclusive)
@@ -846,6 +854,7 @@ static struct tmbr_screen *tmbr_screen_new(struct tmbr_server *server, struct wl
 	tmbr_register(&output->events.destroy, &screen->destroy, tmbr_screen_on_destroy);
 	tmbr_register(&output->events.commit, &screen->commit, tmbr_screen_on_commit);
 	tmbr_register(&output->events.frame, &screen->frame, tmbr_screen_on_frame);
+	tmbr_register(&output->events.request_state, &screen->request_state, tmbr_screen_on_request_state);
 
 	return screen;
 }
