@@ -195,7 +195,7 @@ struct tmbr_server {
 	struct wlr_seat *seat;
 	struct wlr_server_decoration_manager *decoration;
 	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
-	struct wlr_xcursor_manager *xcursor;
+	struct wlr_xcursor_manager *xcursor_manager;
 	struct wlr_xdg_shell *xdg_shell;
 
 	struct wl_listener new_input;
@@ -346,7 +346,7 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 		wlr_seat_pointer_notify_motion(server->seat, now.tv_sec * 1000 + now.tv_nsec / 1000000, x, y);
 	} else {
 		wlr_seat_pointer_notify_clear_focus(server->seat);
-		wlr_xcursor_manager_set_cursor_image(server->xcursor, "left_ptr", server->cursor);
+		wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager, "default");
 	}
 }
 
@@ -817,7 +817,7 @@ static void tmbr_screen_on_commit(struct wl_listener *listener, TMBR_UNUSED void
 	struct tmbr_screen *screen = wl_container_of(listener, screen, commit);
 	struct wlr_output_event_commit *event = payload;
 	if (event->state->committed & WLR_OUTPUT_STATE_SCALE)
-		wlr_xcursor_manager_load(screen->server->xcursor, screen->output->scale);
+		wlr_xcursor_manager_load(screen->server->xcursor_manager, screen->output->scale);
 	if (event->state->committed & (WLR_OUTPUT_STATE_TRANSFORM|WLR_OUTPUT_STATE_SCALE|WLR_OUTPUT_STATE_MODE))
 		tmbr_screen_recalculate(screen);
 	tmbr_server_update_output_layout(screen->server);
@@ -1690,7 +1690,7 @@ int tmbr_wm(void)
 	    (server.presentation = wlr_presentation_create(server.display, server.backend)) == NULL ||
 	    (server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display)) == NULL ||
-	    (server.xcursor = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
+	    (server.xcursor_manager = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display, 5)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
 		die("Could not create backends");
@@ -1700,7 +1700,7 @@ int tmbr_wm(void)
 	wlr_scene_attach_output_layout(server.scene, server.output_layout);
 	wlr_scene_set_presentation(server.scene, server.presentation);
 	wlr_scene_node_set_enabled(&server.scene_unowned_clients->node, false);
-	wlr_xcursor_manager_load(server.xcursor, 1);
+	wlr_xcursor_manager_load(server.xcursor_manager, 1);
 
 	tmbr_register(&server.backend->events.new_input, &server.new_input, tmbr_server_on_new_input);
 	tmbr_register(&server.virtual_keyboard_manager->events.new_virtual_keyboard, &server.new_virtual_keyboard, tmbr_server_on_new_virtual_keyboard);
