@@ -191,6 +191,7 @@ struct tmbr_server {
 	struct wlr_presentation *presentation;
 	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 	struct wlr_scene *scene;
+	struct wlr_scene_output_layout *scene_layout;
 	struct wlr_scene_tree *scene_unowned_clients;
 	struct wlr_scene_tree *scene_drag;
 	struct wlr_seat *seat;
@@ -1015,6 +1016,8 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_output);
 	struct wlr_output *output = payload;
+	struct wlr_output_layout_output *layout_output;
+	struct wlr_scene_output *scene_output;
 	struct tmbr_screen *screen;
 
 	wlr_output_init_render(output, server->allocator, server->renderer);
@@ -1030,7 +1033,11 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 	if (!server->focussed_screen)
 		server->focussed_screen = screen;
 	output->data = screen;
-	wlr_output_layout_add_auto(server->output_layout, output);
+
+	layout_output = wlr_output_layout_add_auto(server->output_layout, output);
+	scene_output = wlr_scene_output_create(server->scene, output);
+	wlr_scene_output_layout_add_output(server->scene_layout, layout_output, scene_output);
+
 	tmbr_screen_recalculate(screen);
 	tmbr_server_update_output_layout(screen->server);
 }
@@ -1676,15 +1683,16 @@ int tmbr_wm(void)
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
+	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.scene = wlr_scene_create()) == NULL ||
 	    (server.scene_drag = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
+	    (server.scene_layout = wlr_scene_attach_output_layout(server.scene, server.output_layout)) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
 	    (server.idle_notifier = wlr_idle_notifier_v1_create(server.display)) == NULL ||
 	    (server.input_inhibit = wlr_input_inhibit_manager_create(server.display)) == NULL ||
 	    (server.layer_shell = wlr_layer_shell_v1_create(server.display, 4)) == NULL ||
-	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
 	    (server.output_power_manager = wlr_output_power_manager_v1_create(server.display)) == NULL ||
 	    (server.presentation = wlr_presentation_create(server.display, server.backend)) == NULL ||
@@ -1697,7 +1705,6 @@ int tmbr_wm(void)
 
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
-	wlr_scene_attach_output_layout(server.scene, server.output_layout);
 	wlr_scene_set_presentation(server.scene, server.presentation);
 	wlr_scene_node_set_enabled(&server.scene_unowned_clients->node, false);
 	wlr_xcursor_manager_load(server.xcursor_manager, 1);
