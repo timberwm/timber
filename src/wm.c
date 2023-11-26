@@ -766,7 +766,7 @@ static void tmbr_screen_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	tmbr_tree_for_each(screen->focus->clients, tree)
 		if (tree->client->pending_serial)
 			goto out;
-	wlr_scene_output_commit(scene_output);
+	wlr_scene_output_commit(scene_output, NULL);
 
 out:
 	clock_gettime(CLOCK_MONOTONIC, &time);
