@@ -26,6 +26,7 @@
 #include <linux/input-event-codes.h>
 
 #include <wlr/backend.h>
+#include <wlr/backend/session.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
@@ -193,6 +194,7 @@ struct tmbr_server {
 	struct wlr_scene_tree *scene_unowned_clients;
 	struct wlr_scene_tree *scene_drag;
 	struct wlr_seat *seat;
+	struct wlr_session *session;
 	struct wlr_server_decoration_manager *decoration;
 	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
 	struct wlr_xcursor_manager *xcursor_manager;
@@ -874,9 +876,7 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 
 		if (modifiers == (WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT) &&
 		    keysym >= XKB_KEY_F1 && keysym <= XKB_KEY_F12) {
-			struct wlr_session *session = wlr_backend_get_session(keyboard->server->backend);
-			if (session)
-				wlr_session_change_vt(session, keysym - XKB_KEY_F1 + 1);
+			wlr_session_change_vt(keyboard->server->session, keysym - XKB_KEY_F1 + 1);
 			return;
 		}
 
@@ -1654,7 +1654,7 @@ int tmbr_wm(void)
 	wl_list_init(&server.screens);
 	if ((server.display = wl_display_create()) == NULL)
 		die("Could not create display");
-	if ((server.backend = wlr_backend_autocreate(server.display)) == NULL)
+	if ((server.backend = wlr_backend_autocreate(server.display, &server.session)) == NULL)
 		die("Could not create backend");
 	if ((server.renderer = wlr_renderer_autocreate(server.backend)) == NULL)
 		die("Could not create renderer");
