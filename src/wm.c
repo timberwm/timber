@@ -181,6 +181,7 @@ struct tmbr_server {
 	struct wlr_allocator *allocator;
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
+	struct wlr_gamma_control_manager_v1 *gamma_control_manager;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wlr_idle_notifier_v1 *idle_notifier;
 	struct wlr_input_inhibit_manager *input_inhibit;
@@ -223,6 +224,7 @@ struct tmbr_server {
 	struct wl_listener idle_inhibitor_new;
 	struct wl_listener idle_inhibitor_destroy;
 	struct wl_listener apply_layout;
+	struct wl_listener set_gamma;
 	struct wl_listener output_power_set_mode;
 	int touch_emulation_id;
 
@@ -1360,6 +1362,15 @@ static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener
 	wlr_output_configuration_v1_destroy(cfg);
 }
 
+static void tmbr_server_on_set_gamma(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, set_gamma);
+	struct wlr_gamma_control_manager_v1_set_gamma_event *event = payload;
+	struct wlr_gamma_control_v1 *control = wlr_gamma_control_manager_v1_get_control(server->gamma_control_manager, event->output);
+	wlr_gamma_control_v1_apply(control, &event->output->pending);
+	wlr_output_commit(event->output);
+}
+
 static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener *listener, void *payload)
 {
 	struct wlr_output_power_v1_set_mode_event *event = payload;
@@ -1675,7 +1686,6 @@ int tmbr_wm(void)
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_data_control_manager_v1_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
-	    wlr_gamma_control_manager_v1_create(server.display) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_screencopy_manager_v1_create(server.display) == NULL ||
 	    wlr_single_pixel_buffer_manager_v1_create(server.display) == NULL ||
@@ -1689,6 +1699,7 @@ int tmbr_wm(void)
 	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.scene_layout = wlr_scene_attach_output_layout(server.scene, server.output_layout)) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
+	    (server.gamma_control_manager = wlr_gamma_control_manager_v1_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
 	    (server.idle_notifier = wlr_idle_notifier_v1_create(server.display)) == NULL ||
 	    (server.input_inhibit = wlr_input_inhibit_manager_create(server.display)) == NULL ||
@@ -1728,6 +1739,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.touch_motion, &server.cursor_touch_motion, tmbr_cursor_on_touch_motion);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.idle_inhibitor_new, tmbr_server_on_new_idle_inhibitor);
+	tmbr_register(&server.gamma_control_manager->events.set_gamma, &server.set_gamma, tmbr_server_on_set_gamma);
 	tmbr_register(&server.output_manager->events.apply, &server.apply_layout, tmbr_server_on_apply_layout);
 	tmbr_register(&server.output_power_manager->events.set_mode, &server.output_power_set_mode, tmbr_server_on_output_power_set_mode);
 
