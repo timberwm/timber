@@ -1663,7 +1663,7 @@ int tmbr_wm(void)
 	wlr_renderer_init_wl_display(server.renderer, server.display);
 
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
-	    wlr_compositor_create(server.display, server.renderer) == NULL ||
+	    wlr_compositor_create(server.display, 5, server.renderer) == NULL ||
 	    wlr_subcompositor_create(server.display) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_data_control_manager_v1_create(server.display) == NULL ||
@@ -1683,7 +1683,7 @@ int tmbr_wm(void)
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
 	    (server.idle_notifier = wlr_idle_notifier_v1_create(server.display)) == NULL ||
 	    (server.input_inhibit = wlr_input_inhibit_manager_create(server.display)) == NULL ||
-	    (server.layer_shell = wlr_layer_shell_v1_create(server.display)) == NULL ||
+	    (server.layer_shell = wlr_layer_shell_v1_create(server.display, 4)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create()) == NULL ||
 	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
 	    (server.output_power_manager = wlr_output_power_manager_v1_create(server.display)) == NULL ||
