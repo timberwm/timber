@@ -47,6 +47,9 @@ you need to set the `TMBR_CONFIG_PATH` variable:
 
     $ TMBR_CONFIG_PATH=/path/to/timberrc exec timber
 
+Please refer to the [example `timberrc`](./docs/timberrc.example)
+for a good starting point.
+
 When timber is running, you can control it by using the commands
 provided by timber:
 
