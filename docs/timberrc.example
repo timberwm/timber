@@ -1,0 +1,46 @@
+#!/bin/sh
+
+T="/usr/bin/timber"
+
+TERMINAL="alacritty"
+
+$T binding add logo+shift+s "swaylock"
+$T binding add logo+shift+t "$TERMINAL"
+$T binding add logo+shift+f "firefox"
+$T binding add logo+shift+m "$TERMINAL -e mutt"
+$T binding add logo+shift+w "$TERMINAL -e weechat"
+
+$T binding add logo+shift+c "$T client kill"
+$T binding add logo+f "$T client fullscreen"
+$T binding add logo+k "$T client focus prev"
+$T binding add logo+j "$T client focus next"
+$T binding add logo+shift+k "$T client swap prev"
+$T binding add logo+shift+j "$T client swap next"
+$T binding add logo+v "$T client resize north +5"
+$T binding add logo+i "$T client resize south +5"
+$T binding add logo+u "$T client resize west +5"
+$T binding add logo+a "$T client resize east +5"
+$T binding add logo+shift+v "$T client resize north -5"
+$T binding add logo+shift+i "$T client resize south -5"
+$T binding add logo+shift+u "$T client resize west -5"
+$T binding add logo+shift+a "$T client resize east -5"
+
+$T binding add logo+r "$T tree rotate"
+
+$T binding add logo+n "$T desktop new"
+$T binding add logo+x "$T desktop kill"
+$T binding add logo+h "$T desktop focus prev"
+$T binding add logo+l "$T desktop focus next"
+$T binding add logo+shift+h "$T client to_desktop prev"
+$T binding add logo+shift+l "$T client to_desktop next"
+
+$T binding add logo+comma  "$T screen focus prev"
+$T binding add logo+period "$T screen focus next"
+$T binding add logo+shift+comma  "$T client to_screen prev"
+$T binding add logo+shift+period "$T client to_screen next"
+
+$T binding add XF86MonBrightnessUp "brightnessctl add 5"
+$T binding add XF86MonBrightnessDown "brightnessctl add -5"
+$T binding add XF86AudioLowerVolume "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
+$T binding add XF86AudioRaiseVolume "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"
+$T binding add XF86AudioMute "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
