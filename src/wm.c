@@ -1805,6 +1805,7 @@ int tmbr_wm(void)
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_data_control_manager_v1_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
+	    wlr_fractional_scale_manager_v1_create(server.display, 1) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_screencopy_manager_v1_create(server.display) == NULL ||
 	    wlr_single_pixel_buffer_manager_v1_create(server.display) == NULL ||
@@ -1835,7 +1836,6 @@ int tmbr_wm(void)
 
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
-	wlr_fractional_scale_manager_v1_create(server.display, 1);
 	wlr_scene_set_presentation(server.scene, server.presentation);
 	wlr_scene_node_set_enabled(&server.scene_unowned_clients->node, false);
 	wlr_xcursor_manager_load(server.xcursor_manager, 1);
