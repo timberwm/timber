@@ -54,12 +54,12 @@ static const struct {
 	{ "client", "resize",     TMBR_CTRL_CLIENT_RESIZE,     TMBR_ARG_DIR|TMBR_ARG_INT     },
 	{ "client", "swap",       TMBR_CTRL_CLIENT_SWAP,       TMBR_ARG_SEL                  },
 	{ "client", "to_desktop", TMBR_CTRL_CLIENT_TO_DESKTOP, TMBR_ARG_SEL                  },
-	{ "client", "to_screen",  TMBR_CTRL_CLIENT_TO_SCREEN,  TMBR_ARG_SEL                  },
+	{ "client", "to_output",  TMBR_CTRL_CLIENT_TO_OUTPUT,  TMBR_ARG_SEL                  },
 	{ "desktop", "focus",     TMBR_CTRL_DESKTOP_FOCUS,     TMBR_ARG_SEL                  },
 	{ "desktop", "kill",      TMBR_CTRL_DESKTOP_KILL,      0                             },
 	{ "desktop", "new",       TMBR_CTRL_DESKTOP_NEW,       0                             },
 	{ "desktop", "swap",      TMBR_CTRL_DESKTOP_SWAP,      TMBR_ARG_SEL                  },
-	{ "screen", "focus",      TMBR_CTRL_SCREEN_FOCUS,      TMBR_ARG_SEL                  },
+	{ "output", "focus",      TMBR_CTRL_OUTPUT_FOCUS,      TMBR_ARG_SEL                  },
 	{ "tree", "rotate",       TMBR_CTRL_TREE_ROTATE,       0                             },
 	{ "state", "query",       TMBR_CTRL_STATE_QUERY,       0                             },
 	{ "state", "quit",        TMBR_CTRL_STATE_QUIT,        0                             },
@@ -243,12 +243,12 @@ int tmbr_client(int argc, char *argv[])
 		case TMBR_CTRL_CLIENT_RESIZE: tmbr_ctrl_client_resize(ctrl, args.dir, args.i); break;
 		case TMBR_CTRL_CLIENT_SWAP: tmbr_ctrl_client_swap(ctrl, args.sel); break;
 		case TMBR_CTRL_CLIENT_TO_DESKTOP: tmbr_ctrl_client_to_desktop(ctrl, args.sel); break;
-		case TMBR_CTRL_CLIENT_TO_SCREEN: tmbr_ctrl_client_to_screen(ctrl, args.sel); break;
+		case TMBR_CTRL_CLIENT_TO_OUTPUT: tmbr_ctrl_client_to_output(ctrl, args.sel); break;
 		case TMBR_CTRL_DESKTOP_FOCUS: tmbr_ctrl_desktop_focus(ctrl, args.sel); break;
 		case TMBR_CTRL_DESKTOP_KILL: tmbr_ctrl_desktop_kill(ctrl); break;
 		case TMBR_CTRL_DESKTOP_NEW: tmbr_ctrl_desktop_new(ctrl); break;
 		case TMBR_CTRL_DESKTOP_SWAP: tmbr_ctrl_desktop_swap(ctrl, args.sel); break;
-		case TMBR_CTRL_SCREEN_FOCUS: tmbr_ctrl_screen_focus(ctrl, args.sel); break;
+		case TMBR_CTRL_OUTPUT_FOCUS: tmbr_ctrl_output_focus(ctrl, args.sel); break;
 		case TMBR_CTRL_TREE_ROTATE: tmbr_ctrl_tree_rotate(ctrl); break;
 		case TMBR_CTRL_STATE_QUERY: tmbr_ctrl_state_query(ctrl, STDOUT_FILENO); break;
 		case TMBR_CTRL_STATE_QUIT: tmbr_ctrl_state_quit(ctrl); break;

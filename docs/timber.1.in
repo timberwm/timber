@@ -12,12 +12,12 @@ timber \- tree-based window manager
 \fItimber\fR client resize (north|south|east|west) <NUMBER>
 \fItimber\fR client swap (next|prev)
 \fItimber\fR client to_desktop (next|prev)
-\fItimber\fR client to_screen (next|prev)
+\fItimber\fR client to_output (next|prev)
 \fItimber\fR desktop focus (next|prev)
 \fItimber\fR desktop kill
 \fItimber\fR desktop new
 \fItimber\fR desktop swap (next|prev)
-\fItimber\fR screen focus (next|prev)
+\fItimber\fR output focus (next|prev)
 \fItimber\fR tree rotate
 \fItimber\fR state subscribe
 \fItimber\fR state query
@@ -41,7 +41,7 @@ Each node of that tree may have a parent node and either zero or two children.
 In case where a node doesn't have any children, it is called a leaf node and will hold a client.
 In case where a node has two children, it may not hold a client but each of its children may again either be an edge node or another splitting node.
 .PP
-The tree's nodes determine how clients shall be layed out on the screen and thus hold an orientation as well as a weight.
+The tree's nodes determine how clients shall be layed out on the output and thus hold an orientation as well as a weight.
 If a node has horizontal orientation, its children will be displayed stacked above each other.
 If a node has vertical orientation, its children will be displayed stacked next to each other.
 How much space is being allocated to both children is determined by the weight, which is a value in the range \[0, 100\].
@@ -50,12 +50,12 @@ If the value is smaller than 50, then the first client will be displayed smaller
 .sp
 A desktop is a virtual entity that may contain an arbitrary amount of clients.
 Each desktop will manage its clients independently of other desktops and layout them accordingly.
-Each screen will have at least one desktop and exactly one desktop can be selected on each screen.
-Switching between desktops on a screen will cause it to only display clients from the desktop that is being switched to.
-.SS Screen
+Each output will have at least one desktop and exactly one desktop can be selected on each output.
+Switching between desktops on a output will cause it to only display clients from the desktop that is being switched to.
+.SS Output
 .sp
-A screen represents a monitor attached to your graphics card.
-Each monitor has its own screen that may hold one or more desktops.
+An output represents a monitor attached to your graphics card.
+Each monitor has its own output that may hold one or more desktops.
 .SH OPTIONS
 .SS --help
 .sp
@@ -106,11 +106,11 @@ The current and selected client's windows will be swapped with each other.
 $ timber client to_desktop (next|prev)
 .sp
 Sends the currently focussed client to the selected neighbouring desktop.
-.SS Client: Move to neighbouring screen
+.SS Client: Move to neighbouring output
 .sp
-$ timber client to_screen (next|prev)
+$ timber client to_output (next|prev)
 .sp
-Sends the currently focussed client to the selected neighbouring screen.
+Sends the currently focussed client to the selected neighbouring output.
 .SS Desktop: focus neighbouring desktop
 .sp
 $ timber desktop focus (next|prev)
@@ -133,11 +133,11 @@ $ timber desktop swap (next|prev)
 .sp
 Swaps the currently focussed desktop with the selected neighbouring desktop.
 The current desktop will stay focussed, but the order of those two desktops will be swapped.
-.SS Screen: focus neighbouring screen
+.SS Output: focus neighbouring output
 .sp
-$ timber screen focus (next|prev)
+$ timber output focus (next|prev)
 .sp
-Selects the screen relative to the currently focussed screen and makes it the new focussed one.
+Selects the output relative to the currently focussed output and makes it the new focussed one.
 .SS Tree: rotate current node
 .sp
 $ timber tree rotate
