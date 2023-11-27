@@ -129,6 +129,17 @@ struct tmbr_tree {
 	uint8_t ratio;
 };
 
+struct tmbr_xdg_popup {
+	struct wlr_xdg_popup *popup;
+	struct tmbr_xdg_client *xdg_parent;
+	struct tmbr_layer_client *layer_parent;
+
+	bool has_committed;
+
+	struct wl_listener commit;
+	struct wl_listener destroy;
+};
+
 struct tmbr_desktop {
 	struct wl_list link;
 	struct tmbr_output *output;
@@ -480,6 +491,50 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_xdg_client_on_commit);
 	return client;
+}
+
+static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, destroy);
+	tmbr_unregister(&popup->destroy, &popup->commit, NULL);
+	free(popup);
+}
+
+static void tmbr_xdg_popup_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, commit);
+
+	if (!popup->has_committed) {
+		if (popup->xdg_parent) {
+			int x, y;
+
+			wlr_scene_node_coords(&popup->xdg_parent->scene_xdg_surface->node, &x, &y);
+
+			/*
+			 * Constrain XDG client popups to the window of their parent.
+			 */
+			wlr_xdg_popup_unconstrain_from_box(popup->popup, &(struct wlr_box){
+				.width = popup->xdg_parent->w,
+				.height = popup->xdg_parent->h,
+			});
+		} else if (popup->layer_parent) {
+			int x, y;
+
+			wlr_scene_node_coords(&popup->layer_parent->scene_layer_surface->tree->node, &x, &y);
+
+			/*
+			 * Layer shell clients are unconstrained to the complete output.
+			 */
+			wlr_xdg_popup_unconstrain_from_box(popup->popup, &(struct wlr_box) {
+				.width = popup->layer_parent->output->full_area.width,
+				.height = popup->layer_parent->output->full_area.height,
+				.x = popup->layer_parent->output->full_area.x - x,
+				.y = popup->layer_parent->output->full_area.y - y,
+			});
+		}
+
+		popup->has_committed = true;
+	}
 }
 
 static void tmbr_tree_recalculate(struct tmbr_tree *tree, int x, int y, int w, int h)
@@ -1131,16 +1186,25 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 		tmbr_register(&surface->toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
 	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-		struct wlr_xdg_surface *xdg_surface;
 		struct wlr_layer_surface_v1 *layer_surface;
+		struct wlr_xdg_surface *xdg_surface;
+		struct tmbr_xdg_popup *popup;
+
+		popup = tmbr_alloc(sizeof(*popup), "Could not allocate popup");
+		popup->popup = surface->popup;
 
 		if ((xdg_surface = wlr_xdg_surface_try_from_wlr_surface(surface->popup->parent))) {
 			struct tmbr_xdg_client *xdg_client = xdg_surface->data;
 			surface->data = wlr_scene_xdg_surface_create(xdg_client->scene_xdg_surface, surface);
+			popup->xdg_parent = xdg_client;
 		} else if ((layer_surface = wlr_layer_surface_v1_try_from_wlr_surface(surface->popup->parent))) {
 			struct tmbr_layer_client *layer_client = layer_surface->data;
 			surface->data = wlr_scene_xdg_surface_create(layer_client->scene_layer_surface->tree, surface);
+			popup->layer_parent = layer_client;
 		}
+
+		tmbr_register(&surface->popup->base->surface->events.commit, &popup->commit, tmbr_xdg_popup_on_commit);
+		tmbr_register(&surface->popup->base->events.destroy, &popup->destroy, tmbr_xdg_popup_on_destroy);
 	}
 }
 
