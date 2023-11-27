@@ -34,6 +34,7 @@
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
@@ -1834,6 +1835,7 @@ int tmbr_wm(void)
 
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
+	wlr_fractional_scale_manager_v1_create(server.display, 1);
 	wlr_scene_set_presentation(server.scene, server.presentation);
 	wlr_scene_node_set_enabled(&server.scene_unowned_clients->node, false);
 	wlr_xcursor_manager_load(server.xcursor_manager, 1);
