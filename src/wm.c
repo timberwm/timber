@@ -438,7 +438,10 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	client->scene_xdg_surface->node.data = client;
 	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0, TMBR_COLOR_INACTIVE);
 	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
-	wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
+	if (wl_resource_get_version(surface->toplevel->resource) >= XDG_TOPLEVEL_STATE_TILED_LEFT_SINCE_VERSION)
+		wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
+	else
+		wlr_xdg_toplevel_set_maximized(surface->toplevel, true);
 	wlr_xdg_toplevel_set_wm_capabilities(surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
 
 	surface->data = client->scene_xdg_surface;
