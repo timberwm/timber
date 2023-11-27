@@ -38,7 +38,7 @@
     <enum name="error">
         <entry name="client_not_found" value="1" summary="client not found"/>
         <entry name="desktop_not_found" value="2" summary="desktop not found"/>
-        <entry name="screen_not_found" value="3" summary="screen not found"/>
+        <entry name="output_not_found" value="3" summary="output not found"/>
         <entry name="desktop_not_empty" value="4" summary="desktop not empty"/>
         <entry name="invalid_param" value="5" summary="invalid parameter"/>
     </enum>
@@ -85,9 +85,9 @@
         <arg name="selection" type="uint" enum="selection"/>
     </request>
 
-    <request name="client_to_screen">
-        <description summary="send client to screen">
-            Send the currently focussed client to a neighboring screen.
+    <request name="client_to_output">
+        <description summary="send client to output">
+            Send the currently focussed client to a neighboring output.
         </description>
         <arg name="selection" type="uint" enum="selection"/>
     </request>
@@ -119,9 +119,9 @@
         <arg name="selection" type="uint" enum="selection"/>
     </request>
 
-    <request name="screen_focus">
-        <description summary="focus screen">
-            Focus screen relative to the currently focussed one.
+    <request name="output_focus">
+        <description summary="focus output">
+            Focus output relative to the currently focussed one.
         </description>
         <arg name="selection" type="uint" enum="selection"/>
     </request>
