@@ -396,6 +396,13 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 	wlr_scene_node_set_position(&client->scene_xdg_surface->node, x + border, y + border);
 	wlr_scene_rect_set_size(client->scene_borders, w, h);
 	wlr_scene_node_set_position(&client->scene_borders->node, x, y);
+
+	wlr_scene_subsurface_tree_set_clip(&client->scene_xdg_surface->node, &(struct wlr_box){
+		.x = client->surface->pending.geometry.x,
+		.y = client->surface->pending.geometry.y,
+		.width = w - 2 * border,
+		.height = h - 2 * border,
+	});
 }
 
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
@@ -418,6 +425,19 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.commit);
+
+	/*
+	 * Some clients may shift around their surfaces on commit, which thus
+	 * requires us to re-calculate the clipping area. Most commonly this
+	 * seems to happen for clients that normally render Client-Side Decorations.
+	 */
+	 wlr_scene_subsurface_tree_set_clip(&client->scene_xdg_surface->node,
+	 &(struct wlr_box){
+		.x = client->surface->current.geometry.x,
+		.y = client->surface->current.geometry.y,
+		.width = client->w - 2 * client->border,
+		.height = client->h - 2 * client->border,
+	});
 
 	if (client->pending_serial && client->pending_serial == client->surface->current.configure_serial) {
 		tmbr_xdg_client_handle_configure_timer(client);
