@@ -475,7 +475,7 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 		wlr_xdg_toplevel_set_maximized(surface->toplevel, true);
 	wlr_xdg_toplevel_set_wm_capabilities(surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
 
-	surface->data = client->scene_xdg_surface;
+	surface->data = client;
 
 	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_xdg_client_on_commit);
@@ -1135,10 +1135,11 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 		struct wlr_layer_surface_v1 *layer_surface;
 
 		if ((xdg_surface = wlr_xdg_surface_try_from_wlr_surface(surface->popup->parent))) {
-			surface->data = wlr_scene_xdg_surface_create(xdg_surface->data, surface);
+			struct tmbr_xdg_client *xdg_client = xdg_surface->data;
+			surface->data = wlr_scene_xdg_surface_create(xdg_client->scene_xdg_surface, surface);
 		} else if ((layer_surface = wlr_layer_surface_v1_try_from_wlr_surface(surface->popup->parent))) {
-			struct wlr_scene_layer_surface_v1 *scene_layer_surface = layer_surface->data;
-			surface->data = wlr_scene_xdg_surface_create(scene_layer_surface->tree, surface);
+			struct tmbr_layer_client *layer_client = layer_surface->data;
+			surface->data = wlr_scene_xdg_surface_create(layer_client->scene_layer_surface->tree, surface);
 		}
 	}
 }
@@ -1159,7 +1160,7 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	client->scene_layer_surface->tree->node.data = client;
 	wlr_scene_node_set_enabled(&client->scene_layer_surface->tree->node, false);
 
-	surface->data = client->scene_layer_surface;
+	surface->data = client;
 
 	wl_list_insert(&client->output->layer_clients, &client->link);
 
