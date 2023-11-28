@@ -1785,6 +1785,8 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 int tmbr_wm(void)
 {
 	struct tmbr_server server = { 0 };
+	struct tmbr_binding *binding, *binding_tmp;
+	struct wl_event_source *source;
 	const char *socket;
 	char *cfg;
 
@@ -1868,7 +1870,7 @@ int tmbr_wm(void)
 		die("Could not create Wayland socket");
 	setenv("WAYLAND_DISPLAY", socket, 1);
 
-	wl_event_loop_add_signal(wl_display_get_event_loop(server.display), SIGTERM, tmbr_server_on_term, &server);
+	source = wl_event_loop_add_signal(wl_display_get_event_loop(server.display), SIGTERM, tmbr_server_on_term, &server);
 
 	if (!wlr_backend_start(server.backend))
 		die("Could not start backend");
@@ -1883,7 +1885,18 @@ int tmbr_wm(void)
 	signal(SIGPIPE, SIG_IGN);
 
 	wl_display_run(server.display);
+
 	wl_display_destroy_clients(server.display);
 	wl_display_destroy(server.display);
+	wlr_xcursor_manager_destroy(server.xcursor_manager);
+	wlr_cursor_destroy(server.cursor);
+	wlr_renderer_destroy(server.renderer);
+	wlr_allocator_destroy(server.allocator);
+	wl_list_for_each_safe(binding, binding_tmp, &server.bindings, link) {
+		free(binding->command);
+		free(binding);
+	}
+	free(source);
+
 	return 0;
 }
