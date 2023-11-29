@@ -507,10 +507,6 @@ static void tmbr_xdg_popup_on_commit(struct wl_listener *listener, TMBR_UNUSED v
 
 	if (!popup->has_committed) {
 		if (popup->xdg_parent) {
-			int x, y;
-
-			wlr_scene_node_coords(&popup->xdg_parent->scene_xdg_surface->node, &x, &y);
-
 			/*
 			 * Constrain XDG client popups to the window of their parent.
 			 */
