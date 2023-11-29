@@ -840,7 +840,8 @@ static void tmbr_output_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 			tmbr_output_focus_desktop(sibling, sibling->focus);
 	} else {
 		wl_list_for_each_safe(desktop, tmp, &output->desktops, link) {
-			tmbr_tree_for_each(desktop->clients, t)
+			struct tmbr_tree *t;
+			while ((t = tmbr_tree_find_sibling(desktop->clients, TMBR_CTRL_SELECTION_NEXT)) != NULL)
 				tmbr_desktop_remove_client(desktop, t->client);
 			free(desktop);
 		}
