@@ -1888,6 +1888,8 @@ int tmbr_wm(void)
 
 	wl_display_destroy_clients(server.display);
 	wl_display_destroy(server.display);
+	wlr_output_layout_destroy(server.output_layout);
+	wlr_scene_node_destroy(&server.scene->tree.node);
 	wlr_xcursor_manager_destroy(server.xcursor_manager);
 	wlr_cursor_destroy(server.cursor);
 	wlr_renderer_destroy(server.renderer);
