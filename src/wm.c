@@ -1185,18 +1185,30 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 		tmbr_register(&surface->toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
 	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
+		struct wlr_xdg_surface *xdg_surface, *root = surface;
 		struct wlr_layer_surface_v1 *layer_surface;
-		struct wlr_xdg_surface *xdg_surface;
 		struct tmbr_xdg_popup *popup;
 
 		popup = tmbr_alloc(sizeof(*popup), "Could not allocate popup");
 		popup->popup = surface->popup;
 
-		if ((xdg_surface = wlr_xdg_surface_try_from_wlr_surface(surface->popup->parent))) {
+		/*
+		 * The popup may itself have a popup as parent, so we need to
+		 * walk up the chain of surfaces until we find the root of the
+		 * hierarchy.
+		 */
+		while (1) {
+			struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent);
+			if (!parent || parent->role != WLR_XDG_SURFACE_ROLE_POPUP)
+				break;
+			root = parent;
+		}
+
+		if ((xdg_surface = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent))) {
 			struct tmbr_xdg_client *xdg_client = xdg_surface->data;
 			surface->data = wlr_scene_xdg_surface_create(xdg_client->scene_xdg_surface, surface);
 			popup->xdg_parent = xdg_client;
-		} else if ((layer_surface = wlr_layer_surface_v1_try_from_wlr_surface(surface->popup->parent))) {
+		} else if ((layer_surface = wlr_layer_surface_v1_try_from_wlr_surface(root->popup->parent))) {
 			struct tmbr_layer_client *layer_client = layer_surface->data;
 			surface->data = wlr_scene_xdg_surface_create(layer_client->scene_layer_surface->tree, surface);
 			popup->layer_parent = layer_client;
