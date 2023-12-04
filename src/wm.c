@@ -1498,6 +1498,7 @@ static void tmbr_server_on_set_gamma(struct wl_listener *listener, void *payload
 	struct wlr_gamma_control_v1 *control = wlr_gamma_control_manager_v1_get_control(server->gamma_control_manager, event->output);
 	wlr_gamma_control_v1_apply(control, &event->output->pending);
 	wlr_output_commit(event->output);
+	wlr_output_schedule_frame(event->output);
 }
 
 static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener *listener, void *payload)
