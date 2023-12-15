@@ -391,8 +391,10 @@ static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 
 static int tmbr_xdg_client_handle_configure_timer(void *payload)
 {
-	((struct tmbr_xdg_client *) payload)->pending_serial = 0;
-	return 0;
+	struct tmbr_xdg_client *client = payload;
+	if (client == tmbr_server_find_focus(client->server))
+		tmbr_xdg_client_notify_focus(client);
+	return client->pending_serial = 0;
 }
 
 static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
@@ -449,19 +451,6 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 		.height = client->h - 2 * client->border,
 	});
 
-	 /*
-	  * If the client is currently focussed then we re-focus it here. A
-	  * commit may indicate that the client has reconfigured its geometry,
-	  * and thus the previous cursor's position as known by the client may
-	  * not be accurate anymore.
-	  */
-	if (client == tmbr_server_find_focus(client->server))
-		tmbr_xdg_client_notify_focus(client);
-
-	/*
-	 * The client has finished a resize. We thus unset its pending serial
-	 * and disarm the timer so that we start emitting new frames again.
-	 */
 	if (client->pending_serial && client->pending_serial == client->surface->current.configure_serial) {
 		tmbr_xdg_client_handle_configure_timer(client);
 		wl_event_source_timer_update(client->configure_timer, 0);
