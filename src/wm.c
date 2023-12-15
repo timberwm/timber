@@ -113,8 +113,10 @@ struct tmbr_xdg_client {
 	struct wlr_scene_tree *scene_client;
 	struct wlr_scene_tree *scene_xdg_surface;
 	struct wlr_scene_rect *scene_borders;
+
 	int h, w, border;
 	uint32_t pending_serial;
+	int inhibit_frames;
 
 	struct wl_event_source *configure_timer;
 	struct wl_listener request_fullscreen;
@@ -391,7 +393,8 @@ static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 
 static int tmbr_xdg_client_handle_configure_timer(void *payload)
 {
-	((struct tmbr_xdg_client *) payload)->pending_serial = 0;
+	struct tmbr_xdg_client *client = payload;
+	client->inhibit_frames = 0;
 	return 0;
 }
 
@@ -399,6 +402,7 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 {
 	if (client->w != w || client->h != h || client->border != border) {
 		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface->toplevel, w - 2 * border, h - 2 * border);
+		client->inhibit_frames = 1;
 		wl_event_source_timer_update(client->configure_timer, 50);
 		client->w = w; client->h = h; client->border = border;
 	}
@@ -450,20 +454,19 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 	});
 
 	 /*
-	  * If the client is currently focussed then we re-focus it here. A
-	  * commit may indicate that the client has reconfigured its geometry,
-	  * and thus the previous cursor's position as known by the client may
-	  * not be accurate anymore.
+	  * When a resize has been committed then we need to do things:
+	  *
+	  *   - We refocus the client so that the cursor position is updated
+	  *     relative to the resized surface.
+	  *
+	  *   - We stop inhibiting frames, unless it's already been stopped by
+	  *     the timer.
 	  */
-	if (client == tmbr_server_find_focus(client->server))
-		tmbr_xdg_client_notify_focus(client);
-
-	/*
-	 * The client has finished a resize. We thus unset its pending serial
-	 * and disarm the timer so that we start emitting new frames again.
-	 */
 	if (client->pending_serial && client->pending_serial == client->surface->current.configure_serial) {
-		tmbr_xdg_client_handle_configure_timer(client);
+		if (client == tmbr_server_find_focus(client->server))
+			tmbr_xdg_client_notify_focus(client);
+		client->pending_serial = 0;
+		client->inhibit_frames = 0;
 		wl_event_source_timer_update(client->configure_timer, 0);
 	}
 }
@@ -858,7 +861,7 @@ static void tmbr_output_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	struct timespec time;
 
 	tmbr_tree_for_each(output->focus->clients, tree)
-		if (tree->client->pending_serial)
+		if (tree->client->inhibit_frames)
 			goto out;
 	wlr_scene_output_commit(scene_output, NULL);
 
