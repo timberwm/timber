@@ -1508,8 +1508,16 @@ static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener 
 {
 	struct wlr_output_power_v1_set_mode_event *event = payload;
 	struct tmbr_output *output = event->output->data;
-	wlr_output_enable(event->output, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
-	wlr_output_commit(event->output);
+	struct wlr_gamma_control_v1 *gamma_control =
+		wlr_gamma_control_manager_v1_get_control(output->server->gamma_control_manager, event->output);
+	struct wlr_output_state state;
+
+	wlr_output_state_init(&state);
+	wlr_output_state_set_enabled(&state, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
+	if (event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON)
+		wlr_gamma_control_v1_apply(gamma_control, &state);
+	wlr_output_commit_state(event->output, &state);
+
 	wlr_scene_node_set_enabled(&output->scene_output->node, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 }
 
