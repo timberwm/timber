@@ -709,7 +709,8 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 		 */
 		if (client && current_focus != client &&
 		    (constraint = tmbr_server_find_pointer_constraint(server, &client->base)) != NULL) {
-			if (constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
+			if (constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED &&
+			    constraint->current.committed & WLR_POINTER_CONSTRAINT_V1_STATE_CURSOR_HINT) {
 				double cx = constraint->current.cursor_hint.x;
 				double cy = constraint->current.cursor_hint.y;
 				int sx, sy;
