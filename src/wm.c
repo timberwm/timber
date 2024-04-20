@@ -698,27 +698,28 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 
 		if (client) {
 			tmbr_xdg_client_focus(client, true);
-
-			/*
-			 * When the activated client has a pointer constraint we need to both activate it and
-			 * potentially warp our cursor into the confined region.
-			 */
-			if ((constraint = tmbr_server_find_pointer_constraint(server, &client->base)) != NULL) {
-				if (constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
-					double cx = constraint->current.cursor_hint.x;
-					double cy = constraint->current.cursor_hint.y;
-					int sx, sy;
-
-					wlr_scene_node_coords(&client->scene_client->node, &sx, &sy);
-					wlr_cursor_warp(server->cursor, NULL, cx + sx, cy + sy);
-					wlr_seat_pointer_warp(constraint->seat, cx, cy);
-				}
-
-				wlr_pointer_constraint_v1_send_activated(constraint);
-			}
 		} else {
 			wlr_seat_keyboard_notify_clear_focus(server->seat);
 			wlr_seat_pointer_notify_clear_focus(server->seat);
+		}
+
+		/*
+		 * When the activated client has a pointer constraint we need to both activate it and
+		 * potentially warp our cursor into the confined region.
+		 */
+		if (client && current_focus != client &&
+		    (constraint = tmbr_server_find_pointer_constraint(server, &client->base)) != NULL) {
+			if (constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
+				double cx = constraint->current.cursor_hint.x;
+				double cy = constraint->current.cursor_hint.y;
+				int sx, sy;
+
+				wlr_scene_node_coords(&client->scene_client->node, &sx, &sy);
+				wlr_cursor_warp(server->cursor, NULL, cx + sx, cy + sy);
+				wlr_seat_pointer_warp(constraint->seat, cx, cy);
+			}
+
+			wlr_pointer_constraint_v1_send_activated(constraint);
 		}
 	}
 	desktop->focus = client;
