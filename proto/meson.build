@@ -6,6 +6,7 @@ protos = {
   'wlr-layer-shell-unstable-v1.xml': false,
   'wlr-output-power-management-unstable-v1.xml': false,
   join_paths(wayland_protocols, 'stable', 'xdg-shell', 'xdg-shell.xml'): false,
+  join_paths(wayland_protocols, 'unstable', 'pointer-constraints', 'pointer-constraints-unstable-v1.xml'): false,
 }
 proto_sources = []
 
