@@ -1310,6 +1310,9 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 		double sx_confined, sy_confined;
 		int sx, sy;
 
+		if (constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED)
+			return;
+
 		wlr_scene_node_coords(&focus->scene_client->node, &sx, &sy);
 		sx = server->cursor->x - sx;
 		sy = server->cursor->y - sy;
