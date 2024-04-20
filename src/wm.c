@@ -1185,6 +1185,7 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
 		struct wlr_xdg_surface *xdg_parent, *root = surface;
 		struct wlr_layer_surface_v1 *layer_parent;
+		struct wlr_scene_tree *scene_leaf = NULL;
 
 		/*
 		 * The popup may itself have a popup as parent, so we need to
@@ -1195,13 +1196,16 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 			struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent);
 			if (!parent || parent->role != WLR_XDG_SURFACE_ROLE_POPUP)
 				break;
+			if (!scene_leaf)
+				scene_leaf = parent->data;
 			root = parent;
 		}
 
 		if ((xdg_parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent))) {
 			struct tmbr_xdg_client *xdg_client = xdg_parent->data;
 
-			surface->data = wlr_scene_xdg_surface_create(xdg_client->scene_xdg_surface, surface);
+			surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
+								     xdg_client->scene_xdg_surface, surface);
 
 			/*
 			 * Constrain XDG client popups to the window of their parent.
@@ -1214,7 +1218,8 @@ static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *p
 			struct tmbr_layer_client *layer_client = layer_parent->data;
 			int x, y;
 
-			surface->data = wlr_scene_xdg_surface_create(layer_client->scene_layer_surface->tree, surface);
+			surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
+								     layer_client->scene_layer_surface->tree, surface);
 
 			/*
 			 * Layer shell clients are unconstrained to the complete output.
