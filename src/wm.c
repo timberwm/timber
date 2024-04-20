@@ -31,8 +31,8 @@
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
-#include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_data_control_v1.h>
+#include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
@@ -44,6 +44,7 @@
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_output_power_management_v1.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
@@ -60,6 +61,7 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/util/region.h>
 
 #include "timber.h"
 #include "timber-protocol.h"
@@ -204,6 +206,7 @@ struct tmbr_server {
 	struct wlr_output_layout *output_layout;
 	struct wlr_output_manager_v1 *output_manager;
 	struct wlr_output_power_manager_v1 *output_power_manager;
+	struct wlr_pointer_constraints_v1 *pointer_constraints;
 	struct wlr_presentation *presentation;
 	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 	struct wlr_scene *scene;
@@ -297,6 +300,23 @@ static struct tmbr_client *tmbr_server_find_client_at(struct tmbr_server *server
 	for (struct wlr_scene_tree *p = node->parent; p; p = p->node.parent)
 		if (p->node.data)
 			return p->node.data;
+	return NULL;
+}
+
+static struct wlr_pointer_constraint_v1 *tmbr_server_find_pointer_constraint(struct tmbr_server *server, struct tmbr_client *client)
+{
+	struct wlr_pointer_constraint_v1 *constraint;
+	struct wlr_surface *surface = NULL;
+
+	if (client->type == TMBR_CLIENT_XDG_SURFACE)
+		surface = ((struct tmbr_xdg_client *) client)->surface->surface;
+	else if (client->type == TMBR_CLIENT_LAYER_SURFACE)
+		surface = ((struct tmbr_layer_client *) client)->scene_layer_surface->layer_surface->surface;
+
+	wl_list_for_each(constraint, &server->pointer_constraints->constraints, link)
+		if (constraint->surface == surface)
+			return constraint;
+
 	return NULL;
 }
 
@@ -713,17 +733,43 @@ static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fulls
 
 static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_xdg_client *client, bool inputfocus)
 {
+	struct tmbr_server *server = desktop->output->server;
+
 	if (desktop->focus != client)
 		tmbr_desktop_set_fullscreen(desktop, false);
 	if (inputfocus) {
-		struct tmbr_xdg_client *current_focus = tmbr_server_find_focus(desktop->output->server);
-		if (current_focus && current_focus != client)
+		struct tmbr_xdg_client *current_focus = tmbr_server_find_focus(server);
+		struct wlr_pointer_constraint_v1 *constraint;
+
+		if (current_focus && current_focus != client) {
+			if ((constraint = tmbr_server_find_pointer_constraint(server, &current_focus->base)) != NULL)
+				wlr_pointer_constraint_v1_send_deactivated(constraint);
 			tmbr_xdg_client_focus(current_focus, false);
+		}
+
 		if (client) {
 			tmbr_xdg_client_focus(client, true);
+
+			/*
+			 * When the activated client has a pointer constraint we need to both activate it and
+			 * potentially warp our cursor into the confined region.
+			 */
+			if ((constraint = tmbr_server_find_pointer_constraint(server, &client->base)) != NULL) {
+				if (constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
+					double cx = constraint->current.cursor_hint.x;
+					double cy = constraint->current.cursor_hint.y;
+					int sx, sy;
+
+					wlr_scene_node_coords(&client->scene_client->node, &sx, &sy);
+					wlr_cursor_warp(server->cursor, NULL, cx + sx, cy + sy);
+					wlr_seat_pointer_warp(constraint->seat, cx, cy);
+				}
+
+				wlr_pointer_constraint_v1_send_activated(constraint);
+			}
 		} else {
-			wlr_seat_keyboard_notify_clear_focus(desktop->output->server->seat);
-			wlr_seat_pointer_notify_clear_focus(desktop->output->server->seat);
+			wlr_seat_keyboard_notify_clear_focus(server->seat);
+			wlr_seat_pointer_notify_clear_focus(server->seat);
 		}
 	}
 	desktop->focus = client;
@@ -1278,15 +1324,35 @@ static void tmbr_cursor_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_input_device *device, uint32_t time_msec,
 				      double dx, double dy, double dx_unaccel, double dy_unaccel)
 {
+	struct wlr_pointer_constraint_v1 *constraint;
 	struct wlr_surface *surface = NULL;
 	struct wlr_drag_icon *drag_icon;
+	struct tmbr_xdg_client *focus;
 	struct tmbr_client *client;
 	double sx, sy;
 
 	wlr_relative_pointer_manager_v1_send_relative_motion(server->relative_pointer_manager, server->seat,
 							     (uint64_t) time_msec * 1000, dx, dy, dx_unaccel, dy_unaccel);
-	wlr_cursor_move(server->cursor, device, dx, dy);
 	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
+
+	if (device->type == WLR_INPUT_DEVICE_POINTER &&
+	    (focus = tmbr_server_find_focus(server)) != NULL &&
+	    (constraint = tmbr_server_find_pointer_constraint(server, &focus->base)) != NULL) {
+		double sx_confined, sy_confined;
+		int sx, sy;
+
+		wlr_scene_node_coords(&focus->scene_client->node, &sx, &sy);
+		sx = server->cursor->x - sx;
+		sy = server->cursor->y - sy;
+
+		if (!wlr_region_confine(&constraint->region, sx, sy, sx + dx, sy + dy, &sx_confined, &sy_confined))
+			return;
+
+		dx = sx_confined - sx;
+		dy = sy_confined - sy;
+	}
+
+	wlr_cursor_move(server->cursor, device, dx, dy);
 	if (server->input_inhibit->active_client)
 		return;
 
@@ -1851,6 +1917,7 @@ int tmbr_wm(void)
 	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
 	    (server.output_power_manager = wlr_output_power_manager_v1_create(server.display)) == NULL ||
 	    (server.presentation = wlr_presentation_create(server.display, server.backend)) == NULL ||
+	    (server.pointer_constraints = wlr_pointer_constraints_v1_create(server.display)) == NULL ||
 	    (server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display)) == NULL ||
 	    (server.xcursor_manager = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
