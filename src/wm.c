@@ -38,7 +38,6 @@
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
-#include <wlr/types/wlr_input_inhibitor.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
@@ -192,7 +191,6 @@ struct tmbr_server {
 	struct wlr_gamma_control_manager_v1 *gamma_control_manager;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wlr_idle_notifier_v1 *idle_notifier;
-	struct wlr_input_inhibit_manager *input_inhibit;
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct wlr_output_layout *output_layout;
 	struct wlr_output_manager_v1 *output_manager;
@@ -279,7 +277,7 @@ static void tmbr_spawn(const char *path, char * const argv[])
 
 static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server)
 {
-	if (server->input_inhibit->active_client || server->locked)
+	if (server->locked)
 		return NULL;
 	if (!server->focussed_output)
 		return NULL;
@@ -370,9 +368,6 @@ static void tmbr_unregister(struct wl_listener *listener, ...)
 static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_surface *subsurface, struct tmbr_server *server, double x, double y, bool adjust_keyboard_focus)
 {
 	if (server->locked)
-		return;
-	if (server->input_inhibit->active_client &&
-	    wl_resource_get_client(surface->resource) != server->input_inhibit->active_client)
 		return;
 
 	if (adjust_keyboard_focus) {
@@ -981,7 +976,6 @@ static void tmbr_keyboard_on_key(struct wl_listener *listener, void *payload)
 
 	wlr_idle_notifier_v1_notify_activity(keyboard->server->idle_notifier, keyboard->server->seat);
 	if (event->state != WL_KEYBOARD_KEY_STATE_PRESSED ||
-	    keyboard->server->input_inhibit->active_client ||
 	    keyboard->server->locked)
 		goto unhandled;
 
@@ -1390,7 +1384,7 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 	}
 
 	wlr_cursor_move(server->cursor, device, dx, dy);
-	if (server->input_inhibit->active_client || server->locked)
+	if (server->locked)
 		return;
 
 	if (server->seat->drag && (drag_icon = server->seat->drag->icon))
@@ -1437,7 +1431,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 	double lx, ly, sx, sy;
 
 	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
-	if (server->input_inhibit->active_client || server->locked)
+	if (server->locked)
 		return;
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y, &lx, &ly);
@@ -1475,7 +1469,7 @@ static void tmbr_cursor_on_touch_motion(struct wl_listener *listener, void *payl
 	double lx, ly, sx, sy;
 
 	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
-	if (server->input_inhibit->active_client || server->locked)
+	if (server->locked)
 		return;
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y, &lx, &ly);
@@ -1949,7 +1943,6 @@ int tmbr_wm(void)
 	    (server.gamma_control_manager = wlr_gamma_control_manager_v1_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
 	    (server.idle_notifier = wlr_idle_notifier_v1_create(server.display)) == NULL ||
-	    (server.input_inhibit = wlr_input_inhibit_manager_create(server.display)) == NULL ||
 	    (server.layer_shell = wlr_layer_shell_v1_create(server.display, 4)) == NULL ||
 	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
 	    (server.output_power_manager = wlr_output_power_manager_v1_create(server.display)) == NULL ||
