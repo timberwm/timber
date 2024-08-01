@@ -458,6 +458,18 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.commit);
+	struct wlr_xdg_surface *surface = client->surface;
+
+	if (client->surface->initial_commit) {
+		if (wl_resource_get_version(surface->toplevel->resource) >= XDG_TOPLEVEL_STATE_TILED_LEFT_SINCE_VERSION)
+			wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
+		else
+			wlr_xdg_toplevel_set_maximized(surface->toplevel, true);
+		wlr_xdg_toplevel_set_wm_capabilities(surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
+
+		wlr_xdg_surface_schedule_configure(client->surface);
+		return;
+	}
 
 	/*
 	 * Some clients may shift around their surfaces on commit, which thus
@@ -466,8 +478,8 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 	 */
 	 wlr_scene_subsurface_tree_set_clip(&client->scene_xdg_surface->node,
 	 &(struct wlr_box){
-		.x = client->surface->current.geometry.x,
-		.y = client->surface->current.geometry.y,
+		.x = surface->current.geometry.x,
+		.y = surface->current.geometry.y,
 		.width = client->w - 2 * client->border,
 		.height = client->h - 2 * client->border,
 	});
@@ -481,7 +493,7 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 	  *   - We stop inhibiting frames, unless it's already been stopped by
 	  *     the timer.
 	  */
-	if (client->pending_serial && client->pending_serial == client->surface->current.configure_serial) {
+	if (client->pending_serial && client->pending_serial == surface->current.configure_serial) {
 		if (client == tmbr_server_find_focus(client->server))
 			tmbr_xdg_client_notify_focus(client);
 		client->pending_serial = 0;
@@ -503,11 +515,6 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	client->scene_xdg_surface->node.data = client;
 	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0, TMBR_COLOR_INACTIVE);
 	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
-	if (wl_resource_get_version(surface->toplevel->resource) >= XDG_TOPLEVEL_STATE_TILED_LEFT_SINCE_VERSION)
-		wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
-	else
-		wlr_xdg_toplevel_set_maximized(surface->toplevel, true);
-	wlr_xdg_toplevel_set_wm_capabilities(surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
 
 	surface->data = client;
 
@@ -1158,7 +1165,8 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 static void tmbr_server_on_request_maximize(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, request_maximize);
-	wlr_xdg_surface_schedule_configure(client->surface);
+	if (client->surface->initialized)
+		wlr_xdg_surface_schedule_configure(client->surface);
 }
 
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1166,7 +1174,7 @@ static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, TMBR
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, request_fullscreen);
 	if (client->desktop && client == tmbr_server_find_focus(client->server))
 		tmbr_desktop_set_fullscreen(client->desktop, client->surface->toplevel->requested.fullscreen);
-	else
+	else if (client->surface->initialized)
 		wlr_xdg_surface_schedule_configure(client->surface);
 }
 
