@@ -1332,7 +1332,8 @@ static void tmbr_cursor_on_axis(struct wl_listener *listener, void *payload)
 	struct wlr_pointer_axis_event *event = payload;
 	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	wlr_seat_pointer_notify_axis(server->seat, event->time_msec, event->orientation,
-				     event->delta, event->delta_discrete, event->source);
+				     event->delta, event->delta_discrete, event->source,
+				     event->relative_direction);
 }
 
 static void tmbr_cursor_on_button(struct wl_listener *listener, void *payload)
