@@ -1934,7 +1934,7 @@ int tmbr_wm(void)
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
-	    (server.output_layout = wlr_output_layout_create()) == NULL ||
+	    (server.output_layout = wlr_output_layout_create(server.display)) == NULL ||
 	    (server.scene = wlr_scene_create()) == NULL ||
 	    (server.scene_drag = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
@@ -2009,7 +2009,6 @@ int tmbr_wm(void)
 
 	wl_display_destroy_clients(server.display);
 	wl_display_destroy(server.display);
-	wlr_output_layout_destroy(server.output_layout);
 	wlr_scene_node_destroy(&server.scene->tree.node);
 	wlr_xcursor_manager_destroy(server.xcursor_manager);
 	wlr_cursor_destroy(server.cursor);
