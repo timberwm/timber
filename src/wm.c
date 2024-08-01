@@ -1912,7 +1912,7 @@ int tmbr_wm(void)
 	wl_list_init(&server.outputs);
 	if ((server.display = wl_display_create()) == NULL)
 		die("Could not create display");
-	if ((server.backend = wlr_backend_autocreate(server.display, &server.session)) == NULL)
+	if ((server.backend = wlr_backend_autocreate(wl_display_get_event_loop(server.display), &server.session)) == NULL)
 		die("Could not create backend");
 	if ((server.renderer = wlr_renderer_autocreate(server.backend)) == NULL)
 		die("Could not create renderer");
