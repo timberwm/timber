@@ -212,7 +212,8 @@ struct tmbr_server {
 	struct wl_listener new_input;
 	struct wl_listener new_virtual_keyboard;
 	struct wl_listener new_output;
-	struct wl_listener new_surface;
+	struct wl_listener new_xdg_toplevel;
+	struct wl_listener new_xdg_popup;
 	struct wl_listener new_layer_shell_surface;
 	struct wl_listener cursor_axis;
 	struct wl_listener cursor_button;
@@ -1183,67 +1184,69 @@ static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void 
 		tmbr_desktop_remove_client(client->desktop, client);
 }
 
-static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *payload)
+static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *payload)
 {
-	struct tmbr_server *server = wl_container_of(listener, server, new_surface);
-	struct wlr_xdg_surface *surface = payload;
+	struct tmbr_server *server = wl_container_of(listener, server, new_xdg_toplevel);
+	struct wlr_xdg_toplevel *toplevel = payload;
+	struct tmbr_xdg_client *client = tmbr_xdg_client_new(server, toplevel->base);
 
-	if (surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
-		struct tmbr_xdg_client *client = tmbr_xdg_client_new(server, surface);
-		tmbr_register(&surface->surface->events.map, &client->base.map, tmbr_server_on_map);
-		tmbr_register(&surface->surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
-		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
-		tmbr_register(&surface->toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
-	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-		struct wlr_xdg_surface *xdg_parent, *root = surface;
-		struct wlr_layer_surface_v1 *layer_parent;
-		struct wlr_scene_tree *scene_leaf = NULL;
+	tmbr_register(&toplevel->base->surface->events.map, &client->base.map, tmbr_server_on_map);
+	tmbr_register(&toplevel->base->surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
+	tmbr_register(&toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
+	tmbr_register(&toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
+}
+
+static void tmbr_server_on_new_xdg_popup(struct wl_listener *listener TMBR_UNUSED, void *payload)
+{
+	struct wlr_xdg_popup *popup = payload;
+	struct wlr_xdg_surface *surface = popup->base, *xdg_parent, *root = surface;
+	struct wlr_layer_surface_v1 *layer_parent;
+	struct wlr_scene_tree *scene_leaf = NULL;
+
+	/*
+	 * The popup may itself have a popup as parent, so we need to
+	 * walk up the chain of surfaces until we find the root of the
+	 * hierarchy.
+	 */
+	while (1) {
+		struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent);
+		if (!parent || parent->role != WLR_XDG_SURFACE_ROLE_POPUP)
+			break;
+		if (!scene_leaf)
+			scene_leaf = parent->data;
+		root = parent;
+	}
+
+	if ((xdg_parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent))) {
+		struct tmbr_xdg_client *xdg_client = xdg_parent->data;
+
+		surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
+							     xdg_client->scene_xdg_surface, surface);
 
 		/*
-		 * The popup may itself have a popup as parent, so we need to
-		 * walk up the chain of surfaces until we find the root of the
-		 * hierarchy.
+		 * Constrain XDG client popups to the window of their parent.
 		 */
-		while (1) {
-			struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent);
-			if (!parent || parent->role != WLR_XDG_SURFACE_ROLE_POPUP)
-				break;
-			if (!scene_leaf)
-				scene_leaf = parent->data;
-			root = parent;
-		}
+		wlr_xdg_popup_unconstrain_from_box(surface->popup, &(struct wlr_box){
+			.width = xdg_client->w,
+			.height = xdg_client->h,
+		});
+	} else if ((layer_parent = wlr_layer_surface_v1_try_from_wlr_surface(root->popup->parent))) {
+		struct tmbr_layer_client *layer_client = layer_parent->data;
+		int x, y;
 
-		if ((xdg_parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent))) {
-			struct tmbr_xdg_client *xdg_client = xdg_parent->data;
+		surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
+							     layer_client->scene_layer_surface->tree, surface);
 
-			surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
-								     xdg_client->scene_xdg_surface, surface);
-
-			/*
-			 * Constrain XDG client popups to the window of their parent.
-			 */
-			wlr_xdg_popup_unconstrain_from_box(surface->popup, &(struct wlr_box){
-				.width = xdg_client->w,
-				.height = xdg_client->h,
-			});
-		} else if ((layer_parent = wlr_layer_surface_v1_try_from_wlr_surface(root->popup->parent))) {
-			struct tmbr_layer_client *layer_client = layer_parent->data;
-			int x, y;
-
-			surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
-								     layer_client->scene_layer_surface->tree, surface);
-
-			/*
-			 * Layer shell clients are unconstrained to the complete output.
-			 */
-			wlr_scene_node_coords(&layer_client->scene_layer_surface->tree->node, &x, &y);
-			wlr_xdg_popup_unconstrain_from_box(surface->popup, &(struct wlr_box) {
-				.width = layer_client->output->full_area.width,
-				.height = layer_client->output->full_area.height,
-				.x = layer_client->output->full_area.x - x,
-				.y = layer_client->output->full_area.y - y,
-			});
-		}
+		/*
+		 * Layer shell clients are unconstrained to the complete output.
+		 */
+		wlr_scene_node_coords(&layer_client->scene_layer_surface->tree->node, &x, &y);
+		wlr_xdg_popup_unconstrain_from_box(surface->popup, &(struct wlr_box) {
+			.width = layer_client->output->full_area.width,
+			.height = layer_client->output->full_area.height,
+			.x = layer_client->output->full_area.x - x,
+			.y = layer_client->output->full_area.y - y,
+		});
 	}
 }
 
@@ -1968,7 +1971,8 @@ int tmbr_wm(void)
 	tmbr_register(&server.backend->events.new_input, &server.new_input, tmbr_server_on_new_input);
 	tmbr_register(&server.virtual_keyboard_manager->events.new_virtual_keyboard, &server.new_virtual_keyboard, tmbr_server_on_new_virtual_keyboard);
 	tmbr_register(&server.backend->events.new_output, &server.new_output, tmbr_server_on_new_output);
-	tmbr_register(&server.xdg_shell->events.new_surface, &server.new_surface, tmbr_server_on_new_xdg_surface);
+	tmbr_register(&server.xdg_shell->events.new_toplevel, &server.new_xdg_toplevel, tmbr_server_on_new_xdg_toplevel);
+	tmbr_register(&server.xdg_shell->events.new_popup, &server.new_xdg_popup, tmbr_server_on_new_xdg_popup);
 	tmbr_register(&server.layer_shell->events.new_surface, &server.new_layer_shell_surface, tmbr_server_on_new_layer_shell_surface);
 	tmbr_register(&server.session_lock_manager->events.new_lock, &server.new_session_lock, tmbr_server_on_new_session_lock);
 	tmbr_register(&server.seat->events.request_set_cursor, &server.request_set_cursor, tmbr_server_on_request_set_cursor);
