@@ -1441,7 +1441,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		server->touch_emulation_id = event->touch_id;
 		tmbr_cursor_handle_motion(server, &event->touch->base, event->time_msec, lx - server->cursor->x,
 					  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
-		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_PRESSED);
+		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_PRESSED);
 		wlr_seat_pointer_notify_frame(server->seat);
 	}
 }
@@ -1454,7 +1454,7 @@ static void tmbr_cursor_on_touch_up(struct wl_listener *listener, void *payload)
 	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	if (server->touch_emulation_id == event->touch_id) {
 		server->touch_emulation_id = 0;
-		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_RELEASED);
+		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_RELEASED);
 		wlr_seat_pointer_notify_frame(server->seat);
 	} else if (!server->touch_emulation_id) {
 		wlr_seat_touch_notify_up(server->seat, event->time_msec, event->touch_id);
