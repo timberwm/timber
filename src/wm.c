@@ -1101,7 +1101,7 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 	switch (device->type) {
 	case WLR_INPUT_DEVICE_POINTER:
 	case WLR_INPUT_DEVICE_TOUCH:
-	case WLR_INPUT_DEVICE_TABLET_TOOL:
+	case WLR_INPUT_DEVICE_TABLET:
 	case WLR_INPUT_DEVICE_TABLET_PAD:
 		wlr_cursor_attach_input_device(server->cursor, device);
 		break;
