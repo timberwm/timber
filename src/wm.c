@@ -93,6 +93,7 @@ struct tmbr_keyboard {
 
 enum tmbr_client_type {
 	TMBR_CLIENT_XDG_SURFACE,
+	TMBR_CLIENT_XDG_POPUP,
 	TMBR_CLIENT_LAYER_SURFACE,
 };
 
@@ -123,6 +124,12 @@ struct tmbr_xdg_client {
 	struct wl_event_source *configure_timer;
 	struct wl_listener request_fullscreen;
 	struct wl_listener request_maximize;
+};
+
+struct tmbr_xdg_popup {
+	struct tmbr_client base;
+	struct wlr_xdg_popup *popup;
+	struct wlr_box constraint;
 };
 
 struct tmbr_tree {
@@ -521,6 +528,20 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_xdg_client_on_commit);
 	return client;
+}
+
+static void tmbr_xdg_popup_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.commit);
+	if (popup->popup->base->initial_commit)
+		wlr_xdg_popup_unconstrain_from_box(popup->popup, &popup->constraint);
+}
+
+static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.destroy);
+	tmbr_unregister(&popup->base.destroy, &popup->base.commit, NULL);
+	free(popup);
 }
 
 static void tmbr_tree_recalculate(struct tmbr_tree *tree, int x, int y, int w, int h)
@@ -1206,10 +1227,16 @@ static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *
 
 static void tmbr_server_on_new_xdg_popup(struct wl_listener *listener TMBR_UNUSED, void *payload)
 {
-	struct wlr_xdg_popup *popup = payload;
-	struct wlr_xdg_surface *surface = popup->base, *xdg_parent, *root = surface;
+	struct wlr_xdg_popup *xdg_popup = payload;
+	struct wlr_xdg_surface *surface = xdg_popup->base, *xdg_parent, *root = surface;
+	struct tmbr_xdg_popup *popup = tmbr_alloc(sizeof(*popup), "Could not allocate popup");
 	struct wlr_layer_surface_v1 *layer_parent;
 	struct wlr_scene_tree *scene_leaf = NULL;
+
+	popup->base.type = TMBR_CLIENT_XDG_POPUP;
+	popup->popup = xdg_popup;
+	tmbr_register(&xdg_popup->base->surface->events.destroy, &popup->base.destroy, tmbr_xdg_popup_on_destroy);
+	tmbr_register(&xdg_popup->base->surface->events.commit, &popup->base.commit, tmbr_xdg_popup_on_commit);
 
 	/*
 	 * The popup may itself have a popup as parent, so we need to
@@ -1230,14 +1257,10 @@ static void tmbr_server_on_new_xdg_popup(struct wl_listener *listener TMBR_UNUSE
 
 		surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
 							     xdg_client->scene_xdg_surface, surface);
-
-		/*
-		 * Constrain XDG client popups to the window of their parent.
-		 */
-		wlr_xdg_popup_unconstrain_from_box(surface->popup, &(struct wlr_box){
+		popup->constraint = (struct wlr_box){
 			.width = xdg_client->w,
 			.height = xdg_client->h,
-		});
+		};
 	} else if ((layer_parent = wlr_layer_surface_v1_try_from_wlr_surface(root->popup->parent))) {
 		struct tmbr_layer_client *layer_client = layer_parent->data;
 		int x, y;
@@ -1249,12 +1272,12 @@ static void tmbr_server_on_new_xdg_popup(struct wl_listener *listener TMBR_UNUSE
 		 * Layer shell clients are unconstrained to the complete output.
 		 */
 		wlr_scene_node_coords(&layer_client->scene_layer_surface->tree->node, &x, &y);
-		wlr_xdg_popup_unconstrain_from_box(surface->popup, &(struct wlr_box) {
+		popup->constraint = (struct wlr_box){
 			.width = layer_client->output->full_area.width,
 			.height = layer_client->output->full_area.height,
 			.x = layer_client->output->full_area.x - x,
 			.y = layer_client->output->full_area.y - y,
-		});
+		};
 	}
 }
 
