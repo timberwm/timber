@@ -21,7 +21,7 @@ executable(
   dependencies: [
     dependency('wayland-client'),
     dependency('wayland-server'),
-    dependency('wlroots', version: '>=0.17.0'),
+    dependency('wlroots-0.18', version: ['>=0.18.0', '<0.19.0']),
     dependency('xkbcommon'),
   ],
   c_args: [
