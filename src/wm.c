@@ -921,6 +921,8 @@ static void tmbr_output_recalculate_layers(struct tmbr_output *o, bool exclusive
 			struct wlr_layer_surface_v1_state *state = &c->scene_layer_surface->layer_surface->current;
 			struct wlr_scene_tree *parent_scene;
 
+			if (!c->scene_layer_surface->layer_surface->initialized)
+				continue;
 			if ((int)state->layer != l || exclusive != (state->exclusive_zone > 0))
 				continue;
 
@@ -1114,9 +1116,11 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.commit);
-	struct wlr_layer_surface_v1_state *c = &client->scene_layer_surface->layer_surface->current,
-					  *p = &client->scene_layer_surface->layer_surface->pending;
-	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
+	struct wlr_layer_surface_v1 *surface = client->scene_layer_surface->layer_surface;
+	struct wlr_layer_surface_v1_state *c = &surface->current, *p = &surface->pending;
+
+	if (surface->initial_commit ||
+	    c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
 	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
 		tmbr_output_recalculate(client->output);
 }
@@ -1285,7 +1289,6 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_layer_shell_surface);
 	struct wlr_layer_surface_v1 *surface = payload;
-	struct wlr_layer_surface_v1_state current_state = surface->current;
 	struct tmbr_layer_client *client;
 
 	if (!surface->output)
@@ -1305,10 +1308,6 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	tmbr_register(&surface->surface->events.unmap, &client->base.unmap, tmbr_layer_client_on_unmap);
 	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_layer_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_layer_client_on_commit);
-
-	surface->current = surface->pending;
-	tmbr_output_recalculate(client->output);
-	surface->current = current_state;
 }
 
 static void tmbr_server_on_new_session_lock_surface(struct wl_listener *listener, TMBR_UNUSED void *payload)
