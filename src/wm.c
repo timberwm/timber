@@ -93,6 +93,7 @@ struct tmbr_keyboard {
 
 enum tmbr_client_type {
 	TMBR_CLIENT_XDG_SURFACE,
+	TMBR_CLIENT_XDG_POPUP,
 	TMBR_CLIENT_LAYER_SURFACE,
 };
 
@@ -123,6 +124,12 @@ struct tmbr_xdg_client {
 	struct wl_event_source *configure_timer;
 	struct wl_listener request_fullscreen;
 	struct wl_listener request_maximize;
+};
+
+struct tmbr_xdg_popup {
+	struct tmbr_client base;
+	struct wlr_xdg_popup *popup;
+	struct wlr_box constraint;
 };
 
 struct tmbr_tree {
@@ -196,7 +203,6 @@ struct tmbr_server {
 	struct wlr_output_manager_v1 *output_manager;
 	struct wlr_output_power_manager_v1 *output_power_manager;
 	struct wlr_pointer_constraints_v1 *pointer_constraints;
-	struct wlr_presentation *presentation;
 	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 	struct wlr_scene *scene;
 	struct wlr_scene_output_layout *scene_layout;
@@ -213,7 +219,8 @@ struct tmbr_server {
 	struct wl_listener new_input;
 	struct wl_listener new_virtual_keyboard;
 	struct wl_listener new_output;
-	struct wl_listener new_surface;
+	struct wl_listener new_xdg_toplevel;
+	struct wl_listener new_xdg_popup;
 	struct wl_listener new_layer_shell_surface;
 	struct wl_listener cursor_axis;
 	struct wl_listener cursor_button;
@@ -458,6 +465,18 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.commit);
+	struct wlr_xdg_surface *surface = client->surface;
+
+	if (client->surface->initial_commit) {
+		if (wl_resource_get_version(surface->toplevel->resource) >= XDG_TOPLEVEL_STATE_TILED_LEFT_SINCE_VERSION)
+			wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
+		else
+			wlr_xdg_toplevel_set_maximized(surface->toplevel, true);
+		wlr_xdg_toplevel_set_wm_capabilities(surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
+
+		wlr_xdg_surface_schedule_configure(client->surface);
+		return;
+	}
 
 	/*
 	 * Some clients may shift around their surfaces on commit, which thus
@@ -466,8 +485,8 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 	 */
 	 wlr_scene_subsurface_tree_set_clip(&client->scene_xdg_surface->node,
 	 &(struct wlr_box){
-		.x = client->surface->current.geometry.x,
-		.y = client->surface->current.geometry.y,
+		.x = surface->current.geometry.x,
+		.y = surface->current.geometry.y,
 		.width = client->w - 2 * client->border,
 		.height = client->h - 2 * client->border,
 	});
@@ -481,7 +500,7 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 	  *   - We stop inhibiting frames, unless it's already been stopped by
 	  *     the timer.
 	  */
-	if (client->pending_serial && client->pending_serial == client->surface->current.configure_serial) {
+	if (client->pending_serial && client->pending_serial == surface->current.configure_serial) {
 		if (client == tmbr_server_find_focus(client->server))
 			tmbr_xdg_client_notify_focus(client);
 		client->pending_serial = 0;
@@ -503,17 +522,26 @@ static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, s
 	client->scene_xdg_surface->node.data = client;
 	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0, TMBR_COLOR_INACTIVE);
 	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
-	if (wl_resource_get_version(surface->toplevel->resource) >= XDG_TOPLEVEL_STATE_TILED_LEFT_SINCE_VERSION)
-		wlr_xdg_toplevel_set_tiled(surface->toplevel, WLR_EDGE_LEFT|WLR_EDGE_RIGHT|WLR_EDGE_TOP|WLR_EDGE_BOTTOM);
-	else
-		wlr_xdg_toplevel_set_maximized(surface->toplevel, true);
-	wlr_xdg_toplevel_set_wm_capabilities(surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
 
 	surface->data = client;
 
 	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_xdg_client_on_commit);
 	return client;
+}
+
+static void tmbr_xdg_popup_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.commit);
+	if (popup->popup->base->initial_commit)
+		wlr_xdg_popup_unconstrain_from_box(popup->popup, &popup->constraint);
+}
+
+static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.destroy);
+	tmbr_unregister(&popup->base.destroy, &popup->base.commit, NULL);
+	free(popup);
 }
 
 static void tmbr_tree_recalculate(struct tmbr_tree *tree, int x, int y, int w, int h)
@@ -893,6 +921,8 @@ static void tmbr_output_recalculate_layers(struct tmbr_output *o, bool exclusive
 			struct wlr_layer_surface_v1_state *state = &c->scene_layer_surface->layer_surface->current;
 			struct wlr_scene_tree *parent_scene;
 
+			if (!c->scene_layer_surface->layer_surface->initialized)
+				continue;
 			if ((int)state->layer != l || exclusive != (state->exclusive_zone > 0))
 				continue;
 
@@ -1086,9 +1116,11 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.commit);
-	struct wlr_layer_surface_v1_state *c = &client->scene_layer_surface->layer_surface->current,
-					  *p = &client->scene_layer_surface->layer_surface->pending;
-	if (c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
+	struct wlr_layer_surface_v1 *surface = client->scene_layer_surface->layer_surface;
+	struct wlr_layer_surface_v1_state *c = &surface->current, *p = &surface->pending;
+
+	if (surface->initial_commit ||
+	    c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
 	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
 		tmbr_output_recalculate(client->output);
 }
@@ -1101,7 +1133,7 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 	switch (device->type) {
 	case WLR_INPUT_DEVICE_POINTER:
 	case WLR_INPUT_DEVICE_TOUCH:
-	case WLR_INPUT_DEVICE_TABLET_TOOL:
+	case WLR_INPUT_DEVICE_TABLET:
 	case WLR_INPUT_DEVICE_TABLET_PAD:
 		wlr_cursor_attach_input_device(server->cursor, device);
 		break;
@@ -1158,7 +1190,8 @@ static void tmbr_server_on_new_output(struct wl_listener *listener, void *payloa
 static void tmbr_server_on_request_maximize(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, request_maximize);
-	wlr_xdg_surface_schedule_configure(client->surface);
+	if (client->surface->initialized)
+		wlr_xdg_surface_schedule_configure(client->surface);
 }
 
 static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1166,7 +1199,7 @@ static void tmbr_server_on_request_fullscreen(struct wl_listener *listener, TMBR
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, request_fullscreen);
 	if (client->desktop && client == tmbr_server_find_focus(client->server))
 		tmbr_desktop_set_fullscreen(client->desktop, client->surface->toplevel->requested.fullscreen);
-	else
+	else if (client->surface->initialized)
 		wlr_xdg_surface_schedule_configure(client->surface);
 }
 
@@ -1184,67 +1217,71 @@ static void tmbr_server_on_unmap(struct wl_listener *listener, TMBR_UNUSED void 
 		tmbr_desktop_remove_client(client->desktop, client);
 }
 
-static void tmbr_server_on_new_xdg_surface(struct wl_listener *listener, void *payload)
+static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *payload)
 {
-	struct tmbr_server *server = wl_container_of(listener, server, new_surface);
-	struct wlr_xdg_surface *surface = payload;
+	struct tmbr_server *server = wl_container_of(listener, server, new_xdg_toplevel);
+	struct wlr_xdg_toplevel *toplevel = payload;
+	struct tmbr_xdg_client *client = tmbr_xdg_client_new(server, toplevel->base);
 
-	if (surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
-		struct tmbr_xdg_client *client = tmbr_xdg_client_new(server, surface);
-		tmbr_register(&surface->surface->events.map, &client->base.map, tmbr_server_on_map);
-		tmbr_register(&surface->surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
-		tmbr_register(&surface->toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
-		tmbr_register(&surface->toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
-	} else if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-		struct wlr_xdg_surface *xdg_parent, *root = surface;
-		struct wlr_layer_surface_v1 *layer_parent;
-		struct wlr_scene_tree *scene_leaf = NULL;
+	tmbr_register(&toplevel->base->surface->events.map, &client->base.map, tmbr_server_on_map);
+	tmbr_register(&toplevel->base->surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
+	tmbr_register(&toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
+	tmbr_register(&toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
+}
+
+static void tmbr_server_on_new_xdg_popup(struct wl_listener *listener TMBR_UNUSED, void *payload)
+{
+	struct wlr_xdg_popup *xdg_popup = payload;
+	struct wlr_xdg_surface *surface = xdg_popup->base, *xdg_parent, *root = surface;
+	struct tmbr_xdg_popup *popup = tmbr_alloc(sizeof(*popup), "Could not allocate popup");
+	struct wlr_layer_surface_v1 *layer_parent;
+	struct wlr_scene_tree *scene_leaf = NULL;
+
+	popup->base.type = TMBR_CLIENT_XDG_POPUP;
+	popup->popup = xdg_popup;
+	tmbr_register(&xdg_popup->base->surface->events.destroy, &popup->base.destroy, tmbr_xdg_popup_on_destroy);
+	tmbr_register(&xdg_popup->base->surface->events.commit, &popup->base.commit, tmbr_xdg_popup_on_commit);
+
+	/*
+	 * The popup may itself have a popup as parent, so we need to
+	 * walk up the chain of surfaces until we find the root of the
+	 * hierarchy.
+	 */
+	while (1) {
+		struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent);
+		if (!parent || parent->role != WLR_XDG_SURFACE_ROLE_POPUP)
+			break;
+		if (!scene_leaf)
+			scene_leaf = parent->data;
+		root = parent;
+	}
+
+	if ((xdg_parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent))) {
+		struct tmbr_xdg_client *xdg_client = xdg_parent->data;
+
+		surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
+							     xdg_client->scene_xdg_surface, surface);
+		popup->constraint = (struct wlr_box){
+			.width = xdg_client->w,
+			.height = xdg_client->h,
+		};
+	} else if ((layer_parent = wlr_layer_surface_v1_try_from_wlr_surface(root->popup->parent))) {
+		struct tmbr_layer_client *layer_client = layer_parent->data;
+		int x, y;
+
+		surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
+							     layer_client->scene_layer_surface->tree, surface);
 
 		/*
-		 * The popup may itself have a popup as parent, so we need to
-		 * walk up the chain of surfaces until we find the root of the
-		 * hierarchy.
+		 * Layer shell clients are unconstrained to the complete output.
 		 */
-		while (1) {
-			struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent);
-			if (!parent || parent->role != WLR_XDG_SURFACE_ROLE_POPUP)
-				break;
-			if (!scene_leaf)
-				scene_leaf = parent->data;
-			root = parent;
-		}
-
-		if ((xdg_parent = wlr_xdg_surface_try_from_wlr_surface(root->popup->parent))) {
-			struct tmbr_xdg_client *xdg_client = xdg_parent->data;
-
-			surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
-								     xdg_client->scene_xdg_surface, surface);
-
-			/*
-			 * Constrain XDG client popups to the window of their parent.
-			 */
-			wlr_xdg_popup_unconstrain_from_box(surface->popup, &(struct wlr_box){
-				.width = xdg_client->w,
-				.height = xdg_client->h,
-			});
-		} else if ((layer_parent = wlr_layer_surface_v1_try_from_wlr_surface(root->popup->parent))) {
-			struct tmbr_layer_client *layer_client = layer_parent->data;
-			int x, y;
-
-			surface->data = wlr_scene_xdg_surface_create(scene_leaf ? scene_leaf :
-								     layer_client->scene_layer_surface->tree, surface);
-
-			/*
-			 * Layer shell clients are unconstrained to the complete output.
-			 */
-			wlr_scene_node_coords(&layer_client->scene_layer_surface->tree->node, &x, &y);
-			wlr_xdg_popup_unconstrain_from_box(surface->popup, &(struct wlr_box) {
-				.width = layer_client->output->full_area.width,
-				.height = layer_client->output->full_area.height,
-				.x = layer_client->output->full_area.x - x,
-				.y = layer_client->output->full_area.y - y,
-			});
-		}
+		wlr_scene_node_coords(&layer_client->scene_layer_surface->tree->node, &x, &y);
+		popup->constraint = (struct wlr_box){
+			.width = layer_client->output->full_area.width,
+			.height = layer_client->output->full_area.height,
+			.x = layer_client->output->full_area.x - x,
+			.y = layer_client->output->full_area.y - y,
+		};
 	}
 }
 
@@ -1252,7 +1289,6 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_layer_shell_surface);
 	struct wlr_layer_surface_v1 *surface = payload;
-	struct wlr_layer_surface_v1_state current_state = surface->current;
 	struct tmbr_layer_client *client;
 
 	if (!surface->output)
@@ -1272,10 +1308,6 @@ static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener,
 	tmbr_register(&surface->surface->events.unmap, &client->base.unmap, tmbr_layer_client_on_unmap);
 	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_layer_client_on_destroy);
 	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_layer_client_on_commit);
-
-	surface->current = surface->pending;
-	tmbr_output_recalculate(client->output);
-	surface->current = current_state;
 }
 
 static void tmbr_server_on_new_session_lock_surface(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -1332,7 +1364,8 @@ static void tmbr_cursor_on_axis(struct wl_listener *listener, void *payload)
 	struct wlr_pointer_axis_event *event = payload;
 	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	wlr_seat_pointer_notify_axis(server->seat, event->time_msec, event->orientation,
-				     event->delta, event->delta_discrete, event->source);
+				     event->delta, event->delta_discrete, event->source,
+				     event->relative_direction);
 }
 
 static void tmbr_cursor_on_button(struct wl_listener *listener, void *payload)
@@ -1441,7 +1474,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		server->touch_emulation_id = event->touch_id;
 		tmbr_cursor_handle_motion(server, &event->touch->base, event->time_msec, lx - server->cursor->x,
 					  ly - server->cursor->y, lx - server->cursor->x, ly - server->cursor->y);
-		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_PRESSED);
+		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_PRESSED);
 		wlr_seat_pointer_notify_frame(server->seat);
 	}
 }
@@ -1454,7 +1487,7 @@ static void tmbr_cursor_on_touch_up(struct wl_listener *listener, void *payload)
 	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	if (server->touch_emulation_id == event->touch_id) {
 		server->touch_emulation_id = 0;
-		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WLR_BUTTON_RELEASED);
+		wlr_seat_pointer_notify_button(server->seat, event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_RELEASED);
 		wlr_seat_pointer_notify_frame(server->seat);
 	} else if (!server->touch_emulation_id) {
 		wlr_seat_touch_notify_up(server->seat, event->time_msec, event->touch_id);
@@ -1596,8 +1629,11 @@ static void tmbr_server_on_set_gamma(struct wl_listener *listener, void *payload
 	struct tmbr_server *server = wl_container_of(listener, server, set_gamma);
 	struct wlr_gamma_control_manager_v1_set_gamma_event *event = payload;
 	struct wlr_gamma_control_v1 *control = wlr_gamma_control_manager_v1_get_control(server->gamma_control_manager, event->output);
-	wlr_gamma_control_v1_apply(control, &event->output->pending);
-	wlr_output_commit(event->output);
+	struct wlr_output_state state;
+
+	wlr_output_state_init(&state);
+	wlr_gamma_control_v1_apply(control, &state);
+	wlr_output_commit_state(event->output, &state);
 	wlr_output_schedule_frame(event->output);
 }
 
@@ -1912,7 +1948,7 @@ int tmbr_wm(void)
 	wl_list_init(&server.outputs);
 	if ((server.display = wl_display_create()) == NULL)
 		die("Could not create display");
-	if ((server.backend = wlr_backend_autocreate(server.display, &server.session)) == NULL)
+	if ((server.backend = wlr_backend_autocreate(wl_display_get_event_loop(server.display), &server.session)) == NULL)
 		die("Could not create backend");
 	if ((server.renderer = wlr_renderer_autocreate(server.backend)) == NULL)
 		die("Could not create renderer");
@@ -1927,6 +1963,7 @@ int tmbr_wm(void)
 	    wlr_data_control_manager_v1_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_fractional_scale_manager_v1_create(server.display, 1) == NULL ||
+	    wlr_presentation_create(server.display, server.backend) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_screencopy_manager_v1_create(server.display) == NULL ||
 	    wlr_single_pixel_buffer_manager_v1_create(server.display) == NULL ||
@@ -1934,7 +1971,7 @@ int tmbr_wm(void)
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
-	    (server.output_layout = wlr_output_layout_create()) == NULL ||
+	    (server.output_layout = wlr_output_layout_create(server.display)) == NULL ||
 	    (server.scene = wlr_scene_create()) == NULL ||
 	    (server.scene_drag = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
@@ -1946,7 +1983,6 @@ int tmbr_wm(void)
 	    (server.layer_shell = wlr_layer_shell_v1_create(server.display, 4)) == NULL ||
 	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
 	    (server.output_power_manager = wlr_output_power_manager_v1_create(server.display)) == NULL ||
-	    (server.presentation = wlr_presentation_create(server.display, server.backend)) == NULL ||
 	    (server.pointer_constraints = wlr_pointer_constraints_v1_create(server.display)) == NULL ||
 	    (server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.session_lock_manager = wlr_session_lock_manager_v1_create(server.display)) == NULL ||
@@ -1959,14 +1995,14 @@ int tmbr_wm(void)
 
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
-	wlr_scene_set_presentation(server.scene, server.presentation);
 	wlr_scene_node_set_enabled(&server.scene_unowned_clients->node, false);
 	wlr_xcursor_manager_load(server.xcursor_manager, 1);
 
 	tmbr_register(&server.backend->events.new_input, &server.new_input, tmbr_server_on_new_input);
 	tmbr_register(&server.virtual_keyboard_manager->events.new_virtual_keyboard, &server.new_virtual_keyboard, tmbr_server_on_new_virtual_keyboard);
 	tmbr_register(&server.backend->events.new_output, &server.new_output, tmbr_server_on_new_output);
-	tmbr_register(&server.xdg_shell->events.new_surface, &server.new_surface, tmbr_server_on_new_xdg_surface);
+	tmbr_register(&server.xdg_shell->events.new_toplevel, &server.new_xdg_toplevel, tmbr_server_on_new_xdg_toplevel);
+	tmbr_register(&server.xdg_shell->events.new_popup, &server.new_xdg_popup, tmbr_server_on_new_xdg_popup);
 	tmbr_register(&server.layer_shell->events.new_surface, &server.new_layer_shell_surface, tmbr_server_on_new_layer_shell_surface);
 	tmbr_register(&server.session_lock_manager->events.new_lock, &server.new_session_lock, tmbr_server_on_new_session_lock);
 	tmbr_register(&server.seat->events.request_set_cursor, &server.request_set_cursor, tmbr_server_on_request_set_cursor);
@@ -2009,7 +2045,6 @@ int tmbr_wm(void)
 
 	wl_display_destroy_clients(server.display);
 	wl_display_destroy(server.display);
-	wlr_output_layout_destroy(server.output_layout);
 	wlr_scene_node_destroy(&server.scene->tree.node);
 	wlr_xcursor_manager_destroy(server.xcursor_manager);
 	wlr_cursor_destroy(server.cursor);
