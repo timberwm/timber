@@ -199,6 +199,7 @@ struct tmbr_server {
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wlr_idle_notifier_v1 *idle_notifier;
 	struct wlr_layer_shell_v1 *layer_shell;
+	struct wlr_linux_dmabuf_v1 *linux_dmabuf_v1;
 	struct wlr_output_layout *output_layout;
 	struct wlr_output_manager_v1 *output_manager;
 	struct wlr_output_power_manager_v1 *output_power_manager;
@@ -1954,7 +1955,10 @@ int tmbr_wm(void)
 		die("Could not create renderer");
 	if ((server.allocator = wlr_allocator_autocreate(server.backend, server.renderer)) == NULL)
 		die("Could not create allocator");
-	wlr_renderer_init_wl_display(server.renderer, server.display);
+
+	wlr_renderer_init_wl_shm(server.renderer, server.display);
+	if (wlr_renderer_get_texture_formats(server.renderer, WLR_BUFFER_CAP_DMABUF))
+		server.linux_dmabuf_v1 = wlr_linux_dmabuf_v1_create_with_renderer(server.display, 4, server.renderer);
 
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
 	    wlr_compositor_create(server.display, 5, server.renderer) == NULL ||
@@ -1992,9 +1996,10 @@ int tmbr_wm(void)
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
 		die("Could not create backends");
 
-
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
+	if (server.linux_dmabuf_v1)
+		wlr_scene_set_linux_dmabuf_v1(server.scene, server.linux_dmabuf_v1);
 	wlr_scene_node_set_enabled(&server.scene_unowned_clients->node, false);
 	wlr_xcursor_manager_load(server.xcursor_manager, 1);
 
