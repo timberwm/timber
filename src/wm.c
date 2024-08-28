@@ -1240,7 +1240,7 @@ static void tmbr_server_on_new_xdg_popup(struct wl_listener *listener TMBR_UNUSE
 
 	popup->base.type = TMBR_CLIENT_XDG_POPUP;
 	popup->popup = xdg_popup;
-	tmbr_register(&xdg_popup->base->surface->events.destroy, &popup->base.destroy, tmbr_xdg_popup_on_destroy);
+	tmbr_register(&xdg_popup->events.destroy, &popup->base.destroy, tmbr_xdg_popup_on_destroy);
 	tmbr_register(&xdg_popup->base->surface->events.commit, &popup->base.commit, tmbr_xdg_popup_on_commit);
 
 	/*
