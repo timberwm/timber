@@ -39,6 +39,8 @@
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
+#include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
@@ -1959,6 +1961,9 @@ int tmbr_wm(void)
 	wlr_renderer_init_wl_shm(server.renderer, server.display);
 	if (wlr_renderer_get_texture_formats(server.renderer, WLR_BUFFER_CAP_DMABUF))
 		server.linux_dmabuf_v1 = wlr_linux_dmabuf_v1_create_with_renderer(server.display, 4, server.renderer);
+
+	if (wlr_renderer_get_drm_fd(server.renderer) >= 0)
+		wlr_linux_drm_syncobj_manager_v1_create(server.display, 1, wlr_renderer_get_drm_fd(server.renderer));
 
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
 	    wlr_compositor_create(server.display, 5, server.renderer) == NULL ||
