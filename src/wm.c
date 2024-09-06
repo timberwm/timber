@@ -742,6 +742,7 @@ static void tmbr_desktop_focus_client(struct tmbr_desktop *desktop, struct tmbr_
 		} else {
 			wlr_seat_keyboard_notify_clear_focus(server->seat);
 			wlr_seat_pointer_notify_clear_focus(server->seat);
+			wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager, "default");
 		}
 
 		/*
