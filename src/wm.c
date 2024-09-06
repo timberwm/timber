@@ -1428,9 +1428,18 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 					    server->cursor->x + drag_icon->surface->current.dx,
 					    server->cursor->y + drag_icon->surface->current.dy);
 
-	if ((client = tmbr_server_find_client_at(server, server->cursor->x, server->cursor->y, &surface, &sx, &sy)) == NULL)
-		return;
-	if (client->type == TMBR_CLIENT_LAYER_SURFACE) {
+	if ((client = tmbr_server_find_client_at(server, server->cursor->x, server->cursor->y, &surface, &sx, &sy)) == NULL) {
+		struct wlr_output *wlr_output = wlr_output_layout_output_at(server->output_layout,
+									    server->cursor->x, server->cursor->y);
+		if (wlr_output) {
+			struct tmbr_output *output = wlr_output->data;
+			tmbr_output_focus_desktop(output, output->focus);
+		} else {
+			server->focussed_output = NULL;
+			wlr_seat_pointer_notify_clear_focus(server->seat);
+			wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager, "default");
+		}
+	} else if (client->type == TMBR_CLIENT_LAYER_SURFACE) {
 		struct tmbr_layer_client *layer_client = wl_container_of(client, layer_client, base);
 		tmbr_layer_client_notify_focus(layer_client);
 		server->focussed_output = layer_client->output;
