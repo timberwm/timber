@@ -512,27 +512,6 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 	}
 }
 
-static struct tmbr_xdg_client *tmbr_xdg_client_new(struct tmbr_server *server, struct wlr_xdg_surface *surface)
-{
-	struct tmbr_xdg_client *client = tmbr_alloc(sizeof(*client), "Could not allocate client");
-
-	client->base.type = TMBR_CLIENT_XDG_SURFACE;
-	client->server = server;
-	client->surface = surface;
-	client->configure_timer = wl_event_loop_add_timer(wl_display_get_event_loop(server->display), tmbr_xdg_client_handle_configure_timer, client);
-	client->scene_client = wlr_scene_tree_create(server->scene_unowned_clients);
-	client->scene_xdg_surface = wlr_scene_xdg_surface_create(client->scene_client, surface);
-	client->scene_xdg_surface->node.data = client;
-	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0, TMBR_COLOR_INACTIVE);
-	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
-
-	surface->data = client;
-
-	tmbr_register(&surface->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
-	tmbr_register(&surface->surface->events.commit, &client->base.commit, tmbr_xdg_client_on_commit);
-	return client;
-}
-
 static void tmbr_xdg_popup_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.commit);
@@ -1225,8 +1204,23 @@ static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_xdg_toplevel);
 	struct wlr_xdg_toplevel *toplevel = payload;
-	struct tmbr_xdg_client *client = tmbr_xdg_client_new(server, toplevel->base);
+	struct tmbr_xdg_client *client;
 
+	client = tmbr_alloc(sizeof(*client), "Could not allocate client");
+	client->base.type = TMBR_CLIENT_XDG_SURFACE;
+	client->server = server;
+	client->surface = toplevel->base;
+	client->configure_timer = wl_event_loop_add_timer(wl_display_get_event_loop(server->display), tmbr_xdg_client_handle_configure_timer, client);
+	client->scene_client = wlr_scene_tree_create(server->scene_unowned_clients);
+	client->scene_xdg_surface = wlr_scene_xdg_surface_create(client->scene_client, toplevel->base);
+	client->scene_xdg_surface->node.data = client;
+	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0, TMBR_COLOR_INACTIVE);
+	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
+
+	toplevel->base->data = client;
+
+	tmbr_register(&toplevel->base->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
+	tmbr_register(&toplevel->base->surface->events.commit, &client->base.commit, tmbr_xdg_client_on_commit);
 	tmbr_register(&toplevel->base->surface->events.map, &client->base.map, tmbr_server_on_map);
 	tmbr_register(&toplevel->base->surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
 	tmbr_register(&toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
