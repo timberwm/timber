@@ -1219,7 +1219,7 @@ static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *
 
 	toplevel->base->data = client;
 
-	tmbr_register(&toplevel->base->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
+	tmbr_register(&toplevel->events.destroy, &client->base.destroy, tmbr_xdg_client_on_destroy);
 	tmbr_register(&toplevel->base->surface->events.commit, &client->base.commit, tmbr_xdg_client_on_commit);
 	tmbr_register(&toplevel->base->surface->events.map, &client->base.map, tmbr_server_on_map);
 	tmbr_register(&toplevel->base->surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
