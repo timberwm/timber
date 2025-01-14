@@ -410,8 +410,18 @@ static void tmbr_xdg_popup_on_commit(struct wl_listener *listener, TMBR_UNUSED v
 static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.destroy);
-	tmbr_unregister(&popup->base.destroy, &popup->base.commit, NULL);
+	tmbr_unregister(&popup->base.destroy, &popup->base.commit, &popup->base.new_popup, NULL);
 	free(popup);
+}
+
+static void tmbr_xdg_popup_new(struct wlr_xdg_popup *xdg_popup,
+			       struct wlr_scene_tree *scene_tree,
+			       struct wlr_box constraint);
+
+static void tmbr_xdg_popup_on_new_popup(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_xdg_popup *parent = wl_container_of(listener, parent, base.new_popup);
+	tmbr_xdg_popup_new(payload, parent->popup->base->data, parent->constraint);
 }
 
 static void tmbr_xdg_popup_new(struct wlr_xdg_popup *xdg_popup,
@@ -423,11 +433,11 @@ static void tmbr_xdg_popup_new(struct wlr_xdg_popup *xdg_popup,
 	popup->base.type = TMBR_CLIENT_XDG_POPUP;
 	popup->constraint = constraint;
 	popup->popup = xdg_popup;
+	popup->popup->base->data = wlr_scene_xdg_surface_create(scene_tree, xdg_popup->base);
 
 	tmbr_register(&xdg_popup->events.destroy, &popup->base.destroy, tmbr_xdg_popup_on_destroy);
 	tmbr_register(&xdg_popup->base->surface->events.commit, &popup->base.commit, tmbr_xdg_popup_on_commit);
-
-	wlr_scene_xdg_surface_create(scene_tree, xdg_popup->base);
+	tmbr_register(&xdg_popup->base->events.new_popup, &popup->base.new_popup, tmbr_xdg_popup_on_new_popup);
 }
 
 static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
