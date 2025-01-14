@@ -400,6 +400,20 @@ static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_su
 	}
 }
 
+static void tmbr_xdg_popup_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.commit);
+	if (popup->popup->base->initial_commit)
+		wlr_xdg_popup_unconstrain_from_box(popup->popup, &popup->constraint);
+}
+
+static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.destroy);
+	tmbr_unregister(&popup->base.destroy, &popup->base.commit, NULL);
+	free(popup);
+}
+
 static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
 {
 	wlr_xdg_toplevel_send_close(client->surface->toplevel);
@@ -511,20 +525,6 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 		client->inhibit_frames = 0;
 		wl_event_source_timer_update(client->configure_timer, 0);
 	}
-}
-
-static void tmbr_xdg_popup_on_commit(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.commit);
-	if (popup->popup->base->initial_commit)
-		wlr_xdg_popup_unconstrain_from_box(popup->popup, &popup->constraint);
-}
-
-static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
-{
-	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.destroy);
-	tmbr_unregister(&popup->base.destroy, &popup->base.commit, NULL);
-	free(popup);
 }
 
 static void tmbr_tree_recalculate(struct tmbr_tree *tree, int x, int y, int w, int h)
