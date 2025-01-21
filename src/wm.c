@@ -1108,11 +1108,11 @@ static void tmbr_layer_client_on_map(struct wl_listener *listener, TMBR_UNUSED v
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.map);
 	struct wlr_layer_surface_v1_state *state = &client->scene_layer_surface->layer_surface->current;
+	wlr_scene_node_set_enabled(&client->scene_layer_surface->tree->node, true);
+	tmbr_output_recalculate(client->output);
 	if ((state->layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY || state->layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP) &&
 	    state->keyboard_interactive)
 		tmbr_layer_client_notify_focus(client);
-	wlr_scene_node_set_enabled(&client->scene_layer_surface->tree->node, true);
-	tmbr_output_recalculate(client->output);
 }
 
 static void tmbr_layer_client_on_unmap(struct wl_listener *listener, TMBR_UNUSED void *payload)
