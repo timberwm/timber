@@ -1414,8 +1414,27 @@ static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_inp
 	}
 
 	wlr_cursor_move(server->cursor, device, dx, dy);
-	if (server->locked)
+
+	if (server->locked) {
+		struct wlr_session_lock_surface_v1 *lock_surface;
+		struct wlr_scene_surface *scene_surface;
+		struct wlr_keyboard *keyboard;
+		struct wlr_scene_node *node;
+
+		if ((keyboard = wlr_seat_get_keyboard(server->seat)) == NULL ||
+		    (node = wlr_scene_node_at(&server->scene->tree.node, server->cursor->x,
+					      server->cursor->y, &sx, &sy)) == NULL ||
+		    node->type != WLR_SCENE_NODE_BUFFER ||
+		    (scene_surface = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node))) == NULL ||
+		    (lock_surface = wlr_session_lock_surface_v1_try_from_wlr_surface(scene_surface->surface)) == NULL) {
+			wlr_seat_keyboard_notify_clear_focus(server->seat);
+		} else {
+			wlr_seat_keyboard_notify_enter(server->seat, lock_surface->surface, keyboard->keycodes,
+						       keyboard->num_keycodes, &keyboard->modifiers);
+		}
+
 		return;
+	}
 
 	if (server->seat->drag && (drag_icon = server->seat->drag->icon))
 		wlr_scene_node_set_position(drag_icon->data,
