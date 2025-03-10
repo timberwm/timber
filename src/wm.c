@@ -1317,8 +1317,11 @@ static void tmbr_server_on_new_session_lock_surface(struct wl_listener *listener
 
 	if (output->server->focussed_output == output) {
 		struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
-		wlr_seat_keyboard_notify_enter(server->seat, lock_surface->surface, keyboard->keycodes,
-					       keyboard->num_keycodes, &keyboard->modifiers);
+		if (keyboard)
+			wlr_seat_keyboard_notify_enter(server->seat, lock_surface->surface, keyboard->keycodes,
+						       keyboard->num_keycodes, &keyboard->modifiers);
+		else
+			wlr_seat_keyboard_notify_clear_focus(server->seat);
 	}
 }
 
