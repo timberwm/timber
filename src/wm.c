@@ -1471,7 +1471,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		return;
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y, &lx, &ly);
-	if (tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy) && wlr_surface_accepts_touch(server->seat, surface)) {
+	if (tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy) && wlr_surface_accepts_touch(surface, server->seat)) {
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	} else if (!server->touch_emulation_id) {
 		server->touch_emulation_id = event->touch_id;
@@ -1973,7 +1973,7 @@ int tmbr_wm(void)
 	    wlr_data_control_manager_v1_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_fractional_scale_manager_v1_create(server.display, 1) == NULL ||
-	    wlr_presentation_create(server.display, server.backend) == NULL ||
+	    wlr_presentation_create(server.display, server.backend, 2) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_screencopy_manager_v1_create(server.display) == NULL ||
 	    wlr_single_pixel_buffer_manager_v1_create(server.display) == NULL ||
