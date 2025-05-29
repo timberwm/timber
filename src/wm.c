@@ -1540,8 +1540,10 @@ static void tmbr_server_on_request_set_primary_selection(struct wl_listener *lis
 
 static void tmbr_server_on_destroy_drag_icon(TMBR_UNUSED struct wl_listener *listener, void *payload)
 {
+	struct tmbr_server *server = wl_container_of(listener, server, destroy_drag_icon);
 	struct wlr_drag_icon *icon = payload;
 	wlr_scene_node_destroy(icon->data);
+	tmbr_unregister(&server->destroy_drag_icon, NULL);
 }
 
 static void tmbr_server_on_start_drag(struct wl_listener *listener, void *payload)
@@ -1570,6 +1572,7 @@ static void tmbr_server_on_destroy_idle_inhibitor(struct wl_listener *listener, 
 {
 	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_destroy);
 	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, wl_list_length(&server->idle_inhibit->inhibitors) > 1);
+	tmbr_unregister(&server->idle_inhibitor_destroy, NULL);
 }
 
 static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void *payload)
