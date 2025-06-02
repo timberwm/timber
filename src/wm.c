@@ -243,7 +243,6 @@ struct tmbr_server {
 	struct wl_listener idle_inhibitor_new;
 	struct wl_listener idle_inhibitor_destroy;
 	struct wl_listener apply_layout;
-	struct wl_listener set_gamma;
 	struct wl_listener output_power_set_mode;
 
 	struct wl_listener new_session_lock;
@@ -1493,7 +1492,7 @@ static void tmbr_cursor_on_touch_down(struct wl_listener *listener, void *payloa
 		return;
 
 	wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y, &lx, &ly);
-	if (tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy) && wlr_surface_accepts_touch(server->seat, surface)) {
+	if (tmbr_server_find_client_at(server, lx, ly, &surface, &sx, &sy) && wlr_surface_accepts_touch(surface, server->seat)) {
 		wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	} else if (!server->touch_emulation_id) {
 		server->touch_emulation_id = event->touch_id;
@@ -1563,8 +1562,10 @@ static void tmbr_server_on_request_set_primary_selection(struct wl_listener *lis
 
 static void tmbr_server_on_destroy_drag_icon(TMBR_UNUSED struct wl_listener *listener, void *payload)
 {
+	struct tmbr_server *server = wl_container_of(listener, server, destroy_drag_icon);
 	struct wlr_drag_icon *icon = payload;
 	wlr_scene_node_destroy(icon->data);
+	tmbr_unregister(&server->destroy_drag_icon, NULL);
 }
 
 static void tmbr_server_on_start_drag(struct wl_listener *listener, void *payload)
@@ -1593,6 +1594,7 @@ static void tmbr_server_on_destroy_idle_inhibitor(struct wl_listener *listener, 
 {
 	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_destroy);
 	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, wl_list_length(&server->idle_inhibit->inhibitors) > 1);
+	tmbr_unregister(&server->idle_inhibitor_destroy, NULL);
 }
 
 static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void *payload)
@@ -1649,31 +1651,14 @@ static void tmbr_server_on_apply_layout(TMBR_UNUSED struct wl_listener *listener
 	wlr_output_configuration_v1_destroy(cfg);
 }
 
-static void tmbr_server_on_set_gamma(struct wl_listener *listener, void *payload)
-{
-	struct tmbr_server *server = wl_container_of(listener, server, set_gamma);
-	struct wlr_gamma_control_manager_v1_set_gamma_event *event = payload;
-	struct wlr_gamma_control_v1 *control = wlr_gamma_control_manager_v1_get_control(server->gamma_control_manager, event->output);
-	struct wlr_output_state state;
-
-	wlr_output_state_init(&state);
-	wlr_gamma_control_v1_apply(control, &state);
-	wlr_output_commit_state(event->output, &state);
-	wlr_output_schedule_frame(event->output);
-}
-
 static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener *listener, void *payload)
 {
 	struct wlr_output_power_v1_set_mode_event *event = payload;
 	struct tmbr_output *output = event->output->data;
-	struct wlr_gamma_control_v1 *gamma_control =
-		wlr_gamma_control_manager_v1_get_control(output->server->gamma_control_manager, event->output);
 	struct wlr_output_state state;
 
 	wlr_output_state_init(&state);
 	wlr_output_state_set_enabled(&state, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
-	if (event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON)
-		wlr_gamma_control_v1_apply(gamma_control, &state);
 	wlr_output_commit_state(event->output, &state);
 
 	wlr_scene_node_set_enabled(&output->scene_output->node, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
@@ -1995,7 +1980,7 @@ int tmbr_wm(void)
 	    wlr_data_control_manager_v1_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
 	    wlr_fractional_scale_manager_v1_create(server.display, 1) == NULL ||
-	    wlr_presentation_create(server.display, server.backend) == NULL ||
+	    wlr_presentation_create(server.display, server.backend, 2) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
 	    wlr_screencopy_manager_v1_create(server.display) == NULL ||
 	    wlr_single_pixel_buffer_manager_v1_create(server.display) == NULL ||
@@ -2028,6 +2013,7 @@ int tmbr_wm(void)
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
 	if (server.linux_dmabuf_v1)
 		wlr_scene_set_linux_dmabuf_v1(server.scene, server.linux_dmabuf_v1);
+	wlr_scene_set_gamma_control_manager_v1(server.scene, server.gamma_control_manager);
 	wlr_scene_node_set_enabled(&server.scene_unowned_clients->node, false);
 	wlr_xcursor_manager_load(server.xcursor_manager, 1);
 
@@ -2051,7 +2037,6 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.touch_motion, &server.cursor_touch_motion, tmbr_cursor_on_touch_motion);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.idle_inhibitor_new, tmbr_server_on_new_idle_inhibitor);
-	tmbr_register(&server.gamma_control_manager->events.set_gamma, &server.set_gamma, tmbr_server_on_set_gamma);
 	tmbr_register(&server.output_manager->events.apply, &server.apply_layout, tmbr_server_on_apply_layout);
 	tmbr_register(&server.output_power_manager->events.set_mode, &server.output_power_set_mode, tmbr_server_on_output_power_set_mode);
 
