@@ -241,7 +241,6 @@ struct tmbr_server {
 	struct wl_listener start_drag;
 	struct wl_listener destroy_drag_icon;
 	struct wl_listener idle_inhibitor_new;
-	struct wl_listener idle_inhibitor_destroy;
 	struct wl_listener apply_layout;
 	struct wl_listener output_power_set_mode;
 
@@ -1590,18 +1589,31 @@ static void tmbr_server_on_request_start_drag(struct wl_listener *listener, void
 		wlr_data_source_destroy(event->drag->source);
 }
 
-static void tmbr_server_on_destroy_idle_inhibitor(struct wl_listener *listener, TMBR_UNUSED void *payload)
+struct tmbr_idle_inhibitor {
+	struct tmbr_server *server;
+	struct wlr_idle_inhibitor_v1 *inhibitor;
+	struct wl_listener on_destroy;
+};
+
+static void tmbr_idle_inhibitor_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
-	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_destroy);
-	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, wl_list_length(&server->idle_inhibit->inhibitors) > 1);
-	tmbr_unregister(&server->idle_inhibitor_destroy, NULL);
+	struct tmbr_idle_inhibitor *inhibitor = wl_container_of(listener, inhibitor, on_destroy);
+	wlr_idle_notifier_v1_set_inhibited(inhibitor->server->idle_notifier,
+					   wl_list_length(&inhibitor->server->idle_inhibit->inhibitors) > 1);
+	tmbr_unregister(&inhibitor->on_destroy, NULL);
 }
 
 static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_new);
-	struct wlr_idle_inhibitor_v1 *inhibitor = payload;
-	tmbr_register(&inhibitor->events.destroy, &server->idle_inhibitor_destroy, tmbr_server_on_destroy_idle_inhibitor);
+	struct wlr_idle_inhibitor_v1 *wlr_inhibitor = payload;
+	struct tmbr_idle_inhibitor *inhibitor;
+
+	inhibitor = tmbr_alloc(sizeof(*inhibitor), "Could not allocate idle inhibitor");
+	inhibitor->server = server;
+	inhibitor->inhibitor = wlr_inhibitor;
+
+	tmbr_register(&wlr_inhibitor->events.destroy, &inhibitor->on_destroy, tmbr_idle_inhibitor_on_destroy);
 	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, true);
 }
 
