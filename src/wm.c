@@ -1945,6 +1945,66 @@ static void tmbr_cmd_binding_add(TMBR_UNUSED struct wl_client *client, struct wl
 		die("Could not allocate binding command");
 }
 
+static void tmbr_cmd_config_get(TMBR_UNUSED struct wl_client *client,
+				struct wl_resource *resource,
+				int fd)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	const struct tmbr_config *cfg = &server->config;
+	FILE *f;
+
+	if ((f = fdopen(fd, "w")) == NULL)
+		return;
+	fprintf(f, "border_width: %" PRIx32 "\n", cfg->border_width);
+	fprintf(f, "border_color_active: %" PRIx32 "\n", cfg->border_color_active);
+	fprintf(f, "border_color_inactive: %" PRIx32 "\n", cfg->border_color_inactive);
+
+	fclose(f);
+}
+
+static void tmbr_server_reconfigure(struct tmbr_server *server)
+{
+	struct tmbr_xdg_client *focus = tmbr_server_find_focus(server);
+	struct tmbr_output *o;
+
+	wl_list_for_each(o, &server->outputs, link) {
+		struct tmbr_desktop *d;
+
+		tmbr_output_recalculate(o);
+
+		wl_list_for_each(d, &o->desktops, link)
+			tmbr_tree_for_each(d->clients, tree)
+				tmbr_xdg_client_update_border_color(tree->client, tree->client == focus);
+	}
+}
+
+static void tmbr_cmd_config_set_border_width(TMBR_UNUSED struct wl_client *client,
+					     struct wl_resource *resource,
+					     uint32_t width)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	server->config.border_width = width;
+	tmbr_server_reconfigure(server);
+}
+
+static void tmbr_cmd_config_set_border_color_active(TMBR_UNUSED struct wl_client *client,
+						    struct wl_resource *resource,
+						    uint32_t color)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	server->config.border_color_active = color;
+	tmbr_server_reconfigure(server);
+}
+
+static void tmbr_cmd_config_set_border_color_inactive(TMBR_UNUSED struct wl_client *client,
+						      struct wl_resource *resource,
+						      uint32_t color)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	server->config.border_color_inactive = color;
+	tmbr_server_reconfigure(server);
+}
+
 static int tmbr_server_on_term(TMBR_UNUSED int signal, void *payload)
 {
 	struct tmbr_server *server = payload;
@@ -1971,6 +2031,10 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 		.state_query = tmbr_cmd_state_query,
 		.state_quit = tmbr_cmd_state_quit,
 		.binding_add = tmbr_cmd_binding_add,
+		.config_get = tmbr_cmd_config_get,
+		.config_set_border_width = tmbr_cmd_config_set_border_width,
+		.config_set_border_color_active = tmbr_cmd_config_set_border_color_active,
+		.config_set_border_color_inactive = tmbr_cmd_config_set_border_color_inactive,
 	};
 	struct wl_resource *resource;
 

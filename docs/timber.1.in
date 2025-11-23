@@ -23,6 +23,10 @@ timber \- tree-based window manager
 \fItimber\fR state query
 \fItimber\fR state quit
 \fItimber\fR binding add <KEY> <COMMAND>
+\fItimber\fR config query
+\fItimber\fR config set-border-width
+\fItimber\fR config set-border-color-active
+\fItimber\fR config set-border-color-inactive
 .fi
 .SH DESCRIPTION
 .sp
@@ -168,6 +172,30 @@ $ timber binding add <KEY> <COMMAND>
 Add new binding for a key combination.
 The key can be a combination of multiple keys recognized by xkbcommon, e.g. "ctrl+alt+a".
 If the given key combination is pressed, the associated command will be invoked via the system's shell.
+.SS Configuration: Query current configuration
+.sp
+$ timber config query
+.sp
+Query the current configuration of the compositor.
+The output is in YAML format.
+.SS Configuration: Set border width
+.sp
+$ timber config set-border-width <U32>
+.sp
+Query the current configuration of the compositor.
+The output is in YAML format.
+.SS Configuration: Set active border color
+.sp
+$ timber config set-active-border-color <RGBA8888>
+.sp
+Set the border color for active XDG clients.
+The argument is expected to be in RGBA8888 format.
+.SS Configuration: Set inactive border color
+.sp
+$ timber config set-inactive-border-color <RGBA8888>
+.sp
+Set the border color for inactive XDG clients.
+The argument is expected to be in RGBA8888 format.
 .SH ENVIRONMENT VARIABLES
 The following environment variables can be set to modify behaviour of timber:
 .SS XCURSOR_PATH
