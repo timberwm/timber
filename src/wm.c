@@ -121,7 +121,8 @@ struct tmbr_xdg_client {
 	struct wlr_scene_tree *scene_xdg_surface;
 	struct wlr_scene_rect *scene_borders;
 
-	int h, w, border;
+	int h, w;
+	uint32_t border;
 	uint32_t pending_serial;
 	int inhibit_frames;
 
@@ -466,7 +467,7 @@ static int tmbr_xdg_client_handle_configure_timer(void *payload)
 	return 0;
 }
 
-static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
+static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, uint32_t border)
 {
 	if (client->w != w || client->h != h || client->border != border) {
 		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface->toplevel, w - 2 * border, h - 2 * border);
