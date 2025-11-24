@@ -121,7 +121,8 @@ struct tmbr_xdg_client {
 	struct wlr_scene_tree *scene_xdg_surface;
 	struct wlr_scene_rect *scene_borders;
 
-	int h, w, border;
+	int h, w;
+	uint32_t border;
 	uint32_t pending_serial;
 	int inhibit_frames;
 
@@ -194,6 +195,7 @@ struct tmbr_layer_client {
 };
 
 struct tmbr_server {
+	struct tmbr_config config;
 	struct wl_display *display;
 	struct wlr_renderer *renderer;
 	struct wlr_allocator *allocator;
@@ -282,6 +284,15 @@ static void tmbr_spawn(const char *path, char * const argv[])
 	}
 
 	waitpid(pid, NULL, 0);
+}
+
+static float *tmbr_color_rgba_to_float(uint32_t rgba, float out[4])
+{
+	out[0] = ((rgba >> 24) & 0xff) / 255.0;
+	out[1] = ((rgba >> 16) & 0xff) / 255.0;
+	out[2] = ((rgba >>  8) & 0xff) / 255.0;
+	out[3] = ((rgba      ) & 0xff) / 255.0;
+	return out;
 }
 
 static struct tmbr_xdg_client *tmbr_server_find_focus(struct tmbr_server *server)
@@ -466,7 +477,7 @@ static int tmbr_xdg_client_handle_configure_timer(void *payload)
 	return 0;
 }
 
-static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, int border)
+static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y, int w, int h, uint32_t border)
 {
 	if (client->w != w || client->h != h || client->border != border) {
 		client->pending_serial = wlr_xdg_toplevel_set_size(client->surface->toplevel, w - 2 * border, h - 2 * border);
@@ -487,10 +498,18 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 	});
 }
 
+static void tmbr_xdg_client_update_border_color(struct tmbr_xdg_client *client, bool focus)
+{
+	const struct tmbr_config *cfg = &client->server->config;
+	float color[4];
+	tmbr_color_rgba_to_float(focus ? cfg->border_color_active : cfg->border_color_inactive, color);
+	wlr_scene_rect_set_color(client->scene_borders, color);
+}
+
 static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 {
 	wlr_xdg_toplevel_set_activated(client->surface->toplevel, focus);
-	wlr_scene_rect_set_color(client->scene_borders, focus ? TMBR_COLOR_ACTIVE : TMBR_COLOR_INACTIVE);
+	tmbr_xdg_client_update_border_color(client, focus);
 	if (focus)
 		tmbr_xdg_client_notify_focus(client);
 }
@@ -560,7 +579,8 @@ static void tmbr_xdg_client_on_new_popup(struct wl_listener *listener, void *pay
 	});
 }
 
-static void tmbr_tree_recalculate(struct tmbr_tree *tree, int x, int y, int w, int h)
+static void tmbr_tree_recalculate(struct tmbr_tree *tree, const struct tmbr_config *cfg,
+				  int x, int y, int w, int h)
 {
 	int xoff, yoff, lw, rw, lh, rh;
 
@@ -568,7 +588,7 @@ static void tmbr_tree_recalculate(struct tmbr_tree *tree, int x, int y, int w, i
 		return;
 
 	if (tree->client) {
-		tmbr_xdg_client_set_box(tree->client, x, y, w, h, TMBR_BORDER_WIDTH);
+		tmbr_xdg_client_set_box(tree->client, x, y, w, h, cfg->border_width);
 		return;
 	}
 
@@ -586,8 +606,8 @@ static void tmbr_tree_recalculate(struct tmbr_tree *tree, int x, int y, int w, i
 		xoff = 0;
 	}
 
-	tmbr_tree_recalculate(tree->left, x, y, lw, lh);
-	tmbr_tree_recalculate(tree->right, x + xoff, y + yoff, rw, rh);
+	tmbr_tree_recalculate(tree->left, cfg, x, y, lw, lh);
+	tmbr_tree_recalculate(tree->right, cfg, x + xoff, y + yoff, rw, rh);
 }
 
 static void tmbr_tree_insert(struct tmbr_tree **tree, struct tmbr_xdg_client *client)
@@ -707,7 +727,8 @@ static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 		tmbr_xdg_client_set_box(desktop->focus, desktop->output->full_area.x, desktop->output->full_area.y,
 					desktop->output->full_area.width, desktop->output->full_area.height, 0);
 	else
-		tmbr_tree_recalculate(desktop->clients, desktop->output->usable_area.x, desktop->output->usable_area.y,
+		tmbr_tree_recalculate(desktop->clients, &desktop->output->server->config,
+				      desktop->output->usable_area.x, desktop->output->usable_area.y,
 				      desktop->output->usable_area.width, desktop->output->usable_area.height);
 
 	/*
@@ -1253,6 +1274,7 @@ static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *
 	struct tmbr_server *server = wl_container_of(listener, server, new_xdg_toplevel);
 	struct wlr_xdg_toplevel *toplevel = payload;
 	struct tmbr_xdg_client *client;
+	float color[4];
 
 	client = tmbr_alloc(sizeof(*client), "Could not allocate client");
 	client->base.type = TMBR_CLIENT_XDG_SURFACE;
@@ -1262,7 +1284,8 @@ static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *
 	client->scene_client = wlr_scene_tree_create(server->scene_unowned_clients);
 	client->scene_xdg_surface = wlr_scene_xdg_surface_create(client->scene_client, toplevel->base);
 	client->scene_xdg_surface->node.data = client;
-	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0, TMBR_COLOR_INACTIVE);
+	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0,
+						      tmbr_color_rgba_to_float(server->config.border_color_inactive, color));
 	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
 
 	toplevel->base->data = client;
@@ -1922,6 +1945,66 @@ static void tmbr_cmd_binding_add(TMBR_UNUSED struct wl_client *client, struct wl
 		die("Could not allocate binding command");
 }
 
+static void tmbr_cmd_config_get(TMBR_UNUSED struct wl_client *client,
+				struct wl_resource *resource,
+				int fd)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	const struct tmbr_config *cfg = &server->config;
+	FILE *f;
+
+	if ((f = fdopen(fd, "w")) == NULL)
+		return;
+	fprintf(f, "border_width: %" PRIx32 "\n", cfg->border_width);
+	fprintf(f, "border_color_active: %" PRIx32 "\n", cfg->border_color_active);
+	fprintf(f, "border_color_inactive: %" PRIx32 "\n", cfg->border_color_inactive);
+
+	fclose(f);
+}
+
+static void tmbr_server_reconfigure(struct tmbr_server *server)
+{
+	struct tmbr_xdg_client *focus = tmbr_server_find_focus(server);
+	struct tmbr_output *o;
+
+	wl_list_for_each(o, &server->outputs, link) {
+		struct tmbr_desktop *d;
+
+		tmbr_output_recalculate(o);
+
+		wl_list_for_each(d, &o->desktops, link)
+			tmbr_tree_for_each(d->clients, tree)
+				tmbr_xdg_client_update_border_color(tree->client, tree->client == focus);
+	}
+}
+
+static void tmbr_cmd_config_set_border_width(TMBR_UNUSED struct wl_client *client,
+					     struct wl_resource *resource,
+					     uint32_t width)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	server->config.border_width = width;
+	tmbr_server_reconfigure(server);
+}
+
+static void tmbr_cmd_config_set_border_color_active(TMBR_UNUSED struct wl_client *client,
+						    struct wl_resource *resource,
+						    uint32_t color)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	server->config.border_color_active = color;
+	tmbr_server_reconfigure(server);
+}
+
+static void tmbr_cmd_config_set_border_color_inactive(TMBR_UNUSED struct wl_client *client,
+						      struct wl_resource *resource,
+						      uint32_t color)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	server->config.border_color_inactive = color;
+	tmbr_server_reconfigure(server);
+}
+
 static int tmbr_server_on_term(TMBR_UNUSED int signal, void *payload)
 {
 	struct tmbr_server *server = payload;
@@ -1948,6 +2031,10 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 		.state_query = tmbr_cmd_state_query,
 		.state_quit = tmbr_cmd_state_quit,
 		.binding_add = tmbr_cmd_binding_add,
+		.config_get = tmbr_cmd_config_get,
+		.config_set_border_width = tmbr_cmd_config_set_border_width,
+		.config_set_border_color_active = tmbr_cmd_config_set_border_color_active,
+		.config_set_border_color_inactive = tmbr_cmd_config_set_border_color_inactive,
 	};
 	struct wl_resource *resource;
 
@@ -1960,7 +2047,13 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 
 int tmbr_wm(void)
 {
-	struct tmbr_server server = { 0 };
+	struct tmbr_server server = {
+		.config = {
+			.border_width = 3,
+			.border_color_active = 0x0080B3FF,
+			.border_color_inactive = 0x333333FF,
+		},
+	};
 	struct tmbr_binding *binding, *binding_tmp;
 	struct wl_event_source *source;
 	const char *socket;

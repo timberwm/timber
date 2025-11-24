@@ -154,6 +154,24 @@
         <arg name="command" type="string"/>
     </request>
 
+    <request name="config_get">
+        <description summary="get current configuration">
+            Get the current configuration.
+        </description>
+        <arg name="fd" type="fd"/>
+    </request>
+
+    <request name="config_set_border_width">
+        <arg name="width" type="uint"/>
+    </request>
+
+    <request name="config_set_border_color_active">
+        <arg name="color" type="uint"/>
+    </request>
+
+    <request name="config_set_border_color_inactive">
+        <arg name="color" type="uint"/>
+    </request>
   </interface>
 
 </protocol>

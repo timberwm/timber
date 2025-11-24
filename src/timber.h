@@ -15,10 +15,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <stdint.h>
 #include <sys/types.h>
 
 #define TMBR_UNUSED __attribute__((unused))
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
+
+struct tmbr_config {
+	unsigned border_width;
+	uint32_t border_color_active;
+	uint32_t border_color_inactive;
+};
 
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);
 void *tmbr_alloc(size_t bytes, const char *msg);

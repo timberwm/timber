@@ -29,9 +29,6 @@ executable(
     '-D_POSIX_C_SOURCE=200809L',
     '-DTMBR_VERSION="' + version + '"',
     '-DTMBR_CONFIG_PATH="' + get_option('config_path') + '"',
-    '-DTMBR_BORDER_WIDTH=' + get_option('border_width').to_string(),
-    '-DTMBR_COLOR_ACTIVE=((float[4])' + get_option('border_color_active') + ')',
-    '-DTMBR_COLOR_INACTIVE=((float[4])' + get_option('border_color_inactive') + ')',
   ],
   install: true,
 )

@@ -35,11 +35,12 @@
 		i = -1;
 
 enum {
-	TMBR_ARG_SEL = (1 << 0),
-	TMBR_ARG_DIR = (1 << 1),
-	TMBR_ARG_INT = (1 << 2),
-	TMBR_ARG_KEY = (1 << 3),
-	TMBR_ARG_CMD = (1 << 4),
+	TMBR_ARG_SEL   = (1 << 0),
+	TMBR_ARG_DIR   = (1 << 1),
+	TMBR_ARG_U32   = (1 << 2),
+	TMBR_ARG_KEY   = (1 << 3),
+	TMBR_ARG_CMD   = (1 << 4),
+	TMBR_ARG_COLOR = (1 << 5),
 };
 
 static const struct {
@@ -51,7 +52,7 @@ static const struct {
 	{ "client", "focus",      TMBR_CTRL_CLIENT_FOCUS,      TMBR_ARG_SEL                  },
 	{ "client", "fullscreen", TMBR_CTRL_CLIENT_FULLSCREEN, 0                             },
 	{ "client", "kill",       TMBR_CTRL_CLIENT_KILL,       0                             },
-	{ "client", "resize",     TMBR_CTRL_CLIENT_RESIZE,     TMBR_ARG_DIR|TMBR_ARG_INT     },
+	{ "client", "resize",     TMBR_CTRL_CLIENT_RESIZE,     TMBR_ARG_DIR|TMBR_ARG_U32     },
 	{ "client", "swap",       TMBR_CTRL_CLIENT_SWAP,       TMBR_ARG_SEL                  },
 	{ "client", "to_desktop", TMBR_CTRL_CLIENT_TO_DESKTOP, TMBR_ARG_SEL                  },
 	{ "client", "to_output",  TMBR_CTRL_CLIENT_TO_OUTPUT,  TMBR_ARG_SEL                  },
@@ -63,14 +64,19 @@ static const struct {
 	{ "tree", "rotate",       TMBR_CTRL_TREE_ROTATE,       0                             },
 	{ "state", "query",       TMBR_CTRL_STATE_QUERY,       0                             },
 	{ "state", "quit",        TMBR_CTRL_STATE_QUIT,        0                             },
-	{ "binding", "add",       TMBR_CTRL_BINDING_ADD,       TMBR_ARG_KEY|TMBR_ARG_CMD     }
+	{ "binding", "add",       TMBR_CTRL_BINDING_ADD,       TMBR_ARG_KEY|TMBR_ARG_CMD     },
+	{ "config", "get",        TMBR_CTRL_CONFIG_GET,        0                             },
+	{ "config", "set-border-width",          TMBR_CTRL_CONFIG_SET_BORDER_WIDTH,          TMBR_ARG_U32   },
+	{ "config", "set-active-border-color",   TMBR_CTRL_CONFIG_SET_BORDER_COLOR_ACTIVE,   TMBR_ARG_COLOR },
+	{ "config", "set-inactive-border-color", TMBR_CTRL_CONFIG_SET_BORDER_COLOR_INACTIVE, TMBR_ARG_COLOR },
 };
 
 struct tmbr_arg {
 	int function;
 	enum tmbr_ctrl_selection sel;
 	enum tmbr_ctrl_direction dir;
-	int i;
+	uint32_t u32;
+	uint32_t color;
 	struct { uint32_t modifiers; xkb_keysym_t keycode; } key;
 	const char *command;
 };
@@ -131,10 +137,20 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 		argv++;
 	}
 
-	if (commands[c].args & TMBR_ARG_INT) {
+	if (commands[c].args & TMBR_ARG_U32) {
+		unsigned long value;
+		char *end;
+
 		if (!argc)
 			die("Command is missing integer");
-		out->i = atoi(argv[0]);
+
+		value = strtoul(argv[0], &end, 10);
+		if (*end)
+			die("Integer is not a number");
+		if (value > UINT32_MAX)
+			die("Integer exceeds maximum range");
+
+		out->u32 = value;
 		argc--;
 		argv++;
 	}
@@ -170,6 +186,22 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 		argv++;
 	}
 
+	if (commands[c].args & TMBR_ARG_COLOR) {
+		char *endptr;
+
+		if (!argc)
+			die("Command is missing color");
+		if (strlen(argv[0]) != 8)
+			die("Color is expected to be in RGBA8888 format");
+
+		out->color = strtoul(argv[0], &endptr, 16);
+		if (*endptr)
+			die("Argument is not a base-16 number");
+
+		argc--;
+		argv++;
+	}
+
 	if (argc)
 		die("Command has trailing arguments");
 }
@@ -197,7 +229,7 @@ static void __attribute__((noreturn)) usage(const char *executable)
 		printf("   %s %s %s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
 			commands[i].args & TMBR_ARG_SEL ? " (next|prev)" : "",
 			commands[i].args & TMBR_ARG_DIR ? " (north|south|east|west)" : "",
-			commands[i].args & TMBR_ARG_INT ? " <NUMBER>" : "",
+			commands[i].args & TMBR_ARG_U32 ? " <NUMBER>" : "",
 			commands[i].args & TMBR_ARG_KEY ? " <KEY>" : "",
 			commands[i].args & TMBR_ARG_CMD ? " <COMMAND>" : "");
 
@@ -240,7 +272,7 @@ int tmbr_client(int argc, char *argv[])
 		case TMBR_CTRL_CLIENT_FOCUS: tmbr_ctrl_client_focus(ctrl, args.sel); break;
 		case TMBR_CTRL_CLIENT_FULLSCREEN: tmbr_ctrl_client_fullscreen(ctrl); break;
 		case TMBR_CTRL_CLIENT_KILL: tmbr_ctrl_client_kill(ctrl); break;
-		case TMBR_CTRL_CLIENT_RESIZE: tmbr_ctrl_client_resize(ctrl, args.dir, args.i); break;
+		case TMBR_CTRL_CLIENT_RESIZE: tmbr_ctrl_client_resize(ctrl, args.dir, args.u32); break;
 		case TMBR_CTRL_CLIENT_SWAP: tmbr_ctrl_client_swap(ctrl, args.sel); break;
 		case TMBR_CTRL_CLIENT_TO_DESKTOP: tmbr_ctrl_client_to_desktop(ctrl, args.sel); break;
 		case TMBR_CTRL_CLIENT_TO_OUTPUT: tmbr_ctrl_client_to_output(ctrl, args.sel); break;
@@ -253,6 +285,10 @@ int tmbr_client(int argc, char *argv[])
 		case TMBR_CTRL_STATE_QUERY: tmbr_ctrl_state_query(ctrl, STDOUT_FILENO); break;
 		case TMBR_CTRL_STATE_QUIT: tmbr_ctrl_state_quit(ctrl); break;
 		case TMBR_CTRL_BINDING_ADD: tmbr_ctrl_binding_add(ctrl, args.key.keycode, args.key.modifiers, args.command); break;
+		case TMBR_CTRL_CONFIG_GET: tmbr_ctrl_config_get(ctrl, STDOUT_FILENO); break;
+		case TMBR_CTRL_CONFIG_SET_BORDER_WIDTH: tmbr_ctrl_config_set_border_width(ctrl, args.u32); break;
+		case TMBR_CTRL_CONFIG_SET_BORDER_COLOR_ACTIVE: tmbr_ctrl_config_set_border_color_active(ctrl, args.color); break;
+		case TMBR_CTRL_CONFIG_SET_BORDER_COLOR_INACTIVE: tmbr_ctrl_config_set_border_color_inactive(ctrl, args.color); break;
 	}
 
 	if (wl_display_roundtrip(display) < 0) {
