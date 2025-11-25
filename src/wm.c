@@ -588,7 +588,8 @@ static void tmbr_tree_recalculate(struct tmbr_tree *tree, const struct tmbr_conf
 		return;
 
 	if (tree->client) {
-		tmbr_xdg_client_set_box(tree->client, x, y, w, h, cfg->border_width);
+		tmbr_xdg_client_set_box(tree->client, x, y, w - cfg->gap, h - cfg->gap,
+					cfg->border_width);
 		return;
 	}
 
@@ -723,13 +724,25 @@ static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 {
 	struct tmbr_xdg_client *focus;
 
-	if (desktop->fullscreen && desktop->focus)
+	if (desktop->fullscreen && desktop->focus) {
 		tmbr_xdg_client_set_box(desktop->focus, desktop->output->full_area.x, desktop->output->full_area.y,
 					desktop->output->full_area.width, desktop->output->full_area.height, 0);
-	else
+	} else {
+		/*
+		 * Note that the gap is applied:
+		 *
+		 *   - Globally to the top and left edges for a given desktop.
+		 *   - To the bottom and right edges for any given client.
+		 *
+		 * This ensures that we don't apply the gap twice between any
+		 * two clients.
+		 */
+		uint32_t gap = desktop->output->server->config.gap;
+
 		tmbr_tree_recalculate(desktop->clients, &desktop->output->server->config,
-				      desktop->output->usable_area.x, desktop->output->usable_area.y,
-				      desktop->output->usable_area.width, desktop->output->usable_area.height);
+				      desktop->output->usable_area.x + gap, desktop->output->usable_area.y + gap,
+				      desktop->output->usable_area.width - gap, desktop->output->usable_area.height - gap);
+	}
 
 	/*
 	 * After recalculating the layout it may happen that the pointer's
@@ -1958,6 +1971,7 @@ static void tmbr_cmd_config_get(TMBR_UNUSED struct wl_client *client,
 	fprintf(f, "border_width: %" PRIx32 "\n", cfg->border_width);
 	fprintf(f, "border_color_active: %" PRIx32 "\n", cfg->border_color_active);
 	fprintf(f, "border_color_inactive: %" PRIx32 "\n", cfg->border_color_inactive);
+	fprintf(f, "gap: %" PRIx32 "\n", cfg->gap);
 
 	fclose(f);
 }
@@ -2005,6 +2019,15 @@ static void tmbr_cmd_config_set_border_color_inactive(TMBR_UNUSED struct wl_clie
 	tmbr_server_reconfigure(server);
 }
 
+static void tmbr_cmd_config_set_gap(TMBR_UNUSED struct wl_client *client,
+				    struct wl_resource *resource,
+				    uint32_t gap)
+{
+	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	server->config.gap = gap;
+	tmbr_server_reconfigure(server);
+}
+
 static int tmbr_server_on_term(TMBR_UNUSED int signal, void *payload)
 {
 	struct tmbr_server *server = payload;
@@ -2035,6 +2058,7 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 		.config_set_border_width = tmbr_cmd_config_set_border_width,
 		.config_set_border_color_active = tmbr_cmd_config_set_border_color_active,
 		.config_set_border_color_inactive = tmbr_cmd_config_set_border_color_inactive,
+		.config_set_gap = tmbr_cmd_config_set_gap,
 	};
 	struct wl_resource *resource;
 
