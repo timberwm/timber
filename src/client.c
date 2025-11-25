@@ -69,6 +69,7 @@ static const struct {
 	{ "config", "set-border-width",          TMBR_CTRL_CONFIG_SET_BORDER_WIDTH,          TMBR_ARG_U32   },
 	{ "config", "set-active-border-color",   TMBR_CTRL_CONFIG_SET_BORDER_COLOR_ACTIVE,   TMBR_ARG_COLOR },
 	{ "config", "set-inactive-border-color", TMBR_CTRL_CONFIG_SET_BORDER_COLOR_INACTIVE, TMBR_ARG_COLOR },
+	{ "config", "set-gap",                   TMBR_CTRL_CONFIG_SET_GAP, TMBR_ARG_U32 },
 };
 
 struct tmbr_arg {
@@ -289,6 +290,7 @@ int tmbr_client(int argc, char *argv[])
 		case TMBR_CTRL_CONFIG_SET_BORDER_WIDTH: tmbr_ctrl_config_set_border_width(ctrl, args.u32); break;
 		case TMBR_CTRL_CONFIG_SET_BORDER_COLOR_ACTIVE: tmbr_ctrl_config_set_border_color_active(ctrl, args.color); break;
 		case TMBR_CTRL_CONFIG_SET_BORDER_COLOR_INACTIVE: tmbr_ctrl_config_set_border_color_inactive(ctrl, args.color); break;
+		case TMBR_CTRL_CONFIG_SET_GAP: tmbr_ctrl_config_set_gap(ctrl, args.u32); break;
 	}
 
 	if (wl_display_roundtrip(display) < 0) {

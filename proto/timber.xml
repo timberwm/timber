@@ -172,6 +172,10 @@
     <request name="config_set_border_color_inactive">
         <arg name="color" type="uint"/>
     </request>
+
+    <request name="config_set_gap">
+        <arg name="color" type="uint"/>
+    </request>
   </interface>
 
 </protocol>

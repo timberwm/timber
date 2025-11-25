@@ -25,6 +25,7 @@ struct tmbr_config {
 	unsigned border_width;
 	uint32_t border_color_active;
 	uint32_t border_color_inactive;
+	uint32_t gap;
 };
 
 void __attribute__((noreturn, format(printf, 1, 2))) die(const char *fmt, ...);
