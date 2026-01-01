@@ -1742,7 +1742,7 @@ static void tmbr_cmd_client_kill(TMBR_UNUSED struct wl_client *client, struct wl
 	tmbr_xdg_client_kill(focus);
 }
 
-static void tmbr_cmd_client_resize(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t dir, uint32_t ratio)
+static void tmbr_cmd_client_resize(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, uint32_t dir, int32_t ratio)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
 	struct tmbr_xdg_client *focus;
