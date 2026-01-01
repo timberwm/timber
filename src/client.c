@@ -37,10 +37,11 @@
 enum {
 	TMBR_ARG_SEL   = (1 << 0),
 	TMBR_ARG_DIR   = (1 << 1),
-	TMBR_ARG_U32   = (1 << 2),
-	TMBR_ARG_KEY   = (1 << 3),
-	TMBR_ARG_CMD   = (1 << 4),
-	TMBR_ARG_COLOR = (1 << 5),
+	TMBR_ARG_I32   = (1 << 2),
+	TMBR_ARG_U32   = (1 << 3),
+	TMBR_ARG_KEY   = (1 << 4),
+	TMBR_ARG_CMD   = (1 << 5),
+	TMBR_ARG_COLOR = (1 << 6),
 };
 
 static const struct {
@@ -52,7 +53,7 @@ static const struct {
 	{ "client", "focus",      TMBR_CTRL_CLIENT_FOCUS,      TMBR_ARG_SEL                  },
 	{ "client", "fullscreen", TMBR_CTRL_CLIENT_FULLSCREEN, 0                             },
 	{ "client", "kill",       TMBR_CTRL_CLIENT_KILL,       0                             },
-	{ "client", "resize",     TMBR_CTRL_CLIENT_RESIZE,     TMBR_ARG_DIR|TMBR_ARG_U32     },
+	{ "client", "resize",     TMBR_CTRL_CLIENT_RESIZE,     TMBR_ARG_DIR|TMBR_ARG_I32     },
 	{ "client", "swap",       TMBR_CTRL_CLIENT_SWAP,       TMBR_ARG_SEL                  },
 	{ "client", "to_desktop", TMBR_CTRL_CLIENT_TO_DESKTOP, TMBR_ARG_SEL                  },
 	{ "client", "to_output",  TMBR_CTRL_CLIENT_TO_OUTPUT,  TMBR_ARG_SEL                  },
@@ -76,6 +77,7 @@ struct tmbr_arg {
 	int function;
 	enum tmbr_ctrl_selection sel;
 	enum tmbr_ctrl_direction dir;
+	int32_t i32;
 	uint32_t u32;
 	uint32_t color;
 	struct { uint32_t modifiers; xkb_keysym_t keycode; } key;
@@ -134,6 +136,26 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 		if (i < 0)
 			die("Unknown direction '%s'", argv[0]);
 		out->dir = (enum tmbr_ctrl_direction) i;
+		argc--;
+		argv++;
+	}
+
+	if (commands[c].args & TMBR_ARG_I32) {
+		long value;
+		char *end;
+
+		if (!argc)
+			die("Command is missing integer");
+
+		value = strtol(argv[0], &end, 10);
+		if (*end)
+			die("Integer is not a number");
+		if (value < INT32_MIN)
+			die("Integer exceeds minimum range");
+		if (value > INT32_MAX)
+			die("Integer exceeds maximum range");
+
+		out->i32 = value;
 		argc--;
 		argv++;
 	}
@@ -273,7 +295,7 @@ int tmbr_client(int argc, char *argv[])
 		case TMBR_CTRL_CLIENT_FOCUS: tmbr_ctrl_client_focus(ctrl, args.sel); break;
 		case TMBR_CTRL_CLIENT_FULLSCREEN: tmbr_ctrl_client_fullscreen(ctrl); break;
 		case TMBR_CTRL_CLIENT_KILL: tmbr_ctrl_client_kill(ctrl); break;
-		case TMBR_CTRL_CLIENT_RESIZE: tmbr_ctrl_client_resize(ctrl, args.dir, args.u32); break;
+		case TMBR_CTRL_CLIENT_RESIZE: tmbr_ctrl_client_resize(ctrl, args.dir, args.i32); break;
 		case TMBR_CTRL_CLIENT_SWAP: tmbr_ctrl_client_swap(ctrl, args.sel); break;
 		case TMBR_CTRL_CLIENT_TO_DESKTOP: tmbr_ctrl_client_to_desktop(ctrl, args.sel); break;
 		case TMBR_CTRL_CLIENT_TO_OUTPUT: tmbr_ctrl_client_to_output(ctrl, args.sel); break;

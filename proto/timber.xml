@@ -68,7 +68,7 @@
             ratio in the given direction.
         </description>
         <arg name="direction" type="uint" enum="direction"/>
-        <arg name="ratio" type="uint"/>
+        <arg name="ratio" type="int"/>
     </request>
 
     <request name="client_swap">
