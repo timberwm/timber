@@ -172,97 +172,113 @@ static void tmbr_require_args(char **argv, size_t length)
 		    (uintmax_t) length, (uintmax_t) i);
 }
 
-static void tmbr_client_focus(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_client_focus(struct wl_display *display TMBR_UNUSED,
+			      struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_client_focus(ctrl, tmbr_parse_selection(argv[0]));
 }
 
-static void tmbr_client_fullscreen(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_client_fullscreen(struct wl_display *display TMBR_UNUSED,
+				   struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 0);
 	tmbr_ctrl_client_fullscreen(ctrl);
 }
 
-static void tmbr_client_kill(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_client_kill(struct wl_display *display TMBR_UNUSED,
+			     struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 0);
 	tmbr_ctrl_client_kill(ctrl);
 }
 
-static void tmbr_client_resize(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_client_resize(struct wl_display *display TMBR_UNUSED,
+			       struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 2);
 	tmbr_ctrl_client_resize(ctrl, tmbr_parse_direction(argv[0]), tmbr_parse_i32(argv[1]));
 }
 
-static void tmbr_client_swap(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_client_swap(struct wl_display *display TMBR_UNUSED,
+			     struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_client_swap(ctrl, tmbr_parse_selection(argv[0]));
 }
 
-static void tmbr_client_to_desktop(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_client_to_desktop(struct wl_display *display TMBR_UNUSED,
+				   struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_client_to_desktop(ctrl, tmbr_parse_selection(argv[0]));
 }
 
-static void tmbr_client_to_output(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_client_to_output(struct wl_display *display TMBR_UNUSED,
+				  struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_client_to_output(ctrl, tmbr_parse_selection(argv[0]));
 }
 
-static void tmbr_desktop_focus(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_desktop_focus(struct wl_display *display TMBR_UNUSED,
+			       struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_desktop_focus(ctrl, tmbr_parse_selection(argv[0]));
 }
 
-static void tmbr_desktop_kill(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_desktop_kill(struct wl_display *display TMBR_UNUSED,
+			      struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 0);
 	tmbr_ctrl_desktop_kill(ctrl);
 }
 
-static void tmbr_desktop_new(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_desktop_new(struct wl_display *display TMBR_UNUSED,
+			     struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 0);
 	tmbr_ctrl_desktop_new(ctrl);
 }
 
-static void tmbr_desktop_swap(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_desktop_swap(struct wl_display *display TMBR_UNUSED,
+			      struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_desktop_swap(ctrl, tmbr_parse_selection(argv[0]));
 }
 
-static void tmbr_output_focus(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_output_focus(struct wl_display *display TMBR_UNUSED,
+			      struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_output_focus(ctrl, tmbr_parse_selection(argv[0]));
 }
 
-static void tmbr_tree_rotate(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_tree_rotate(struct wl_display *display TMBR_UNUSED,
+			     struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 0);
 	tmbr_ctrl_tree_rotate(ctrl);
 }
 
-static void tmbr_state_query(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_state_query(struct wl_display *display TMBR_UNUSED,
+			     struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 0);
 	tmbr_ctrl_state_query(ctrl, STDOUT_FILENO);
 }
 
-static void tmbr_state_quit(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_state_quit(struct wl_display *display TMBR_UNUSED,
+			    struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 0);
 	tmbr_ctrl_state_quit(ctrl);
 }
 
-static void tmbr_binding_add(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_binding_add(struct wl_display *display TMBR_UNUSED,
+			     struct tmbr_ctrl *ctrl, char **argv)
 {
 	struct tmbr_key key;
 	tmbr_require_args(argv, 2);
@@ -270,31 +286,36 @@ static void tmbr_binding_add(struct tmbr_ctrl *ctrl, char **argv)
 	tmbr_ctrl_binding_add(ctrl, key.keycode, key.modifiers, argv[1]);
 }
 
-static void tmbr_config_get(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_config_get(struct wl_display *display TMBR_UNUSED,
+			    struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 0);
 	tmbr_ctrl_config_get(ctrl, STDOUT_FILENO);
 }
 
-static void tmbr_config_set_border_width(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_config_set_border_width(struct wl_display *display TMBR_UNUSED,
+					 struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_config_set_border_width(ctrl, tmbr_parse_u32(argv[0]));
 }
 
-static void tmbr_config_set_border_color_active(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_config_set_border_color_active(struct wl_display *display TMBR_UNUSED,
+						struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_config_set_border_color_active(ctrl, tmbr_parse_color(argv[0]));
 }
 
-static void tmbr_config_set_border_color_inactive(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_config_set_border_color_inactive(struct wl_display *display TMBR_UNUSED,
+						  struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_config_set_border_color_inactive(ctrl, tmbr_parse_color(argv[0]));
 }
 
-static void tmbr_config_set_gap(struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_config_set_gap(struct wl_display *display TMBR_UNUSED,
+				struct tmbr_ctrl *ctrl, char **argv)
 {
 	tmbr_require_args(argv, 1);
 	tmbr_ctrl_config_set_gap(ctrl, tmbr_parse_u32(argv[0]));
@@ -304,7 +325,7 @@ static const struct {
 	const char *cmd;
 	const char *subcmd;
 	const char *argh;
-	void (*fn)(struct tmbr_ctrl *ctrl, char **argv);
+	void (*fn)(struct wl_display *display, struct tmbr_ctrl *ctrl, char **argv);
 } commands[] = {
 	{ "client", "focus",                     "(next|prev)",      tmbr_client_focus },
 	{ "client", "fullscreen",                NULL,               tmbr_client_fullscreen },
@@ -395,7 +416,7 @@ int tmbr_client(int argc, char *argv[])
 	if (wl_display_roundtrip(display) < 0 || !ctrl)
 		die("Could not discover timber control");
 
-	commands[command].fn(ctrl, argv + 3);
+	commands[command].fn(display, ctrl, argv + 3);
 
 	if (wl_display_roundtrip(display) < 0) {
 		if (errno != EPROTO)
