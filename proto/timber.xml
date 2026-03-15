@@ -158,23 +158,20 @@
         <description summary="get current configuration">
             Get the current configuration.
         </description>
-        <arg name="fd" type="fd"/>
     </request>
 
-    <request name="config_set_border_width">
-        <arg name="width" type="uint"/>
-    </request>
+    <event name="config">
+        <arg name="border_width" type="uint"/>
+        <arg name="border_color_active" type="uint"/>
+        <arg name="border_color_inactive" type="uint"/>
+        <arg name="gap" type="uint"/>
+    </event>
 
-    <request name="config_set_border_color_active">
-        <arg name="color" type="uint"/>
-    </request>
-
-    <request name="config_set_border_color_inactive">
-        <arg name="color" type="uint"/>
-    </request>
-
-    <request name="config_set_gap">
-        <arg name="color" type="uint"/>
+    <request name="config_set">
+        <arg name="border_width" type="uint"/>
+        <arg name="border_color_active" type="uint"/>
+        <arg name="border_color_inactive" type="uint"/>
+        <arg name="gap" type="uint"/>
     </request>
   </interface>
 
