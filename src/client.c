@@ -47,30 +47,31 @@ enum {
 static const struct {
 	const char *cmd;
 	const char *subcmd;
+	const char *argh;
 	int function;
 	int args;
 } commands[] = {
-	{ "client", "focus",      TMBR_CTRL_CLIENT_FOCUS,      TMBR_ARG_SEL                  },
-	{ "client", "fullscreen", TMBR_CTRL_CLIENT_FULLSCREEN, 0                             },
-	{ "client", "kill",       TMBR_CTRL_CLIENT_KILL,       0                             },
-	{ "client", "resize",     TMBR_CTRL_CLIENT_RESIZE,     TMBR_ARG_DIR|TMBR_ARG_I32     },
-	{ "client", "swap",       TMBR_CTRL_CLIENT_SWAP,       TMBR_ARG_SEL                  },
-	{ "client", "to_desktop", TMBR_CTRL_CLIENT_TO_DESKTOP, TMBR_ARG_SEL                  },
-	{ "client", "to_output",  TMBR_CTRL_CLIENT_TO_OUTPUT,  TMBR_ARG_SEL                  },
-	{ "desktop", "focus",     TMBR_CTRL_DESKTOP_FOCUS,     TMBR_ARG_SEL                  },
-	{ "desktop", "kill",      TMBR_CTRL_DESKTOP_KILL,      0                             },
-	{ "desktop", "new",       TMBR_CTRL_DESKTOP_NEW,       0                             },
-	{ "desktop", "swap",      TMBR_CTRL_DESKTOP_SWAP,      TMBR_ARG_SEL                  },
-	{ "output", "focus",      TMBR_CTRL_OUTPUT_FOCUS,      TMBR_ARG_SEL                  },
-	{ "tree", "rotate",       TMBR_CTRL_TREE_ROTATE,       0                             },
-	{ "state", "query",       TMBR_CTRL_STATE_QUERY,       0                             },
-	{ "state", "quit",        TMBR_CTRL_STATE_QUIT,        0                             },
-	{ "binding", "add",       TMBR_CTRL_BINDING_ADD,       TMBR_ARG_KEY|TMBR_ARG_CMD     },
-	{ "config", "get",        TMBR_CTRL_CONFIG_GET,        0                             },
-	{ "config", "set-border-width",          TMBR_CTRL_CONFIG_SET_BORDER_WIDTH,          TMBR_ARG_U32   },
-	{ "config", "set-active-border-color",   TMBR_CTRL_CONFIG_SET_BORDER_COLOR_ACTIVE,   TMBR_ARG_COLOR },
-	{ "config", "set-inactive-border-color", TMBR_CTRL_CONFIG_SET_BORDER_COLOR_INACTIVE, TMBR_ARG_COLOR },
-	{ "config", "set-gap",                   TMBR_CTRL_CONFIG_SET_GAP, TMBR_ARG_U32 },
+	{ "client", "focus",                     "(next|prev)",      TMBR_CTRL_CLIENT_FOCUS,                     TMBR_ARG_SEL                  },
+	{ "client", "fullscreen",                NULL,               TMBR_CTRL_CLIENT_FULLSCREEN,                0                             },
+	{ "client", "kill",                      NULL,               TMBR_CTRL_CLIENT_KILL,                      0                             },
+	{ "client", "resize",                    "(next|prev) <px>", TMBR_CTRL_CLIENT_RESIZE,                    TMBR_ARG_DIR|TMBR_ARG_I32     },
+	{ "client", "swap",                      "(next|prev)",      TMBR_CTRL_CLIENT_SWAP,                      TMBR_ARG_SEL                  },
+	{ "client", "to_desktop",                "(next|prev)",      TMBR_CTRL_CLIENT_TO_DESKTOP,                TMBR_ARG_SEL                  },
+	{ "client", "to_output",                 "(next|prev)",      TMBR_CTRL_CLIENT_TO_OUTPUT,                 TMBR_ARG_SEL                  },
+	{ "desktop", "focus",                    "(next|prev)",      TMBR_CTRL_DESKTOP_FOCUS,                    TMBR_ARG_SEL                  },
+	{ "desktop", "kill",                     NULL,               TMBR_CTRL_DESKTOP_KILL,                     0                             },
+	{ "desktop", "new",                      NULL,               TMBR_CTRL_DESKTOP_NEW,                      0                             },
+	{ "desktop", "swap",                     "(next|prev)",      TMBR_CTRL_DESKTOP_SWAP,                     TMBR_ARG_SEL                  },
+	{ "output", "focus",                     "(next|prev)",      TMBR_CTRL_OUTPUT_FOCUS,                     TMBR_ARG_SEL                  },
+	{ "tree", "rotate",                      NULL,               TMBR_CTRL_TREE_ROTATE,                      0                             },
+	{ "state", "query",                      NULL,               TMBR_CTRL_STATE_QUERY,                      0                             },
+	{ "state", "quit",                       NULL,               TMBR_CTRL_STATE_QUIT,                       0                             },
+	{ "binding", "add",                      "<key> <command>",  TMBR_CTRL_BINDING_ADD,                      TMBR_ARG_KEY|TMBR_ARG_CMD     },
+	{ "config", "get",                       NULL,               TMBR_CTRL_CONFIG_GET,                       0                             },
+	{ "config", "set-border-width",          "<width>",          TMBR_CTRL_CONFIG_SET_BORDER_WIDTH,          TMBR_ARG_U32                  },
+	{ "config", "set-active-border-color",   "<color>",          TMBR_CTRL_CONFIG_SET_BORDER_COLOR_ACTIVE,   TMBR_ARG_COLOR                },
+	{ "config", "set-inactive-border-color", "<color>",          TMBR_CTRL_CONFIG_SET_BORDER_COLOR_INACTIVE, TMBR_ARG_COLOR                },
+	{ "config", "set-gap",                   "<witdh>",          TMBR_CTRL_CONFIG_SET_GAP,                   TMBR_ARG_U32                  },
 };
 
 struct tmbr_arg {
@@ -248,13 +249,10 @@ static void __attribute__((noreturn)) usage(const char *executable)
 	puts("These are the availabe commands:\n");
 
 	printf("   %s run\n", executable);
-	for (i = 0; i < ARRAY_SIZE(commands); i++)
-		printf("   %s %s %s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
-			commands[i].args & TMBR_ARG_SEL ? " (next|prev)" : "",
-			commands[i].args & TMBR_ARG_DIR ? " (north|south|east|west)" : "",
-			commands[i].args & TMBR_ARG_U32 ? " <NUMBER>" : "",
-			commands[i].args & TMBR_ARG_KEY ? " <KEY>" : "",
-			commands[i].args & TMBR_ARG_CMD ? " <COMMAND>" : "");
+	for (i = 0; i < ARRAY_SIZE(commands); i++) {
+		printf("   %s %s %s %s\n", executable, commands[i].cmd, commands[i].subcmd,
+		       commands[i].argh ? commands[i].argh : "");
+	}
 
 	exit(0);
 }
