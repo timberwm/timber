@@ -44,6 +44,135 @@ enum {
 	TMBR_ARG_COLOR = (1 << 6),
 };
 
+struct tmbr_key {
+	uint32_t modifiers;
+	xkb_keysym_t keycode;
+};
+
+static const char * const directions[] = { "north", "south", "east", "west" };
+static const char * const selections[] = { "prev", "next" };
+
+static const struct {
+	const char *name;
+	enum wlr_keyboard_modifier modifier;
+} modmasks[] = {
+	{ "shift", WLR_MODIFIER_SHIFT },
+	{ "caps",  WLR_MODIFIER_CAPS  },
+	{ "ctrl",  WLR_MODIFIER_CTRL  },
+	{ "alt",   WLR_MODIFIER_ALT   },
+	{ "mod2",  WLR_MODIFIER_MOD2  },
+	{ "mod3",  WLR_MODIFIER_MOD3  },
+	{ "logo",  WLR_MODIFIER_LOGO  },
+	{ "mod5",  WLR_MODIFIER_MOD5  }
+};
+
+static enum tmbr_ctrl_selection tmbr_parse_selection(const char *arg)
+{
+	ssize_t i;
+
+	if (!arg)
+		die("Command is missing selection");
+
+	ARRAY_FIND(selections, i, !strcmp(arg, selections[i]));
+	if (i < 0)
+		die("Unknown selection '%s'", arg);
+
+	return (enum tmbr_ctrl_selection) i;
+}
+
+static enum tmbr_ctrl_direction tmbr_parse_direction(const char *arg)
+{
+	ssize_t i;
+
+	if (!arg)
+		die("Command is missing direction");
+
+	ARRAY_FIND(directions, i, !strcmp(arg, directions[i]));
+	if (i < 0)
+		die("Unknown direction '%s'", arg);
+
+	return (enum tmbr_ctrl_direction) i;
+}
+
+static int32_t tmbr_parse_i32(const char *arg)
+{
+	long value;
+	char *end;
+
+	if (!arg)
+		die("Command is missing integer");
+
+	value = strtol(arg, &end, 10);
+	if (*end)
+		die("Integer is not a number");
+	if (value < INT32_MIN)
+		die("Integer exceeds minimum range");
+	if (value > INT32_MAX)
+		die("Integer exceeds maximum range");
+
+	return value;
+}
+
+static uint32_t tmbr_parse_u32(const char *arg)
+{
+	unsigned long value;
+	char *end;
+
+	if (!arg)
+		die("Command is missing integer");
+
+	value = strtoul(arg, &end, 10);
+	if (*end)
+		die("Integer is not a number");
+	if (value > UINT32_MAX)
+		die("Integer exceeds maximum range");
+
+	return value;
+}
+
+static struct tmbr_key tmbr_parse_key(char *arg)
+{
+	struct tmbr_key key = { 0 };
+	char *keysym;
+
+	if (!arg)
+		die("Command is missing key");
+
+	for (keysym = strtok(arg, "+"); keysym; keysym = strtok(NULL, "+")) {
+		ssize_t i;
+
+		ARRAY_FIND(modmasks, i, !strcmp(keysym, modmasks[i].name));
+		if (i >= 0) {
+			key.modifiers |= modmasks[i].modifier;
+			continue;
+		}
+
+		if ((key.keycode = xkb_keysym_from_name(keysym, 0)) == 0)
+			die("Unable to parse key '%s'", keysym);
+	}
+	if (!key.keycode)
+		die("Binding requires a key");
+
+	return key;
+}
+
+static uint32_t tmbr_parse_color(const char *arg)
+{
+	uint32_t color;
+	char *endptr;
+
+	if (!arg)
+		die("Command is missing color");
+	if (strlen(arg) != 8)
+		die("Color is expected to be in RGBA8888 format");
+
+	color = strtoul(arg, &endptr, 16);
+	if (*endptr)
+		die("Argument is not a base-16 number");
+
+	return color;
+}
+
 static const struct {
 	const char *cmd;
 	const char *subcmd;
@@ -81,30 +210,13 @@ struct tmbr_arg {
 	int32_t i32;
 	uint32_t u32;
 	uint32_t color;
-	struct { uint32_t modifiers; xkb_keysym_t keycode; } key;
+	struct tmbr_key key;
 	const char *command;
 };
 
-static const struct {
-	const char *name;
-	enum wlr_keyboard_modifier modifier;
-} modmasks[] = {
-	{ "shift", WLR_MODIFIER_SHIFT },
-	{ "caps",  WLR_MODIFIER_CAPS  },
-	{ "ctrl",  WLR_MODIFIER_CTRL  },
-	{ "alt",   WLR_MODIFIER_ALT   },
-	{ "mod2",  WLR_MODIFIER_MOD2  },
-	{ "mod3",  WLR_MODIFIER_MOD3  },
-	{ "logo",  WLR_MODIFIER_LOGO  },
-	{ "mod5",  WLR_MODIFIER_MOD5  }
-};
-
-static const char * const directions[] = { "north", "south", "east", "west" };
-static const char * const selections[] = { "prev", "next" };
-
 static void tmbr_parse(struct tmbr_arg *out, char **argv)
 {
-	ssize_t c, i;
+	ssize_t c;
 
 	if (!argv[0])
 		die("Missing command");
@@ -118,105 +230,20 @@ static void tmbr_parse(struct tmbr_arg *out, char **argv)
 
 	argv += 2;
 
-	if (commands[c].args & TMBR_ARG_SEL) {
-		if (!argv[0])
-			die("Command is missing selection");
-		ARRAY_FIND(selections, i, !strcmp(argv[0], selections[i]));
-		if (i < 0)
-			die("Unknown selection '%s'", argv[0]);
-		out->sel = (enum tmbr_ctrl_selection) i;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_DIR) {
-		if (!argv[0])
-			die("Command is missing direction");
-		ARRAY_FIND(directions, i, !strcmp(argv[0], directions[i]));
-		if (i < 0)
-			die("Unknown direction '%s'", argv[0]);
-		out->dir = (enum tmbr_ctrl_direction) i;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_I32) {
-		long value;
-		char *end;
-
-		if (!argv[0])
-			die("Command is missing integer");
-
-		value = strtol(argv[0], &end, 10);
-		if (*end)
-			die("Integer is not a number");
-		if (value < INT32_MIN)
-			die("Integer exceeds minimum range");
-		if (value > INT32_MAX)
-			die("Integer exceeds maximum range");
-
-		out->i32 = value;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_U32) {
-		unsigned long value;
-		char *end;
-
-		if (!argv[0])
-			die("Command is missing integer");
-
-		value = strtoul(argv[0], &end, 10);
-		if (*end)
-			die("Integer is not a number");
-		if (value > UINT32_MAX)
-			die("Integer exceeds maximum range");
-
-		out->u32 = value;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_KEY) {
-		char *key;
-
-		if (!argv[0])
-			die("Command is missing key");
-
-		for (key = strtok(argv[0], "+"); key; key = strtok(NULL, "+")) {
-			ARRAY_FIND(modmasks, i, !strcmp(key, modmasks[i].name));
-			if (i >= 0) {
-				out->key.modifiers |= modmasks[i].modifier;
-				continue;
-			}
-
-			if ((out->key.keycode = xkb_keysym_from_name(key, 0)) == 0)
-				die("Unable to parse key '%s'", key);
-		}
-		if (!out->key.keycode)
-			die("Binding requires a key");
-
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_CMD) {
-		if (!argv[0])
-			die("Command is missing command line");
-		out->command = argv[0];
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_COLOR) {
-		char *endptr;
-
-		if (!argv[0])
-			die("Command is missing color");
-		if (strlen(argv[0]) != 8)
-			die("Color is expected to be in RGBA8888 format");
-
-		out->color = strtoul(argv[0], &endptr, 16);
-		if (*endptr)
-			die("Argument is not a base-16 number");
-
-		argv++;
-	}
+	if (commands[c].args & TMBR_ARG_SEL)
+		out->sel = tmbr_parse_selection(*(argv++));
+	if (commands[c].args & TMBR_ARG_DIR)
+		out->dir = tmbr_parse_direction(*(argv++));
+	if (commands[c].args & TMBR_ARG_I32)
+		out->i32 = tmbr_parse_i32(*(argv++));
+	if (commands[c].args & TMBR_ARG_U32)
+		out->u32 = tmbr_parse_u32(*(argv++));
+	if (commands[c].args & TMBR_ARG_KEY)
+		out->key = tmbr_parse_key(*(argv++));
+	if (commands[c].args & TMBR_ARG_CMD)
+		out->command = *(argv++);
+	if (commands[c].args & TMBR_ARG_COLOR)
+		out->color = tmbr_parse_color(*(argv++));
 
 	if (argv[0])
 		die("Command has trailing arguments");
