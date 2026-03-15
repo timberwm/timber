@@ -329,10 +329,10 @@ static void tmbr_config_get(struct wl_display *display TMBR_UNUSED,
 	tmbr_require_args(argv, 0);
 
 	cfg = tmbr_client_receive_config(display, ctrl);
-	printf("border_width: %" PRIx32 "\n", cfg->border_width);
+	printf("border_width: %" PRIu32 "\n", cfg->border_width);
 	printf("border_color_active: %" PRIx32 "\n", cfg->border_color_active);
 	printf("border_color_inactive: %" PRIx32 "\n", cfg->border_color_inactive);
-	printf("gap: %" PRIx32 "\n", cfg->gap);
+	printf("gap: %" PRIu32 "\n", cfg->gap);
 
 	free(cfg);
 }
