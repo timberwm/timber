@@ -1986,38 +1986,17 @@ static void tmbr_server_reconfigure(struct tmbr_server *server)
 	}
 }
 
-static void tmbr_cmd_config_set_border_width(TMBR_UNUSED struct wl_client *client,
-					     struct wl_resource *resource,
-					     uint32_t width)
+static void tmbr_cmd_config_set(TMBR_UNUSED struct wl_client *client,
+				struct wl_resource *resource,
+				uint32_t border_width,
+				uint32_t border_color_active,
+				uint32_t border_color_inactive,
+				uint32_t gap)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	server->config.border_width = width;
-	tmbr_server_reconfigure(server);
-}
-
-static void tmbr_cmd_config_set_border_color_active(TMBR_UNUSED struct wl_client *client,
-						    struct wl_resource *resource,
-						    uint32_t color)
-{
-	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	server->config.border_color_active = color;
-	tmbr_server_reconfigure(server);
-}
-
-static void tmbr_cmd_config_set_border_color_inactive(TMBR_UNUSED struct wl_client *client,
-						      struct wl_resource *resource,
-						      uint32_t color)
-{
-	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	server->config.border_color_inactive = color;
-	tmbr_server_reconfigure(server);
-}
-
-static void tmbr_cmd_config_set_gap(TMBR_UNUSED struct wl_client *client,
-				    struct wl_resource *resource,
-				    uint32_t gap)
-{
-	struct tmbr_server *server = wl_resource_get_user_data(resource);
+	server->config.border_width = border_width;
+	server->config.border_color_active = border_color_active;
+	server->config.border_color_inactive = border_color_inactive;
 	server->config.gap = gap;
 	tmbr_server_reconfigure(server);
 }
@@ -2049,10 +2028,7 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 		.state_quit = tmbr_cmd_state_quit,
 		.binding_add = tmbr_cmd_binding_add,
 		.config_get = tmbr_cmd_config_get,
-		.config_set_border_width = tmbr_cmd_config_set_border_width,
-		.config_set_border_color_active = tmbr_cmd_config_set_border_color_active,
-		.config_set_border_color_inactive = tmbr_cmd_config_set_border_color_inactive,
-		.config_set_gap = tmbr_cmd_config_set_gap,
+		.config_set = tmbr_cmd_config_set,
 	};
 	struct wl_resource *resource;
 

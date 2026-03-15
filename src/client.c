@@ -337,32 +337,43 @@ static void tmbr_config_get(struct wl_display *display TMBR_UNUSED,
 	free(cfg);
 }
 
-static void tmbr_config_set_border_width(struct wl_display *display TMBR_UNUSED,
-					 struct tmbr_ctrl *ctrl, char **argv)
+static bool skip_prefix(char *arg, const char *prefix, char **out)
 {
-	tmbr_require_args(argv, 1);
-	tmbr_ctrl_config_set_border_width(ctrl, tmbr_parse_u32(argv[0]));
+	size_t prefixlen = strlen(prefix);
+	if (!strncmp(arg, prefix, prefixlen)) {
+		*out = arg + prefixlen;
+		return true;
+	}
+	return false;
 }
 
-static void tmbr_config_set_border_color_active(struct wl_display *display TMBR_UNUSED,
-						struct tmbr_ctrl *ctrl, char **argv)
+static void tmbr_config_set(struct wl_display *display TMBR_UNUSED,
+			    struct tmbr_ctrl *ctrl, char **argv)
 {
-	tmbr_require_args(argv, 1);
-	tmbr_ctrl_config_set_border_color_active(ctrl, tmbr_parse_color(argv[0]));
-}
+	struct tmbr_config *cfg = tmbr_client_receive_config(display, ctrl);
 
-static void tmbr_config_set_border_color_inactive(struct wl_display *display TMBR_UNUSED,
-						  struct tmbr_ctrl *ctrl, char **argv)
-{
-	tmbr_require_args(argv, 1);
-	tmbr_ctrl_config_set_border_color_inactive(ctrl, tmbr_parse_color(argv[0]));
-}
+	for (size_t i = 0; argv[i]; i++) {
+		char *arg = argv[i], *value;
 
-static void tmbr_config_set_gap(struct wl_display *display TMBR_UNUSED,
-				struct tmbr_ctrl *ctrl, char **argv)
-{
-	tmbr_require_args(argv, 1);
-	tmbr_ctrl_config_set_gap(ctrl, tmbr_parse_u32(argv[0]));
+		if (skip_prefix(arg, "border_width=", &value))
+			cfg->border_width = tmbr_parse_u32(value);
+		else if (skip_prefix(arg, "border_color_active=", &value))
+			cfg->border_color_active = tmbr_parse_color(value);
+		else if (skip_prefix(arg, "border_color_inactive=", &value))
+			cfg->border_color_inactive = tmbr_parse_color(value);
+		else if (skip_prefix(arg, "gap=", &value))
+			cfg->gap = tmbr_parse_u32(value);
+		else
+			die("Unknown config key '%s'", arg);
+	}
+
+	tmbr_ctrl_config_set(ctrl,
+			     cfg->border_width,
+			     cfg->border_color_active,
+			     cfg->border_color_inactive,
+			     cfg->gap);
+
+	free(cfg);
 }
 
 static const struct {
@@ -371,27 +382,24 @@ static const struct {
 	const char *argh;
 	void (*fn)(struct wl_display *display, struct tmbr_ctrl *ctrl, char **argv);
 } commands[] = {
-	{ "client", "focus",                     "(next|prev)",      tmbr_client_focus },
-	{ "client", "fullscreen",                NULL,               tmbr_client_fullscreen },
-	{ "client", "kill",                      NULL,               tmbr_client_kill },
-	{ "client", "resize",                    "(next|prev) <px>", tmbr_client_resize },
-	{ "client", "swap",                      "(next|prev)",      tmbr_client_swap, },
-	{ "client", "to_desktop",                "(next|prev)",      tmbr_client_to_desktop },
-	{ "client", "to_output",                 "(next|prev)",      tmbr_client_to_output },
-	{ "desktop", "focus",                    "(next|prev)",      tmbr_desktop_focus },
-	{ "desktop", "kill",                     NULL,               tmbr_desktop_kill },
-	{ "desktop", "new",                      NULL,               tmbr_desktop_new },
-	{ "desktop", "swap",                     "(next|prev)",      tmbr_desktop_swap },
-	{ "output", "focus",                     "(next|prev)",      tmbr_output_focus },
-	{ "tree", "rotate",                      NULL,               tmbr_tree_rotate },
-	{ "state", "query",                      NULL,               tmbr_state_query },
-	{ "state", "quit",                       NULL,               tmbr_state_quit },
-	{ "binding", "add",                      "<key> <command>",  tmbr_binding_add },
-	{ "config", "get",                       NULL,               tmbr_config_get },
-	{ "config", "set-border-width",          "<width>",          tmbr_config_set_border_width },
-	{ "config", "set-active-border-color",   "<color>",          tmbr_config_set_border_color_active },
-	{ "config", "set-inactive-border-color", "<color>",          tmbr_config_set_border_color_inactive },
-	{ "config", "set-gap",                   "<witdh>",          tmbr_config_set_gap },
+	{ "client", "focus",      "(next|prev)",      tmbr_client_focus },
+	{ "client", "fullscreen", NULL,               tmbr_client_fullscreen },
+	{ "client", "kill",       NULL,               tmbr_client_kill },
+	{ "client", "resize",     "(next|prev) <px>", tmbr_client_resize },
+	{ "client", "swap",       "(next|prev)",      tmbr_client_swap, },
+	{ "client", "to_desktop", "(next|prev)",      tmbr_client_to_desktop },
+	{ "client", "to_output",  "(next|prev)",      tmbr_client_to_output },
+	{ "desktop", "focus",     "(next|prev)",      tmbr_desktop_focus },
+	{ "desktop", "kill",      NULL,               tmbr_desktop_kill },
+	{ "desktop", "new",       NULL,               tmbr_desktop_new },
+	{ "desktop", "swap",      "(next|prev)",      tmbr_desktop_swap },
+	{ "output", "focus",      "(next|prev)",      tmbr_output_focus },
+	{ "tree", "rotate",       NULL,               tmbr_tree_rotate },
+	{ "state", "query",       NULL,               tmbr_state_query },
+	{ "state", "quit",        NULL,               tmbr_state_quit },
+	{ "binding", "add",       "<key> <command>",  tmbr_binding_add },
+	{ "config", "get",        NULL,               tmbr_config_get },
+	{ "config", "set",        "<width>",          tmbr_config_set },
 };
 
 static void tmbr_client_on_global(void *data, struct wl_registry *registry, uint32_t id, const char *interface, uint32_t version)
