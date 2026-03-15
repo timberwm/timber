@@ -34,55 +34,13 @@
 	if (i == ARRAY_SIZE(array)) \
 		i = -1;
 
-enum {
-	TMBR_ARG_SEL   = (1 << 0),
-	TMBR_ARG_DIR   = (1 << 1),
-	TMBR_ARG_I32   = (1 << 2),
-	TMBR_ARG_U32   = (1 << 3),
-	TMBR_ARG_KEY   = (1 << 4),
-	TMBR_ARG_CMD   = (1 << 5),
-	TMBR_ARG_COLOR = (1 << 6),
+struct tmbr_key {
+	uint32_t modifiers;
+	xkb_keysym_t keycode;
 };
 
-static const struct {
-	const char *cmd;
-	const char *subcmd;
-	int function;
-	int args;
-} commands[] = {
-	{ "client", "focus",      TMBR_CTRL_CLIENT_FOCUS,      TMBR_ARG_SEL                  },
-	{ "client", "fullscreen", TMBR_CTRL_CLIENT_FULLSCREEN, 0                             },
-	{ "client", "kill",       TMBR_CTRL_CLIENT_KILL,       0                             },
-	{ "client", "resize",     TMBR_CTRL_CLIENT_RESIZE,     TMBR_ARG_DIR|TMBR_ARG_I32     },
-	{ "client", "swap",       TMBR_CTRL_CLIENT_SWAP,       TMBR_ARG_SEL                  },
-	{ "client", "to_desktop", TMBR_CTRL_CLIENT_TO_DESKTOP, TMBR_ARG_SEL                  },
-	{ "client", "to_output",  TMBR_CTRL_CLIENT_TO_OUTPUT,  TMBR_ARG_SEL                  },
-	{ "desktop", "focus",     TMBR_CTRL_DESKTOP_FOCUS,     TMBR_ARG_SEL                  },
-	{ "desktop", "kill",      TMBR_CTRL_DESKTOP_KILL,      0                             },
-	{ "desktop", "new",       TMBR_CTRL_DESKTOP_NEW,       0                             },
-	{ "desktop", "swap",      TMBR_CTRL_DESKTOP_SWAP,      TMBR_ARG_SEL                  },
-	{ "output", "focus",      TMBR_CTRL_OUTPUT_FOCUS,      TMBR_ARG_SEL                  },
-	{ "tree", "rotate",       TMBR_CTRL_TREE_ROTATE,       0                             },
-	{ "state", "query",       TMBR_CTRL_STATE_QUERY,       0                             },
-	{ "state", "quit",        TMBR_CTRL_STATE_QUIT,        0                             },
-	{ "binding", "add",       TMBR_CTRL_BINDING_ADD,       TMBR_ARG_KEY|TMBR_ARG_CMD     },
-	{ "config", "get",        TMBR_CTRL_CONFIG_GET,        0                             },
-	{ "config", "set-border-width",          TMBR_CTRL_CONFIG_SET_BORDER_WIDTH,          TMBR_ARG_U32   },
-	{ "config", "set-active-border-color",   TMBR_CTRL_CONFIG_SET_BORDER_COLOR_ACTIVE,   TMBR_ARG_COLOR },
-	{ "config", "set-inactive-border-color", TMBR_CTRL_CONFIG_SET_BORDER_COLOR_INACTIVE, TMBR_ARG_COLOR },
-	{ "config", "set-gap",                   TMBR_CTRL_CONFIG_SET_GAP, TMBR_ARG_U32 },
-};
-
-struct tmbr_arg {
-	int function;
-	enum tmbr_ctrl_selection sel;
-	enum tmbr_ctrl_direction dir;
-	int32_t i32;
-	uint32_t u32;
-	uint32_t color;
-	struct { uint32_t modifiers; xkb_keysym_t keycode; } key;
-	const char *command;
-};
+static const char * const directions[] = { "north", "south", "east", "west" };
+static const char * const selections[] = { "prev", "next" };
 
 static const struct {
 	const char *name;
@@ -98,136 +56,278 @@ static const struct {
 	{ "mod5",  WLR_MODIFIER_MOD5  }
 };
 
-static const char * const directions[] = { "north", "south", "east", "west" };
-static const char * const selections[] = { "prev", "next" };
-
-static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
+static enum tmbr_ctrl_selection tmbr_parse_selection(const char *arg)
 {
-	ssize_t c, i;
+	ssize_t i;
 
-	if (argc < 1)
-		die("Missing command");
-	if (argc < 2)
-		die("Missing subcommand");
+	if (!arg)
+		die("Command is missing selection");
 
-	ARRAY_FIND(commands, c, !strcmp(commands[c].cmd, argv[0]) && !strcmp(commands[c].subcmd, argv[1]));
-	if (c < 0)
-		die("Unknown command '%s %s'", argv[0], argv[1]);
-	out->function = commands[c].function;
+	ARRAY_FIND(selections, i, !strcmp(arg, selections[i]));
+	if (i < 0)
+		die("Unknown selection '%s'", arg);
 
-	argc -= 2;
-	argv += 2;
-
-	if (commands[c].args & TMBR_ARG_SEL) {
-		if (!argc)
-			die("Command is missing selection");
-		ARRAY_FIND(selections, i, !strcmp(argv[0], selections[i]));
-		if (i < 0)
-			die("Unknown selection '%s'", argv[0]);
-		out->sel = (enum tmbr_ctrl_selection) i;
-		argc--;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_DIR) {
-		if (!argc)
-			die("Command is missing direction");
-		ARRAY_FIND(directions, i, !strcmp(argv[0], directions[i]));
-		if (i < 0)
-			die("Unknown direction '%s'", argv[0]);
-		out->dir = (enum tmbr_ctrl_direction) i;
-		argc--;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_I32) {
-		long value;
-		char *end;
-
-		if (!argc)
-			die("Command is missing integer");
-
-		value = strtol(argv[0], &end, 10);
-		if (*end)
-			die("Integer is not a number");
-		if (value < INT32_MIN)
-			die("Integer exceeds minimum range");
-		if (value > INT32_MAX)
-			die("Integer exceeds maximum range");
-
-		out->i32 = value;
-		argc--;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_U32) {
-		unsigned long value;
-		char *end;
-
-		if (!argc)
-			die("Command is missing integer");
-
-		value = strtoul(argv[0], &end, 10);
-		if (*end)
-			die("Integer is not a number");
-		if (value > UINT32_MAX)
-			die("Integer exceeds maximum range");
-
-		out->u32 = value;
-		argc--;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_KEY) {
-		char *key;
-
-		if (!argc)
-			die("Command is missing key");
-
-		for (key = strtok(argv[0], "+"); key; key = strtok(NULL, "+")) {
-			ARRAY_FIND(modmasks, i, !strcmp(key, modmasks[i].name));
-			if (i >= 0) {
-				out->key.modifiers |= modmasks[i].modifier;
-				continue;
-			}
-
-			if ((out->key.keycode = xkb_keysym_from_name(key, 0)) == 0)
-				die("Unable to parse key '%s'", key);
-		}
-		if (!out->key.keycode)
-			die("Binding requires a key");
-
-		argc--;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_CMD) {
-		if (!argc)
-			die("Command is missing command line");
-		out->command = argv[0];
-		argc--;
-		argv++;
-	}
-
-	if (commands[c].args & TMBR_ARG_COLOR) {
-		char *endptr;
-
-		if (!argc)
-			die("Command is missing color");
-		if (strlen(argv[0]) != 8)
-			die("Color is expected to be in RGBA8888 format");
-
-		out->color = strtoul(argv[0], &endptr, 16);
-		if (*endptr)
-			die("Argument is not a base-16 number");
-
-		argc--;
-		argv++;
-	}
-
-	if (argc)
-		die("Command has trailing arguments");
+	return (enum tmbr_ctrl_selection) i;
 }
+
+static enum tmbr_ctrl_direction tmbr_parse_direction(const char *arg)
+{
+	ssize_t i;
+
+	if (!arg)
+		die("Command is missing direction");
+
+	ARRAY_FIND(directions, i, !strcmp(arg, directions[i]));
+	if (i < 0)
+		die("Unknown direction '%s'", arg);
+
+	return (enum tmbr_ctrl_direction) i;
+}
+
+static int32_t tmbr_parse_i32(const char *arg)
+{
+	long value;
+	char *end;
+
+	if (!arg)
+		die("Command is missing integer");
+
+	value = strtol(arg, &end, 10);
+	if (*end)
+		die("Integer is not a number");
+	if (value < INT32_MIN)
+		die("Integer exceeds minimum range");
+	if (value > INT32_MAX)
+		die("Integer exceeds maximum range");
+
+	return value;
+}
+
+static uint32_t tmbr_parse_u32(const char *arg)
+{
+	unsigned long value;
+	char *end;
+
+	if (!arg)
+		die("Command is missing integer");
+
+	value = strtoul(arg, &end, 10);
+	if (*end)
+		die("Integer is not a number");
+	if (value > UINT32_MAX)
+		die("Integer exceeds maximum range");
+
+	return value;
+}
+
+static struct tmbr_key tmbr_parse_key(char *arg)
+{
+	struct tmbr_key key = { 0 };
+	char *keysym;
+
+	if (!arg)
+		die("Command is missing key");
+
+	for (keysym = strtok(arg, "+"); keysym; keysym = strtok(NULL, "+")) {
+		ssize_t i;
+
+		ARRAY_FIND(modmasks, i, !strcmp(keysym, modmasks[i].name));
+		if (i >= 0) {
+			key.modifiers |= modmasks[i].modifier;
+			continue;
+		}
+
+		if ((key.keycode = xkb_keysym_from_name(keysym, 0)) == 0)
+			die("Unable to parse key '%s'", keysym);
+	}
+	if (!key.keycode)
+		die("Binding requires a key");
+
+	return key;
+}
+
+static uint32_t tmbr_parse_color(const char *arg)
+{
+	uint32_t color;
+	char *endptr;
+
+	if (!arg)
+		die("Command is missing color");
+	if (strlen(arg) != 8)
+		die("Color is expected to be in RGBA8888 format");
+
+	color = strtoul(arg, &endptr, 16);
+	if (*endptr)
+		die("Argument is not a base-16 number");
+
+	return color;
+}
+
+static void tmbr_require_args(char **argv, size_t length)
+{
+	size_t i;
+	for (i = 0; argv[i]; i++);
+	if (i != length)
+		die("Expected %"PRIuMAX" arguments, got %"PRIuMAX,
+		    (uintmax_t) length, (uintmax_t) i);
+}
+
+static void tmbr_client_focus(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_client_focus(ctrl, tmbr_parse_selection(argv[0]));
+}
+
+static void tmbr_client_fullscreen(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 0);
+	tmbr_ctrl_client_fullscreen(ctrl);
+}
+
+static void tmbr_client_kill(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 0);
+	tmbr_ctrl_client_kill(ctrl);
+}
+
+static void tmbr_client_resize(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 2);
+	tmbr_ctrl_client_resize(ctrl, tmbr_parse_direction(argv[0]), tmbr_parse_i32(argv[1]));
+}
+
+static void tmbr_client_swap(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_client_swap(ctrl, tmbr_parse_selection(argv[0]));
+}
+
+static void tmbr_client_to_desktop(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_client_to_desktop(ctrl, tmbr_parse_selection(argv[0]));
+}
+
+static void tmbr_client_to_output(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_client_to_output(ctrl, tmbr_parse_selection(argv[0]));
+}
+
+static void tmbr_desktop_focus(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_desktop_focus(ctrl, tmbr_parse_selection(argv[0]));
+}
+
+static void tmbr_desktop_kill(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 0);
+	tmbr_ctrl_desktop_kill(ctrl);
+}
+
+static void tmbr_desktop_new(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 0);
+	tmbr_ctrl_desktop_new(ctrl);
+}
+
+static void tmbr_desktop_swap(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_desktop_swap(ctrl, tmbr_parse_selection(argv[0]));
+}
+
+static void tmbr_output_focus(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_output_focus(ctrl, tmbr_parse_selection(argv[0]));
+}
+
+static void tmbr_tree_rotate(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 0);
+	tmbr_ctrl_tree_rotate(ctrl);
+}
+
+static void tmbr_state_query(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 0);
+	tmbr_ctrl_state_query(ctrl, STDOUT_FILENO);
+}
+
+static void tmbr_state_quit(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 0);
+	tmbr_ctrl_state_quit(ctrl);
+}
+
+static void tmbr_binding_add(struct tmbr_ctrl *ctrl, char **argv)
+{
+	struct tmbr_key key;
+	tmbr_require_args(argv, 2);
+	key = tmbr_parse_key(argv[0]);
+	tmbr_ctrl_binding_add(ctrl, key.keycode, key.modifiers, argv[1]);
+}
+
+static void tmbr_config_get(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 0);
+	tmbr_ctrl_config_get(ctrl, STDOUT_FILENO);
+}
+
+static void tmbr_config_set_border_width(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_config_set_border_width(ctrl, tmbr_parse_u32(argv[0]));
+}
+
+static void tmbr_config_set_border_color_active(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_config_set_border_color_active(ctrl, tmbr_parse_color(argv[0]));
+}
+
+static void tmbr_config_set_border_color_inactive(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_config_set_border_color_inactive(ctrl, tmbr_parse_color(argv[0]));
+}
+
+static void tmbr_config_set_gap(struct tmbr_ctrl *ctrl, char **argv)
+{
+	tmbr_require_args(argv, 1);
+	tmbr_ctrl_config_set_gap(ctrl, tmbr_parse_u32(argv[0]));
+}
+
+static const struct {
+	const char *cmd;
+	const char *subcmd;
+	const char *argh;
+	void (*fn)(struct tmbr_ctrl *ctrl, char **argv);
+} commands[] = {
+	{ "client", "focus",                     "(next|prev)",      tmbr_client_focus },
+	{ "client", "fullscreen",                NULL,               tmbr_client_fullscreen },
+	{ "client", "kill",                      NULL,               tmbr_client_kill },
+	{ "client", "resize",                    "(next|prev) <px>", tmbr_client_resize },
+	{ "client", "swap",                      "(next|prev)",      tmbr_client_swap, },
+	{ "client", "to_desktop",                "(next|prev)",      tmbr_client_to_desktop },
+	{ "client", "to_output",                 "(next|prev)",      tmbr_client_to_output },
+	{ "desktop", "focus",                    "(next|prev)",      tmbr_desktop_focus },
+	{ "desktop", "kill",                     NULL,               tmbr_desktop_kill },
+	{ "desktop", "new",                      NULL,               tmbr_desktop_new },
+	{ "desktop", "swap",                     "(next|prev)",      tmbr_desktop_swap },
+	{ "output", "focus",                     "(next|prev)",      tmbr_output_focus },
+	{ "tree", "rotate",                      NULL,               tmbr_tree_rotate },
+	{ "state", "query",                      NULL,               tmbr_state_query },
+	{ "state", "quit",                       NULL,               tmbr_state_quit },
+	{ "binding", "add",                      "<key> <command>",  tmbr_binding_add },
+	{ "config", "get",                       NULL,               tmbr_config_get },
+	{ "config", "set-border-width",          "<width>",          tmbr_config_set_border_width },
+	{ "config", "set-active-border-color",   "<color>",          tmbr_config_set_border_color_active },
+	{ "config", "set-inactive-border-color", "<color>",          tmbr_config_set_border_color_inactive },
+	{ "config", "set-gap",                   "<witdh>",          tmbr_config_set_gap },
+};
 
 static void tmbr_client_on_global(void *data, struct wl_registry *registry, uint32_t id, const char *interface, uint32_t version)
 {
@@ -248,13 +348,10 @@ static void __attribute__((noreturn)) usage(const char *executable)
 	puts("These are the availabe commands:\n");
 
 	printf("   %s run\n", executable);
-	for (i = 0; i < ARRAY_SIZE(commands); i++)
-		printf("   %s %s %s%s%s%s%s%s\n", executable, commands[i].cmd, commands[i].subcmd,
-			commands[i].args & TMBR_ARG_SEL ? " (next|prev)" : "",
-			commands[i].args & TMBR_ARG_DIR ? " (north|south|east|west)" : "",
-			commands[i].args & TMBR_ARG_U32 ? " <NUMBER>" : "",
-			commands[i].args & TMBR_ARG_KEY ? " <KEY>" : "",
-			commands[i].args & TMBR_ARG_CMD ? " <COMMAND>" : "");
+	for (i = 0; i < ARRAY_SIZE(commands); i++) {
+		printf("   %s %s %s %s\n", executable, commands[i].cmd, commands[i].subcmd,
+		       commands[i].argh ? commands[i].argh : "");
+	}
 
 	exit(0);
 }
@@ -272,8 +369,8 @@ int tmbr_client(int argc, char *argv[])
 	};
 	struct wl_display *display;
 	struct tmbr_ctrl *ctrl = NULL;
-	struct tmbr_arg args = { 0 };
 	uint32_t error = 0;
+	ssize_t command;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--help"))
@@ -282,7 +379,14 @@ int tmbr_client(int argc, char *argv[])
 			version();
 	}
 
-	tmbr_parse(&args, argc - 1, argv + 1);
+	if (!argv[1])
+		die("Missing command");
+	if (!argv[2])
+		die("Missing subcommand");
+
+	ARRAY_FIND(commands, command, !strcmp(commands[command].cmd, argv[1]) && !strcmp(commands[command].subcmd, argv[2]));
+	if (command < 0)
+		die("Unknown command '%s %s'", argv[0], argv[1]);
 
 	if ((display = wl_display_connect(NULL)) == NULL)
 		die("Could not connect to display");
@@ -291,29 +395,7 @@ int tmbr_client(int argc, char *argv[])
 	if (wl_display_roundtrip(display) < 0 || !ctrl)
 		die("Could not discover timber control");
 
-	switch (args.function) {
-		case TMBR_CTRL_CLIENT_FOCUS: tmbr_ctrl_client_focus(ctrl, args.sel); break;
-		case TMBR_CTRL_CLIENT_FULLSCREEN: tmbr_ctrl_client_fullscreen(ctrl); break;
-		case TMBR_CTRL_CLIENT_KILL: tmbr_ctrl_client_kill(ctrl); break;
-		case TMBR_CTRL_CLIENT_RESIZE: tmbr_ctrl_client_resize(ctrl, args.dir, args.i32); break;
-		case TMBR_CTRL_CLIENT_SWAP: tmbr_ctrl_client_swap(ctrl, args.sel); break;
-		case TMBR_CTRL_CLIENT_TO_DESKTOP: tmbr_ctrl_client_to_desktop(ctrl, args.sel); break;
-		case TMBR_CTRL_CLIENT_TO_OUTPUT: tmbr_ctrl_client_to_output(ctrl, args.sel); break;
-		case TMBR_CTRL_DESKTOP_FOCUS: tmbr_ctrl_desktop_focus(ctrl, args.sel); break;
-		case TMBR_CTRL_DESKTOP_KILL: tmbr_ctrl_desktop_kill(ctrl); break;
-		case TMBR_CTRL_DESKTOP_NEW: tmbr_ctrl_desktop_new(ctrl); break;
-		case TMBR_CTRL_DESKTOP_SWAP: tmbr_ctrl_desktop_swap(ctrl, args.sel); break;
-		case TMBR_CTRL_OUTPUT_FOCUS: tmbr_ctrl_output_focus(ctrl, args.sel); break;
-		case TMBR_CTRL_TREE_ROTATE: tmbr_ctrl_tree_rotate(ctrl); break;
-		case TMBR_CTRL_STATE_QUERY: tmbr_ctrl_state_query(ctrl, STDOUT_FILENO); break;
-		case TMBR_CTRL_STATE_QUIT: tmbr_ctrl_state_quit(ctrl); break;
-		case TMBR_CTRL_BINDING_ADD: tmbr_ctrl_binding_add(ctrl, args.key.keycode, args.key.modifiers, args.command); break;
-		case TMBR_CTRL_CONFIG_GET: tmbr_ctrl_config_get(ctrl, STDOUT_FILENO); break;
-		case TMBR_CTRL_CONFIG_SET_BORDER_WIDTH: tmbr_ctrl_config_set_border_width(ctrl, args.u32); break;
-		case TMBR_CTRL_CONFIG_SET_BORDER_COLOR_ACTIVE: tmbr_ctrl_config_set_border_color_active(ctrl, args.color); break;
-		case TMBR_CTRL_CONFIG_SET_BORDER_COLOR_INACTIVE: tmbr_ctrl_config_set_border_color_inactive(ctrl, args.color); break;
-		case TMBR_CTRL_CONFIG_SET_GAP: tmbr_ctrl_config_set_gap(ctrl, args.u32); break;
-	}
+	commands[command].fn(ctrl, argv + 3);
 
 	if (wl_display_roundtrip(display) < 0) {
 		if (errno != EPROTO)
