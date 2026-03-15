@@ -1959,21 +1959,15 @@ static void tmbr_cmd_binding_add(TMBR_UNUSED struct wl_client *client, struct wl
 }
 
 static void tmbr_cmd_config_get(TMBR_UNUSED struct wl_client *client,
-				struct wl_resource *resource,
-				int fd)
+				struct wl_resource *resource)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
 	const struct tmbr_config *cfg = &server->config;
-	FILE *f;
-
-	if ((f = fdopen(fd, "w")) == NULL)
-		return;
-	fprintf(f, "border_width: %" PRIx32 "\n", cfg->border_width);
-	fprintf(f, "border_color_active: %" PRIx32 "\n", cfg->border_color_active);
-	fprintf(f, "border_color_inactive: %" PRIx32 "\n", cfg->border_color_inactive);
-	fprintf(f, "gap: %" PRIx32 "\n", cfg->gap);
-
-	fclose(f);
+	tmbr_ctrl_send_config(resource,
+			      cfg->border_width,
+			      cfg->border_color_active,
+			      cfg->border_color_inactive,
+			      cfg->gap);
 }
 
 static void tmbr_server_reconfigure(struct tmbr_server *server)

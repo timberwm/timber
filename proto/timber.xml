@@ -158,8 +158,14 @@
         <description summary="get current configuration">
             Get the current configuration.
         </description>
-        <arg name="fd" type="fd"/>
     </request>
+
+    <event name="config">
+        <arg name="border_width" type="uint"/>
+        <arg name="border_color_active" type="uint"/>
+        <arg name="border_color_inactive" type="uint"/>
+        <arg name="gap" type="uint"/>
+    </event>
 
     <request name="config_set_border_width">
         <arg name="width" type="uint"/>

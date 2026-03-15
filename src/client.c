@@ -286,11 +286,55 @@ static void tmbr_binding_add(struct wl_display *display TMBR_UNUSED,
 	tmbr_ctrl_binding_add(ctrl, key.keycode, key.modifiers, argv[1]);
 }
 
+static void tmbr_client_on_config(void *payload,
+				  struct tmbr_ctrl *ctrl TMBR_UNUSED,
+				  uint32_t border_width,
+				  uint32_t border_color_active,
+				  uint32_t border_color_inactive,
+				  uint32_t gap)
+{
+	struct tmbr_config cfg = {
+		.border_width = border_width,
+		.border_color_active = border_color_active,
+		.border_color_inactive = border_color_inactive,
+		.gap = gap,
+	};
+	struct tmbr_config **out = payload;
+	*out = tmbr_alloc(sizeof(**out), "Could not allocate config");
+	**out = cfg;
+}
+
+static struct tmbr_config *tmbr_client_receive_config(struct wl_display *display,
+						      struct tmbr_ctrl *ctrl)
+{
+	struct tmbr_ctrl_listener listener = {
+		.config = tmbr_client_on_config,
+	};
+	struct tmbr_config *cfg = NULL;
+
+	tmbr_ctrl_add_listener(ctrl, &listener, &cfg);
+	tmbr_ctrl_config_get(ctrl);
+
+	while (!cfg)
+		wl_display_dispatch(display);
+
+	return cfg;
+}
+
 static void tmbr_config_get(struct wl_display *display TMBR_UNUSED,
 			    struct tmbr_ctrl *ctrl, char **argv)
 {
+	struct tmbr_config *cfg;
+
 	tmbr_require_args(argv, 0);
-	tmbr_ctrl_config_get(ctrl, STDOUT_FILENO);
+
+	cfg = tmbr_client_receive_config(display, ctrl);
+	printf("border_width: %" PRIx32 "\n", cfg->border_width);
+	printf("border_color_active: %" PRIx32 "\n", cfg->border_color_active);
+	printf("border_color_inactive: %" PRIx32 "\n", cfg->border_color_inactive);
+	printf("gap: %" PRIx32 "\n", cfg->gap);
+
+	free(cfg);
 }
 
 static void tmbr_config_set_border_width(struct wl_display *display TMBR_UNUSED,
