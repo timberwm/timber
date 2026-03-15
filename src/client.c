@@ -102,13 +102,13 @@ static const struct {
 static const char * const directions[] = { "north", "south", "east", "west" };
 static const char * const selections[] = { "prev", "next" };
 
-static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
+static void tmbr_parse(struct tmbr_arg *out, char **argv)
 {
 	ssize_t c, i;
 
-	if (argc < 1)
+	if (!argv[0])
 		die("Missing command");
-	if (argc < 2)
+	if (!argv[1])
 		die("Missing subcommand");
 
 	ARRAY_FIND(commands, c, !strcmp(commands[c].cmd, argv[0]) && !strcmp(commands[c].subcmd, argv[1]));
@@ -116,28 +116,25 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 		die("Unknown command '%s %s'", argv[0], argv[1]);
 	out->function = commands[c].function;
 
-	argc -= 2;
 	argv += 2;
 
 	if (commands[c].args & TMBR_ARG_SEL) {
-		if (!argc)
+		if (!argv[0])
 			die("Command is missing selection");
 		ARRAY_FIND(selections, i, !strcmp(argv[0], selections[i]));
 		if (i < 0)
 			die("Unknown selection '%s'", argv[0]);
 		out->sel = (enum tmbr_ctrl_selection) i;
-		argc--;
 		argv++;
 	}
 
 	if (commands[c].args & TMBR_ARG_DIR) {
-		if (!argc)
+		if (!argv[0])
 			die("Command is missing direction");
 		ARRAY_FIND(directions, i, !strcmp(argv[0], directions[i]));
 		if (i < 0)
 			die("Unknown direction '%s'", argv[0]);
 		out->dir = (enum tmbr_ctrl_direction) i;
-		argc--;
 		argv++;
 	}
 
@@ -145,7 +142,7 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 		long value;
 		char *end;
 
-		if (!argc)
+		if (!argv[0])
 			die("Command is missing integer");
 
 		value = strtol(argv[0], &end, 10);
@@ -157,7 +154,6 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 			die("Integer exceeds maximum range");
 
 		out->i32 = value;
-		argc--;
 		argv++;
 	}
 
@@ -165,7 +161,7 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 		unsigned long value;
 		char *end;
 
-		if (!argc)
+		if (!argv[0])
 			die("Command is missing integer");
 
 		value = strtoul(argv[0], &end, 10);
@@ -175,14 +171,13 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 			die("Integer exceeds maximum range");
 
 		out->u32 = value;
-		argc--;
 		argv++;
 	}
 
 	if (commands[c].args & TMBR_ARG_KEY) {
 		char *key;
 
-		if (!argc)
+		if (!argv[0])
 			die("Command is missing key");
 
 		for (key = strtok(argv[0], "+"); key; key = strtok(NULL, "+")) {
@@ -198,22 +193,20 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 		if (!out->key.keycode)
 			die("Binding requires a key");
 
-		argc--;
 		argv++;
 	}
 
 	if (commands[c].args & TMBR_ARG_CMD) {
-		if (!argc)
+		if (!argv[0])
 			die("Command is missing command line");
 		out->command = argv[0];
-		argc--;
 		argv++;
 	}
 
 	if (commands[c].args & TMBR_ARG_COLOR) {
 		char *endptr;
 
-		if (!argc)
+		if (!argv[0])
 			die("Command is missing color");
 		if (strlen(argv[0]) != 8)
 			die("Color is expected to be in RGBA8888 format");
@@ -222,11 +215,10 @@ static void tmbr_parse(struct tmbr_arg *out, int argc, char **argv)
 		if (*endptr)
 			die("Argument is not a base-16 number");
 
-		argc--;
 		argv++;
 	}
 
-	if (argc)
+	if (argv[0])
 		die("Command has trailing arguments");
 }
 
@@ -280,7 +272,7 @@ int tmbr_client(int argc, char *argv[])
 			version();
 	}
 
-	tmbr_parse(&args, argc - 1, argv + 1);
+	tmbr_parse(&args, argv + 1);
 
 	if ((display = wl_display_connect(NULL)) == NULL)
 		die("Could not connect to display");
