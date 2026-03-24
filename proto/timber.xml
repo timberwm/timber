@@ -165,6 +165,9 @@
         <arg name="border_color_active" type="uint"/>
         <arg name="border_color_inactive" type="uint"/>
         <arg name="gap" type="uint"/>
+        <arg name="touchpad_tap_to_click" type="uint"/>
+        <arg name="touchpad_natural_scroll" type="uint"/>
+        <arg name="touchpad_dwt" type="uint"/>
     </event>
 
     <request name="config_set">
@@ -172,6 +175,9 @@
         <arg name="border_color_active" type="uint"/>
         <arg name="border_color_inactive" type="uint"/>
         <arg name="gap" type="uint"/>
+        <arg name="touchpad_tap_to_click" type="uint"/>
+        <arg name="touchpad_natural_scroll" type="uint"/>
+        <arg name="touchpad_dwt" type="uint"/>
     </request>
   </interface>
 

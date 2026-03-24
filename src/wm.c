@@ -26,7 +26,9 @@
 #include <linux/input-event-codes.h>
 
 #include <wlr/backend.h>
+#include <wlr/backend/libinput.h>
 #include <wlr/backend/session.h>
+#include <libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_alpha_modifier_v1.h>
@@ -255,7 +257,14 @@ struct tmbr_server {
 
 	struct wl_list bindings;
 	struct wl_list outputs;
+	struct wl_list pointers;
 	struct tmbr_output *focussed_output;
+};
+
+struct tmbr_pointer {
+	struct wlr_input_device *device;
+	struct wl_listener destroy;
+	struct wl_list link;
 };
 
 static void tmbr_spawn(const char *path, char * const argv[])
@@ -1190,6 +1199,52 @@ static void tmbr_layer_client_on_new_popup(struct wl_listener *listener, void *p
 	});
 }
 
+static void tmbr_pointer_configure(struct wlr_input_device *device,
+				   const struct tmbr_config *config)
+{
+	struct libinput_device *dev;
+
+	if (!wlr_input_device_is_libinput(device))
+		return;
+
+	dev = wlr_libinput_get_device_handle(device);
+
+	switch (device->type) {
+	case WLR_INPUT_DEVICE_TOUCH:
+		libinput_device_config_tap_set_enabled(dev, config->touchpad_tap_to_click);
+		if (libinput_device_config_scroll_has_natural_scroll(dev))
+			libinput_device_config_scroll_set_natural_scroll_enabled(dev, config->touchpad_natural_scroll);
+		if (libinput_device_config_dwt_is_available(dev))
+			libinput_device_config_dwt_set_enabled(dev, config->touchpad_dwt);
+		break;
+	default:
+		break;
+	}
+}
+
+static void tmbr_pointer_on_destroy(struct wl_listener *listener,
+				    void *payload TMBR_UNUSED)
+{
+	struct tmbr_pointer *pointer = wl_container_of(listener, pointer, destroy);
+	wl_list_remove(&pointer->link);
+	tmbr_unregister(&pointer->destroy, NULL);
+	free(pointer);
+}
+
+static void tmbr_pointer_new(struct tmbr_server *server,
+			     struct wlr_input_device *device)
+{
+	struct tmbr_pointer *pointer;
+
+	pointer = tmbr_alloc(sizeof(*pointer), "Could not allocate pointer");
+	pointer->device = device;
+	tmbr_register(&device->events.destroy, &pointer->destroy, tmbr_pointer_on_destroy);
+	wl_list_insert(&server->pointers, &pointer->link);
+
+	tmbr_pointer_configure(device, &server->config);
+	wlr_cursor_attach_input_device(server->cursor, device);
+}
+
 static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_input);
@@ -1200,7 +1255,7 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 	case WLR_INPUT_DEVICE_TOUCH:
 	case WLR_INPUT_DEVICE_TABLET:
 	case WLR_INPUT_DEVICE_TABLET_PAD:
-		wlr_cursor_attach_input_device(server->cursor, device);
+		tmbr_pointer_new(server, device);
 		break;
 	case WLR_INPUT_DEVICE_KEYBOARD:
 		tmbr_keyboard_new(server, wlr_keyboard_from_input_device(device));
@@ -1967,12 +2022,16 @@ static void tmbr_cmd_config_get(TMBR_UNUSED struct wl_client *client,
 			      cfg->border_width,
 			      cfg->border_color_active,
 			      cfg->border_color_inactive,
-			      cfg->gap);
+			      cfg->gap,
+			      cfg->touchpad_tap_to_click,
+			      cfg->touchpad_natural_scroll,
+			      cfg->touchpad_dwt);
 }
 
 static void tmbr_server_reconfigure(struct tmbr_server *server)
 {
 	struct tmbr_xdg_client *focus = tmbr_server_find_focus(server);
+	struct tmbr_pointer *pointer;
 	struct tmbr_output *o;
 
 	wl_list_for_each(o, &server->outputs, link) {
@@ -1984,6 +2043,9 @@ static void tmbr_server_reconfigure(struct tmbr_server *server)
 			tmbr_tree_for_each(d->clients, tree)
 				tmbr_xdg_client_update_border_color(tree->client, tree->client == focus);
 	}
+
+	wl_list_for_each(pointer, &server->pointers, link)
+		tmbr_pointer_configure(pointer->device, &server->config);
 }
 
 static void tmbr_cmd_config_set(TMBR_UNUSED struct wl_client *client,
@@ -1991,13 +2053,19 @@ static void tmbr_cmd_config_set(TMBR_UNUSED struct wl_client *client,
 				uint32_t border_width,
 				uint32_t border_color_active,
 				uint32_t border_color_inactive,
-				uint32_t gap)
+				uint32_t gap,
+				uint32_t touchpad_tap_to_click,
+				uint32_t touchpad_natural_scroll,
+				uint32_t touchpad_dwt)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
 	server->config.border_width = border_width;
 	server->config.border_color_active = border_color_active;
 	server->config.border_color_inactive = border_color_inactive;
 	server->config.gap = gap;
+	server->config.touchpad_tap_to_click = touchpad_tap_to_click;
+	server->config.touchpad_natural_scroll = touchpad_natural_scroll;
+	server->config.touchpad_dwt = touchpad_dwt;
 	tmbr_server_reconfigure(server);
 }
 
@@ -2046,6 +2114,9 @@ int tmbr_wm(void)
 			.border_width = 3,
 			.border_color_active = 0x0080B3FF,
 			.border_color_inactive = 0x333333FF,
+			.touchpad_tap_to_click = 1,
+			.touchpad_natural_scroll = 0,
+			.touchpad_dwt = 1,
 		},
 	};
 	struct tmbr_binding *binding, *binding_tmp;
@@ -2055,6 +2126,7 @@ int tmbr_wm(void)
 
 	wl_list_init(&server.bindings);
 	wl_list_init(&server.outputs);
+	wl_list_init(&server.pointers);
 	if ((server.display = wl_display_create()) == NULL)
 		die("Could not create display");
 	if ((server.backend = wlr_backend_autocreate(wl_display_get_event_loop(server.display), &server.session)) == NULL)
