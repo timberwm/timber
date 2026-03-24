@@ -399,7 +399,7 @@ static const struct {
 	{ "state", "quit",        NULL,               tmbr_state_quit },
 	{ "binding", "add",       "<key> <command>",  tmbr_binding_add },
 	{ "config", "get",        NULL,               tmbr_config_get },
-	{ "config", "set",        "<width>",          tmbr_config_set },
+	{ "config", "set",        "<key=value...>",   tmbr_config_set },
 };
 
 static void tmbr_client_on_global(void *data, struct wl_registry *registry, uint32_t id, const char *interface, uint32_t version)
