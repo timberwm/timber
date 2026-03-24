@@ -26,7 +26,9 @@
 #include <linux/input-event-codes.h>
 
 #include <wlr/backend.h>
+#include <wlr/backend/libinput.h>
 #include <wlr/backend/session.h>
+#include <libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_alpha_modifier_v1.h>
@@ -255,7 +257,14 @@ struct tmbr_server {
 
 	struct wl_list bindings;
 	struct wl_list outputs;
+	struct wl_list pointers;
 	struct tmbr_output *focussed_output;
+};
+
+struct tmbr_pointer {
+	struct wlr_input_device *device;
+	struct wl_listener destroy;
+	struct wl_list link;
 };
 
 static void tmbr_spawn(const char *path, char * const argv[])
@@ -1190,6 +1199,36 @@ static void tmbr_layer_client_on_new_popup(struct wl_listener *listener, void *p
 	});
 }
 
+static void tmbr_pointer_configure(struct wlr_input_device *device,
+				   const struct tmbr_config *config TMBR_UNUSED)
+{
+	if (!wlr_input_device_is_libinput(device))
+		return;
+}
+
+static void tmbr_pointer_on_destroy(struct wl_listener *listener,
+				    void *payload TMBR_UNUSED)
+{
+	struct tmbr_pointer *pointer = wl_container_of(listener, pointer, destroy);
+	wl_list_remove(&pointer->link);
+	tmbr_unregister(&pointer->destroy, NULL);
+	free(pointer);
+}
+
+static void tmbr_pointer_new(struct tmbr_server *server,
+			     struct wlr_input_device *device)
+{
+	struct tmbr_pointer *pointer;
+
+	pointer = tmbr_alloc(sizeof(*pointer), "Could not allocate pointer");
+	pointer->device = device;
+	tmbr_register(&device->events.destroy, &pointer->destroy, tmbr_pointer_on_destroy);
+	wl_list_insert(&server->pointers, &pointer->link);
+
+	tmbr_pointer_configure(device, &server->config);
+	wlr_cursor_attach_input_device(server->cursor, device);
+}
+
 static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_input);
@@ -1200,7 +1239,7 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 	case WLR_INPUT_DEVICE_TOUCH:
 	case WLR_INPUT_DEVICE_TABLET:
 	case WLR_INPUT_DEVICE_TABLET_PAD:
-		wlr_cursor_attach_input_device(server->cursor, device);
+		tmbr_pointer_new(server, device);
 		break;
 	case WLR_INPUT_DEVICE_KEYBOARD:
 		tmbr_keyboard_new(server, wlr_keyboard_from_input_device(device));
@@ -1973,6 +2012,7 @@ static void tmbr_cmd_config_get(TMBR_UNUSED struct wl_client *client,
 static void tmbr_server_reconfigure(struct tmbr_server *server)
 {
 	struct tmbr_xdg_client *focus = tmbr_server_find_focus(server);
+	struct tmbr_pointer *pointer;
 	struct tmbr_output *o;
 
 	wl_list_for_each(o, &server->outputs, link) {
@@ -1984,6 +2024,9 @@ static void tmbr_server_reconfigure(struct tmbr_server *server)
 			tmbr_tree_for_each(d->clients, tree)
 				tmbr_xdg_client_update_border_color(tree->client, tree->client == focus);
 	}
+
+	wl_list_for_each(pointer, &server->pointers, link)
+		tmbr_pointer_configure(pointer->device, &server->config);
 }
 
 static void tmbr_cmd_config_set(TMBR_UNUSED struct wl_client *client,
@@ -2055,6 +2098,7 @@ int tmbr_wm(void)
 
 	wl_list_init(&server.bindings);
 	wl_list_init(&server.outputs);
+	wl_list_init(&server.pointers);
 	if ((server.display = wl_display_create()) == NULL)
 		die("Could not create display");
 	if ((server.backend = wlr_backend_autocreate(wl_display_get_event_loop(server.display), &server.session)) == NULL)

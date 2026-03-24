@@ -19,6 +19,7 @@ executable(
       proto_sources,
   ],
   dependencies: [
+    dependency('libinput'),
     dependency('wayland-client'),
     dependency('wayland-server'),
     dependency('wlroots-0.19', version: ['>=0.19.0', '<0.20.0']),
