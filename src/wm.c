@@ -230,6 +230,7 @@ struct tmbr_server {
 	struct wl_listener new_output;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_layer_shell_surface;
+	struct wl_listener new_idle_inhibitor;
 	struct wl_listener cursor_axis;
 	struct wl_listener cursor_button;
 	struct wl_listener cursor_motion_relative;
@@ -244,7 +245,6 @@ struct tmbr_server {
 	struct wl_listener request_start_drag;
 	struct wl_listener start_drag;
 	struct wl_listener destroy_drag_icon;
-	struct wl_listener idle_inhibitor_new;
 	struct wl_listener apply_layout;
 	struct wl_listener output_power_set_mode;
 
@@ -1696,7 +1696,7 @@ static void tmbr_idle_inhibitor_on_destroy(struct wl_listener *listener, TMBR_UN
 
 static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void *payload)
 {
-	struct tmbr_server *server = wl_container_of(listener, server, idle_inhibitor_new);
+	struct tmbr_server *server = wl_container_of(listener, server, new_idle_inhibitor);
 	struct wlr_idle_inhibitor_v1 *wlr_inhibitor = payload;
 	struct tmbr_idle_inhibitor *inhibitor;
 
@@ -2207,7 +2207,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.touch_up, &server.cursor_touch_up, tmbr_cursor_on_touch_up);
 	tmbr_register(&server.cursor->events.touch_motion, &server.cursor_touch_motion, tmbr_cursor_on_touch_motion);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
-	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.idle_inhibitor_new, tmbr_server_on_new_idle_inhibitor);
+	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.new_idle_inhibitor, tmbr_server_on_new_idle_inhibitor);
 	tmbr_register(&server.output_manager->events.apply, &server.apply_layout, tmbr_server_on_apply_layout);
 	tmbr_register(&server.output_power_manager->events.set_mode, &server.output_power_set_mode, tmbr_server_on_output_power_set_mode);
 
@@ -2237,6 +2237,7 @@ int tmbr_wm(void)
 	tmbr_unregister(&server.new_xdg_toplevel);
 	tmbr_unregister(&server.new_layer_shell_surface);
 	tmbr_unregister(&server.new_session_lock);
+	tmbr_unregister(&server.new_idle_inhibitor);
 	tmbr_unregister(&server.request_set_cursor);
 	tmbr_unregister(&server.request_set_selection);
 	tmbr_unregister(&server.request_set_primary_selection);
@@ -2250,7 +2251,6 @@ int tmbr_wm(void)
 	tmbr_unregister(&server.cursor_touch_up);
 	tmbr_unregister(&server.cursor_touch_motion);
 	tmbr_unregister(&server.cursor_frame);
-	tmbr_unregister(&server.idle_inhibitor_new);
 	tmbr_unregister(&server.apply_layout);
 	tmbr_unregister(&server.output_power_set_mode);
 
