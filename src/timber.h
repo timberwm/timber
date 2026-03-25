@@ -27,7 +27,6 @@ struct tmbr_config {
 	uint32_t border_color_inactive;
 	uint32_t gap;
 	uint32_t touchpad_tap_to_click;
-	uint32_t touchpad_scroll_method;
 	uint32_t touchpad_natural_scroll;
 	uint32_t touchpad_dwt;
 };
