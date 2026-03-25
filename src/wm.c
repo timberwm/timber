@@ -2231,6 +2231,29 @@ int tmbr_wm(void)
 
 	wl_display_run(server.display);
 
+	tmbr_unregister(&server.new_input);
+	tmbr_unregister(&server.new_virtual_keyboard);
+	tmbr_unregister(&server.new_output);
+	tmbr_unregister(&server.new_xdg_toplevel);
+	tmbr_unregister(&server.new_layer_shell_surface);
+	tmbr_unregister(&server.new_session_lock);
+	tmbr_unregister(&server.request_set_cursor);
+	tmbr_unregister(&server.request_set_selection);
+	tmbr_unregister(&server.request_set_primary_selection);
+	tmbr_unregister(&server.request_start_drag);
+	tmbr_unregister(&server.start_drag);
+	tmbr_unregister(&server.cursor_axis);
+	tmbr_unregister(&server.cursor_button);
+	tmbr_unregister(&server.cursor_motion_relative);
+	tmbr_unregister(&server.cursor_motion_absolute);
+	tmbr_unregister(&server.cursor_touch_down);
+	tmbr_unregister(&server.cursor_touch_up);
+	tmbr_unregister(&server.cursor_touch_motion);
+	tmbr_unregister(&server.cursor_frame);
+	tmbr_unregister(&server.idle_inhibitor_new);
+	tmbr_unregister(&server.apply_layout);
+	tmbr_unregister(&server.output_power_set_mode);
+
 	wl_display_destroy_clients(server.display);
 	wl_display_destroy(server.display);
 	wlr_scene_node_destroy(&server.scene->tree.node);
