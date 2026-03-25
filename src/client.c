@@ -305,18 +305,18 @@ static void tmbr_client_on_config(void *payload,
 				  uint32_t border_color_active,
 				  uint32_t border_color_inactive,
 				  uint32_t gap,
-				  uint32_t touchpad_tap_to_click,
-				  uint32_t touchpad_natural_scroll,
-				  uint32_t touchpad_dwt)
+				  uint32_t tap_to_click,
+				  uint32_t natural_scroll,
+				  uint32_t dwt)
 {
 	struct tmbr_config cfg = {
 		.border_width = border_width,
 		.border_color_active = border_color_active,
 		.border_color_inactive = border_color_inactive,
 		.gap = gap,
-		.touchpad_tap_to_click = touchpad_tap_to_click,
-		.touchpad_natural_scroll = touchpad_natural_scroll,
-		.touchpad_dwt = touchpad_dwt,
+		.tap_to_click = tap_to_click,
+		.natural_scroll = natural_scroll,
+		.dwt = dwt,
 	};
 	struct tmbr_config **out = payload;
 	*out = tmbr_alloc(sizeof(**out), "Could not allocate config");
@@ -357,9 +357,9 @@ static void tmbr_config_get(struct wl_display *display TMBR_UNUSED,
 	printf("border_color_active: %" PRIx32 "\n", cfg->border_color_active);
 	printf("border_color_inactive: %" PRIx32 "\n", cfg->border_color_inactive);
 	printf("gap: %" PRIu32 "\n", cfg->gap);
-	printf("touchpad_tap_to_click: %s\n", tmbr_config_to_bool(cfg->touchpad_tap_to_click));
-	printf("touchpad_natural_scroll: %s\n", tmbr_config_to_bool(cfg->touchpad_natural_scroll));
-	printf("touchpad_dwt: %s\n", tmbr_config_to_bool(cfg->touchpad_dwt));
+	printf("tap_to_click: %s\n", tmbr_config_to_bool(cfg->tap_to_click));
+	printf("natural_scroll: %s\n", tmbr_config_to_bool(cfg->natural_scroll));
+	printf("dwt: %s\n", tmbr_config_to_bool(cfg->dwt));
 
 	free(cfg);
 }
@@ -390,12 +390,12 @@ static void tmbr_config_set(struct wl_display *display TMBR_UNUSED,
 			cfg->border_color_inactive = tmbr_parse_color(value);
 		else if (skip_prefix(arg, "gap=", &value))
 			cfg->gap = tmbr_parse_u32(value);
-		else if (skip_prefix(arg, "touchpad_tap_to_click=", &value))
-			cfg->touchpad_tap_to_click = tmbr_parse_bool(value);
-		else if (skip_prefix(arg, "touchpad_natural_scroll=", &value))
-			cfg->touchpad_natural_scroll = tmbr_parse_bool(value);
-		else if (skip_prefix(arg, "touchpad_dwt=", &value))
-			cfg->touchpad_dwt = tmbr_parse_bool(value);
+		else if (skip_prefix(arg, "tap_to_click=", &value))
+			cfg->tap_to_click = tmbr_parse_bool(value);
+		else if (skip_prefix(arg, "natural_scroll=", &value))
+			cfg->natural_scroll = tmbr_parse_bool(value);
+		else if (skip_prefix(arg, "dwt=", &value))
+			cfg->dwt = tmbr_parse_bool(value);
 		else
 			die("Unknown config key '%s'", arg);
 	}
@@ -405,9 +405,9 @@ static void tmbr_config_set(struct wl_display *display TMBR_UNUSED,
 			     cfg->border_color_active,
 			     cfg->border_color_inactive,
 			     cfg->gap,
-			     cfg->touchpad_tap_to_click,
-			     cfg->touchpad_natural_scroll,
-			     cfg->touchpad_dwt);
+			     cfg->tap_to_click,
+			     cfg->natural_scroll,
+			     cfg->dwt);
 
 	free(cfg);
 }

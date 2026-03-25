@@ -1209,17 +1209,12 @@ static void tmbr_pointer_configure(struct wlr_input_device *device,
 
 	dev = wlr_libinput_get_device_handle(device);
 
-	switch (device->type) {
-	case WLR_INPUT_DEVICE_TOUCH:
-		libinput_device_config_tap_set_enabled(dev, config->touchpad_tap_to_click);
-		if (libinput_device_config_scroll_has_natural_scroll(dev))
-			libinput_device_config_scroll_set_natural_scroll_enabled(dev, config->touchpad_natural_scroll);
-		if (libinput_device_config_dwt_is_available(dev))
-			libinput_device_config_dwt_set_enabled(dev, config->touchpad_dwt);
-		break;
-	default:
-		break;
-	}
+	if (libinput_device_config_tap_get_finger_count(dev) > 0)
+		libinput_device_config_tap_set_enabled(dev, config->tap_to_click);
+	if (libinput_device_config_scroll_has_natural_scroll(dev))
+		libinput_device_config_scroll_set_natural_scroll_enabled(dev, config->natural_scroll);
+	if (libinput_device_config_dwt_is_available(dev))
+		libinput_device_config_dwt_set_enabled(dev, config->dwt);
 }
 
 static void tmbr_pointer_on_destroy(struct wl_listener *listener,
@@ -2023,9 +2018,9 @@ static void tmbr_cmd_config_get(TMBR_UNUSED struct wl_client *client,
 			      cfg->border_color_active,
 			      cfg->border_color_inactive,
 			      cfg->gap,
-			      cfg->touchpad_tap_to_click,
-			      cfg->touchpad_natural_scroll,
-			      cfg->touchpad_dwt);
+			      cfg->tap_to_click,
+			      cfg->natural_scroll,
+			      cfg->dwt);
 }
 
 static void tmbr_server_reconfigure(struct tmbr_server *server)
@@ -2054,18 +2049,18 @@ static void tmbr_cmd_config_set(TMBR_UNUSED struct wl_client *client,
 				uint32_t border_color_active,
 				uint32_t border_color_inactive,
 				uint32_t gap,
-				uint32_t touchpad_tap_to_click,
-				uint32_t touchpad_natural_scroll,
-				uint32_t touchpad_dwt)
+				uint32_t tap_to_click,
+				uint32_t natural_scroll,
+				uint32_t dwt)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
 	server->config.border_width = border_width;
 	server->config.border_color_active = border_color_active;
 	server->config.border_color_inactive = border_color_inactive;
 	server->config.gap = gap;
-	server->config.touchpad_tap_to_click = touchpad_tap_to_click;
-	server->config.touchpad_natural_scroll = touchpad_natural_scroll;
-	server->config.touchpad_dwt = touchpad_dwt;
+	server->config.tap_to_click = tap_to_click;
+	server->config.natural_scroll = natural_scroll;
+	server->config.dwt = dwt;
 	tmbr_server_reconfigure(server);
 }
 
@@ -2114,9 +2109,9 @@ int tmbr_wm(void)
 			.border_width = 3,
 			.border_color_active = 0x0080B3FF,
 			.border_color_inactive = 0x333333FF,
-			.touchpad_tap_to_click = 1,
-			.touchpad_natural_scroll = 0,
-			.touchpad_dwt = 1,
+			.tap_to_click = 1,
+			.natural_scroll = 0,
+			.dwt = 1,
 		},
 	};
 	struct tmbr_binding *binding, *binding_tmp;
