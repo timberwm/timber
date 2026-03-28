@@ -40,6 +40,7 @@
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_ext_data_control_v1.h>
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
+#include <wlr/types/wlr_ext_workspace_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
@@ -158,6 +159,7 @@ struct tmbr_desktop {
 	struct wlr_scene_tree *scene_desktop;
 	struct wlr_scene_tree *scene_clients;
 	struct wlr_scene_tree *scene_fullscreen;
+	struct wlr_ext_workspace_handle_v1 *workspace;
 	bool fullscreen;
 };
 
@@ -179,6 +181,7 @@ struct tmbr_output {
 
 	struct wlr_output *output;
 	struct wlr_scene_tree *scene_output;
+	struct wlr_ext_workspace_group_handle_v1 *workspace_group;
 	struct wlr_scene_tree *scene_layers[TMBR_SCENE_LAYER_MAX];
 	struct wl_list desktops;
 	struct wl_list layer_clients;
@@ -205,6 +208,7 @@ struct tmbr_server {
 	struct wlr_allocator *allocator;
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
+	struct wlr_ext_workspace_manager_v1 *ext_workspace_manager;
 	struct wlr_gamma_control_manager_v1 *gamma_control_manager;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wlr_idle_notifier_v1 *idle_notifier;
@@ -249,6 +253,7 @@ struct tmbr_server {
 	struct wl_listener destroy_drag_icon;
 	struct wl_listener apply_layout;
 	struct wl_listener output_power_set_mode;
+	struct wl_listener ext_workspace_manager_commit;
 
 	struct wl_listener new_session_lock;
 	struct wl_listener new_session_lock_surface;
@@ -709,10 +714,15 @@ static void tmbr_tree_remove(struct tmbr_tree **tree, struct tmbr_tree *node)
 static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_output *parent)
 {
 	struct tmbr_desktop *desktop = tmbr_alloc(sizeof(struct tmbr_desktop), "Could not allocate desktop");
+
 	desktop->scene_desktop = wlr_scene_tree_create(parent->scene_layers[TMBR_SCENE_LAYER_DESKTOP]);
 	desktop->scene_clients = wlr_scene_tree_create(desktop->scene_desktop);
 	desktop->scene_fullscreen = wlr_scene_tree_create(parent->scene_layers[TMBR_SCENE_LAYER_FULLSCREEN]);
+	desktop->workspace = wlr_ext_workspace_handle_v1_create(parent->server->ext_workspace_manager, NULL,
+								EXT_WORKSPACE_HANDLE_V1_WORKSPACE_CAPABILITIES_ACTIVATE);
+
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, false);
+
 	return desktop;
 }
 
@@ -720,6 +730,7 @@ static void tmbr_desktop_free(struct tmbr_desktop *desktop)
 {
 	wlr_scene_node_destroy(&desktop->scene_desktop->node);
 	wlr_scene_node_destroy(&desktop->scene_fullscreen->node);
+	wlr_ext_workspace_handle_v1_destroy(desktop->workspace);
 	free(desktop);
 }
 
@@ -879,10 +890,12 @@ static void tmbr_output_focus_desktop(struct tmbr_output *output, struct tmbr_de
 	if (output->focus && output->focus != desktop) {
 		wlr_scene_node_set_enabled(&output->focus->scene_desktop->node, false);
 		wlr_scene_node_set_enabled(&output->focus->scene_fullscreen->node, false);
+		wlr_ext_workspace_handle_v1_set_active(output->focus->workspace, false);
 	}
 	tmbr_desktop_focus_client(desktop, desktop->focus, true);
 	wlr_scene_node_set_enabled(&desktop->scene_desktop->node, true);
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, true);
+	wlr_ext_workspace_handle_v1_set_active(desktop->workspace, true);
 	output->focus = desktop;
 	output->server->focussed_output = output;
 }
@@ -906,6 +919,7 @@ static void tmbr_output_add_desktop(struct tmbr_output *output, struct tmbr_desk
 	wl_list_insert(output->focus ? &output->focus->link : &output->desktops, &desktop->link);
 	wlr_scene_node_reparent(&desktop->scene_desktop->node, output->scene_layers[TMBR_SCENE_LAYER_DESKTOP]);
 	wlr_scene_node_reparent(&desktop->scene_fullscreen->node, output->scene_layers[TMBR_SCENE_LAYER_FULLSCREEN]);
+	wlr_ext_workspace_handle_v1_set_group(desktop->workspace, output->workspace_group);
 	desktop->output = output;
 	tmbr_desktop_recalculate(desktop);
 	tmbr_output_focus_desktop(output, desktop);
@@ -944,6 +958,7 @@ static void tmbr_output_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 		wl_display_terminate(output->server->display);
 	}
 
+	wlr_ext_workspace_group_handle_v1_destroy(output->workspace_group);
 	wlr_scene_node_destroy(&output->scene_output->node);
 	tmbr_server_update_output_layout(output->server);
 	tmbr_unregister(&output->destroy, &output->frame, &output->commit, &output->request_state, NULL);
@@ -1039,6 +1054,10 @@ static struct tmbr_output *tmbr_output_new(struct tmbr_server *server, struct wl
 	}
 	wl_list_init(&output->desktops);
 	wl_list_init(&output->layer_clients);
+
+	output->workspace_group = wlr_ext_workspace_group_handle_v1_create(server->ext_workspace_manager,
+									   EXT_WORKSPACE_GROUP_HANDLE_V1_GROUP_CAPABILITIES_CREATE_WORKSPACE);
+	wlr_ext_workspace_group_handle_v1_output_enter(output->workspace_group, wlr_output);
 
 	tmbr_output_add_desktop(output, tmbr_desktop_new(output));
 	tmbr_register(&wlr_output->events.destroy, &output->destroy, tmbr_output_on_destroy);
@@ -1764,6 +1783,43 @@ static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener 
 	wlr_scene_node_set_enabled(&output->scene_output->node, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 }
 
+static void tmbr_server_on_ext_workspace_manager_commit(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, ext_workspace_manager_commit);
+	struct wlr_ext_workspace_v1_request *request = payload;
+
+	switch (request->type) {
+	case WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE: {
+		struct tmbr_output *o;
+
+		wl_list_for_each(o, &server->outputs, link) {
+			if (o->workspace_group != request->create_workspace.group)
+				continue;
+			tmbr_output_add_desktop(o, tmbr_desktop_new(o));
+		}
+
+		break;
+	}
+	case WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE: {
+		struct tmbr_desktop *d;
+		struct tmbr_output *o;
+
+		wl_list_for_each(o, &server->outputs, link) {
+			wl_list_for_each(d, &o->desktops, link) {
+				if (d->workspace != request->activate.workspace)
+					continue;
+				tmbr_output_focus_desktop(o, d);
+				return;
+			}
+		}
+
+		break;
+	}
+	default:
+		break;
+	}
+}
+
 static void tmbr_cmd_client_focus(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource, unsigned selection)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
@@ -2163,6 +2219,7 @@ int tmbr_wm(void)
 	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.scene_layout = wlr_scene_attach_output_layout(server.scene, server.output_layout)) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
+	    (server.ext_workspace_manager = wlr_ext_workspace_manager_v1_create(server.display, 1)) == NULL ||
 	    (server.gamma_control_manager = wlr_gamma_control_manager_v1_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
 	    (server.idle_notifier = wlr_idle_notifier_v1_create(server.display)) == NULL ||
@@ -2233,6 +2290,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.new_idle_inhibitor, tmbr_server_on_new_idle_inhibitor);
 	tmbr_register(&server.output_manager->events.apply, &server.apply_layout, tmbr_server_on_apply_layout);
 	tmbr_register(&server.output_power_manager->events.set_mode, &server.output_power_set_mode, tmbr_server_on_output_power_set_mode);
+	tmbr_register(&server.ext_workspace_manager->events.commit, &server.ext_workspace_manager_commit, tmbr_server_on_ext_workspace_manager_commit);
 
 	if ((socket = wl_display_add_socket_auto(server.display)) == NULL)
 		die("Could not create Wayland socket");
@@ -2276,6 +2334,7 @@ int tmbr_wm(void)
 	tmbr_unregister(&server.cursor_frame);
 	tmbr_unregister(&server.apply_layout);
 	tmbr_unregister(&server.output_power_set_mode);
+	tmbr_unregister(&server.ext_workspace_manager_commit);
 
 	wl_display_destroy_clients(server.display);
 	wl_display_destroy(server.display);
