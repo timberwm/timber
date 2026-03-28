@@ -22,7 +22,7 @@ executable(
     dependency('libinput'),
     dependency('wayland-client'),
     dependency('wayland-server'),
-    dependency('wlroots-0.19', version: ['>=0.19.0', '<0.20.0']),
+    dependency('wlroots-0.20', version: ['>=0.20.0', '<0.21.0']),
     dependency('xkbcommon'),
   ],
   c_args: [
