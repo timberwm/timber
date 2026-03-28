@@ -32,6 +32,7 @@
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_alpha_modifier_v1.h>
+#include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_control_v1.h>
@@ -2141,6 +2142,7 @@ int tmbr_wm(void)
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
 	    wlr_compositor_create(server.display, 5, server.renderer) == NULL ||
 	    wlr_subcompositor_create(server.display) == NULL ||
+	    wlr_color_representation_manager_v1_create_with_renderer(server.display, 1, server.renderer) == NULL ||
 	    wlr_alpha_modifier_v1_create(server.display) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_data_control_manager_v1_create(server.display) == NULL ||
