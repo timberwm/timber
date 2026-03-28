@@ -32,6 +32,8 @@
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_alpha_modifier_v1.h>
+#include <wlr/types/wlr_color_management_v1.h>
+#include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_control_v1.h>
@@ -2141,6 +2143,7 @@ int tmbr_wm(void)
 	if (wl_global_create(server.display, &tmbr_ctrl_interface, tmbr_ctrl_interface.version, &server, tmbr_server_on_bind) == NULL ||
 	    wlr_compositor_create(server.display, 5, server.renderer) == NULL ||
 	    wlr_subcompositor_create(server.display) == NULL ||
+	    wlr_color_representation_manager_v1_create_with_renderer(server.display, 1, server.renderer) == NULL ||
 	    wlr_alpha_modifier_v1_create(server.display) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
 	    wlr_data_control_manager_v1_create(server.display) == NULL ||
@@ -2174,6 +2177,31 @@ int tmbr_wm(void)
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display, 5)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
 		die("Could not create backends");
+
+	if (server.renderer->features.input_color_transform) {
+		const enum wp_color_manager_v1_render_intent render_intents[] = {
+			WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL,
+		};
+		struct wlr_color_manager_v1_options opts = {
+			.features = {
+				.parametric = true,
+				.set_mastering_display_primaries = true,
+			},
+			.render_intents = render_intents,
+			.render_intents_len = ARRAY_SIZE(render_intents),
+		};
+		struct wlr_color_manager_v1 *manager;
+
+		opts.transfer_functions = wlr_color_manager_v1_transfer_function_list_from_renderer(server.renderer,
+												    &opts.transfer_functions_len);
+		opts.primaries = wlr_color_manager_v1_primaries_list_from_renderer(server.renderer, &opts.primaries_len);
+
+		manager = wlr_color_manager_v1_create(server.display, 2, &opts);
+		wlr_scene_set_color_manager_v1(server.scene, manager);
+
+		free((void *) opts.transfer_functions);
+		free((void *) opts.primaries);
+	}
 
 	wlr_server_decoration_manager_set_default_mode(server.decoration, WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 	wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
