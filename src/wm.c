@@ -36,9 +36,10 @@
 #include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
-#include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
+#include <wlr/types/wlr_ext_data_control_v1.h>
+#include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
@@ -56,7 +57,6 @@
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_scene.h>
-#include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
@@ -2146,12 +2146,12 @@ int tmbr_wm(void)
 	    wlr_color_representation_manager_v1_create_with_renderer(server.display, 1, server.renderer) == NULL ||
 	    wlr_alpha_modifier_v1_create(server.display) == NULL ||
 	    wlr_data_device_manager_create(server.display) == NULL ||
-	    wlr_data_control_manager_v1_create(server.display) == NULL ||
 	    wlr_export_dmabuf_manager_v1_create(server.display) == NULL ||
+	    wlr_ext_data_control_manager_v1_create(server.display, 1) == NULL ||
+	    wlr_ext_image_copy_capture_manager_v1_create(server.display, 1) == NULL ||
 	    wlr_fractional_scale_manager_v1_create(server.display, 1) == NULL ||
 	    wlr_presentation_create(server.display, server.backend, 2) == NULL ||
 	    wlr_primary_selection_v1_device_manager_create(server.display) == NULL ||
-	    wlr_screencopy_manager_v1_create(server.display) == NULL ||
 	    wlr_single_pixel_buffer_manager_v1_create(server.display) == NULL ||
 	    wlr_viewporter_create(server.display) == NULL ||
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
