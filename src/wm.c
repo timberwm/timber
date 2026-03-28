@@ -868,6 +868,17 @@ static void tmbr_desktop_remove_client(struct tmbr_desktop *desktop, struct tmbr
 	client->tree = NULL;
 }
 
+static void tmbr_output_update_workspaces(struct tmbr_output *output)
+{
+	struct tmbr_desktop *d;
+	uint32_t idx = 0;
+
+	wl_list_for_each(d, &output->desktops, link) {
+		wlr_ext_workspace_handle_v1_set_coordinates(d->workspace, &idx, 1);
+		idx++;
+	}
+}
+
 static void tmbr_desktop_swap(struct tmbr_desktop *_a, struct tmbr_desktop *_b)
 {
 	struct wl_list *a = &_a->link, *b = &_b->link, *pos = b->prev;
@@ -881,6 +892,8 @@ static void tmbr_desktop_swap(struct tmbr_desktop *_a, struct tmbr_desktop *_b)
 		pos = b;
 	wl_list_remove(a);
 	wl_list_insert(pos, a);
+
+	tmbr_output_update_workspaces(_a->output);
 }
 
 static void tmbr_output_focus_desktop(struct tmbr_output *output, struct tmbr_desktop *desktop)
@@ -912,6 +925,8 @@ static void tmbr_output_remove_desktop(struct tmbr_output *output, struct tmbr_d
 		tmbr_output_focus_desktop(output, sibling);
 	}
 	wl_list_remove(&desktop->link);
+
+	tmbr_output_update_workspaces(output);
 }
 
 static void tmbr_output_add_desktop(struct tmbr_output *output, struct tmbr_desktop *desktop)
@@ -923,6 +938,7 @@ static void tmbr_output_add_desktop(struct tmbr_output *output, struct tmbr_desk
 	desktop->output = output;
 	tmbr_desktop_recalculate(desktop);
 	tmbr_output_focus_desktop(output, desktop);
+	tmbr_output_update_workspaces(output);
 }
 
 static struct tmbr_output *tmbr_output_find_sibling(struct tmbr_output *output, enum tmbr_ctrl_selection which)
