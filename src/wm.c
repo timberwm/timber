@@ -1862,6 +1862,7 @@ static void tmbr_server_on_ext_workspace_manager_commit(struct wl_listener *list
 				if (o->workspace_group != request->create_workspace.group)
 					continue;
 				tmbr_output_add_desktop(o, tmbr_desktop_new(o));
+				goto next_event;
 			}
 
 			break;
@@ -1875,7 +1876,7 @@ static void tmbr_server_on_ext_workspace_manager_commit(struct wl_listener *list
 					if (d->workspace != request->activate.workspace)
 						continue;
 					tmbr_output_focus_desktop(o, d);
-					return;
+					goto next_event;
 				}
 			}
 
@@ -1884,6 +1885,9 @@ static void tmbr_server_on_ext_workspace_manager_commit(struct wl_listener *list
 		default:
 			break;
 		}
+
+next_event:
+		continue;
 	}
 }
 
