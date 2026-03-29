@@ -132,13 +132,6 @@
         </description>
     </request>
 
-    <request name="state_query">
-        <description summary="query current state">
-            Query the state of the window manager.
-        </description>
-        <arg name="fd" type="fd"/>
-    </request>
-
     <request name="state_quit">
         <description summary="quit">
             Cause the window manager to quit.

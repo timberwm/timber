@@ -276,13 +276,6 @@ static void tmbr_tree_rotate(struct wl_display *display TMBR_UNUSED,
 	tmbr_ctrl_tree_rotate(ctrl);
 }
 
-static void tmbr_state_query(struct wl_display *display TMBR_UNUSED,
-			     struct tmbr_ctrl *ctrl, char **argv)
-{
-	tmbr_require_args(argv, 0);
-	tmbr_ctrl_state_query(ctrl, STDOUT_FILENO);
-}
-
 static void tmbr_state_quit(struct wl_display *display TMBR_UNUSED,
 			    struct tmbr_ctrl *ctrl, char **argv)
 {
@@ -431,7 +424,6 @@ static const struct {
 	{ "desktop", "swap",      "(next|prev)",      tmbr_desktop_swap },
 	{ "output", "focus",      "(next|prev)",      tmbr_output_focus },
 	{ "tree", "rotate",       NULL,               tmbr_tree_rotate },
-	{ "state", "query",       NULL,               tmbr_state_query },
 	{ "state", "quit",        NULL,               tmbr_state_quit },
 	{ "binding", "add",       "<key> <command>",  tmbr_binding_add },
 	{ "config", "get",        NULL,               tmbr_config_get },
