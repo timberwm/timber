@@ -1850,37 +1850,40 @@ static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener 
 static void tmbr_server_on_ext_workspace_manager_commit(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, ext_workspace_manager_commit);
-	struct wlr_ext_workspace_v1_request *request = payload;
+	struct wlr_ext_workspace_v1_commit_event *event = payload;
+	struct wlr_ext_workspace_v1_request *request;
 
-	switch (request->type) {
-	case WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE: {
-		struct tmbr_output *o;
+	wl_list_for_each(request, event->requests, link) {
+		switch (request->type) {
+		case WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE: {
+			struct tmbr_output *o;
 
-		wl_list_for_each(o, &server->outputs, link) {
-			if (o->workspace_group != request->create_workspace.group)
-				continue;
-			tmbr_output_add_desktop(o, tmbr_desktop_new(o));
-		}
-
-		break;
-	}
-	case WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE: {
-		struct tmbr_desktop *d;
-		struct tmbr_output *o;
-
-		wl_list_for_each(o, &server->outputs, link) {
-			wl_list_for_each(d, &o->desktops, link) {
-				if (d->workspace != request->activate.workspace)
+			wl_list_for_each(o, &server->outputs, link) {
+				if (o->workspace_group != request->create_workspace.group)
 					continue;
-				tmbr_output_focus_desktop(o, d);
-				return;
+				tmbr_output_add_desktop(o, tmbr_desktop_new(o));
 			}
-		}
 
-		break;
-	}
-	default:
-		break;
+			break;
+		}
+		case WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE: {
+			struct tmbr_desktop *d;
+			struct tmbr_output *o;
+
+			wl_list_for_each(o, &server->outputs, link) {
+				wl_list_for_each(d, &o->desktops, link) {
+					if (d->workspace != request->activate.workspace)
+						continue;
+					tmbr_output_focus_desktop(o, d);
+					return;
+				}
+			}
+
+			break;
+		}
+		default:
+			break;
+		}
 	}
 }
 
