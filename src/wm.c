@@ -40,6 +40,7 @@
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_ext_data_control_v1.h>
 #include <wlr/types/wlr_ext_image_capture_source_v1.h>
+#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_ext_workspace_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
@@ -126,6 +127,7 @@ struct tmbr_xdg_client {
 	struct wlr_scene_tree *scene_client;
 	struct wlr_scene_tree *scene_xdg_surface;
 	struct wlr_scene_rect *scene_borders;
+	struct wlr_ext_foreign_toplevel_handle_v1 *ext_foreign_toplevel_handle;
 
 	int h, w;
 	uint32_t border;
@@ -135,6 +137,8 @@ struct tmbr_xdg_client {
 	struct wl_event_source *configure_timer;
 	struct wl_listener request_fullscreen;
 	struct wl_listener request_maximize;
+	struct wl_listener set_app_id;
+	struct wl_listener set_title;
 };
 
 struct tmbr_xdg_popup {
@@ -210,6 +214,7 @@ struct tmbr_server {
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
 	struct wlr_ext_workspace_manager_v1 *ext_workspace_manager;
+	struct wlr_ext_foreign_toplevel_list_v1 *ext_foreign_toplevel_list;
 	struct wlr_gamma_control_manager_v1 *gamma_control_manager;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wlr_idle_notifier_v1 *idle_notifier;
@@ -537,7 +542,10 @@ static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED
 	tmbr_unregister(&client->base.new_popup);
 	tmbr_unregister(&client->request_fullscreen);
 	tmbr_unregister(&client->request_maximize);
+	tmbr_unregister(&client->set_app_id);
+	tmbr_unregister(&client->set_title);
 	wlr_scene_node_destroy(&client->scene_client->node);
+	wlr_ext_foreign_toplevel_handle_v1_destroy(client->ext_foreign_toplevel_handle);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
 }
@@ -596,6 +604,26 @@ static void tmbr_xdg_client_on_new_popup(struct wl_listener *listener, void *pay
 		.width = xdg_client->w,
 		.height = xdg_client->h,
 	});
+}
+
+static void tmbr_xdg_client_on_set_app_id(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, set_app_id);
+	struct wlr_ext_foreign_toplevel_handle_v1_state state = {
+		.app_id = client->surface->toplevel->app_id,
+		.title = client->surface->toplevel->title,
+	};
+	wlr_ext_foreign_toplevel_handle_v1_update_state(client->ext_foreign_toplevel_handle, &state);
+}
+
+static void tmbr_xdg_client_on_set_title(struct wl_listener *listener, TMBR_UNUSED void *payload)
+{
+	struct tmbr_xdg_client *client = wl_container_of(listener, client, set_title);
+	struct wlr_ext_foreign_toplevel_handle_v1_state state = {
+		.app_id = client->surface->toplevel->app_id,
+		.title = client->surface->toplevel->title,
+	};
+	wlr_ext_foreign_toplevel_handle_v1_update_state(client->ext_foreign_toplevel_handle, &state);
 }
 
 static void tmbr_tree_recalculate(struct tmbr_tree *tree, const struct tmbr_config *cfg,
@@ -1385,6 +1413,10 @@ static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_xdg_toplevel);
 	struct wlr_xdg_toplevel *toplevel = payload;
+	struct wlr_ext_foreign_toplevel_handle_v1_state state = {
+		.app_id = toplevel->app_id,
+		.title = toplevel->title,
+	};
 	struct tmbr_xdg_client *client;
 	float color[4];
 
@@ -1398,6 +1430,7 @@ static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *
 	client->scene_xdg_surface->node.data = client;
 	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0,
 						      tmbr_color_rgba_to_float(server->config.border_color_inactive, color));
+	client->ext_foreign_toplevel_handle = wlr_ext_foreign_toplevel_handle_v1_create(server->ext_foreign_toplevel_list, &state);
 	wlr_scene_node_place_below(&client->scene_borders->node, &client->scene_xdg_surface->node);
 
 	toplevel->base->data = client;
@@ -1409,6 +1442,8 @@ static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *
 	tmbr_register(&toplevel->base->surface->events.unmap, &client->base.unmap, tmbr_server_on_unmap);
 	tmbr_register(&toplevel->events.request_fullscreen, &client->request_fullscreen, tmbr_server_on_request_fullscreen);
 	tmbr_register(&toplevel->events.request_maximize, &client->request_maximize, tmbr_server_on_request_maximize);
+	tmbr_register(&toplevel->events.set_app_id, &client->set_app_id, tmbr_xdg_client_on_set_app_id);
+	tmbr_register(&toplevel->events.set_title, &client->set_title, tmbr_xdg_client_on_set_title);
 }
 
 static void tmbr_server_on_new_layer_shell_surface(struct wl_listener *listener, void *payload)
@@ -2249,6 +2284,7 @@ int tmbr_wm(void)
 	    (server.scene_unowned_clients = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
 	    (server.scene_layout = wlr_scene_attach_output_layout(server.scene, server.output_layout)) == NULL ||
 	    (server.seat = wlr_seat_create(server.display, "seat0")) == NULL ||
+	    (server.ext_foreign_toplevel_list = wlr_ext_foreign_toplevel_list_v1_create(server.display, 1)) == NULL ||
 	    (server.ext_workspace_manager = wlr_ext_workspace_manager_v1_create(server.display, 1)) == NULL ||
 	    (server.gamma_control_manager = wlr_gamma_control_manager_v1_create(server.display)) == NULL ||
 	    (server.idle_inhibit = wlr_idle_inhibit_v1_create(server.display)) == NULL ||
