@@ -2060,45 +2060,6 @@ static void tmbr_cmd_tree_rotate(TMBR_UNUSED struct wl_client *client, struct wl
 	tmbr_desktop_recalculate(focus->desktop);
 }
 
-static void tmbr_cmd_state_query(TMBR_UNUSED struct wl_client *client, TMBR_UNUSED struct wl_resource *resource, int fd)
-{
-	struct tmbr_server *server = wl_resource_get_user_data(resource);
-	struct tmbr_output *o;
-	FILE *f;
-
-	if ((f = fdopen(fd, "w")) == NULL)
-		return;
-
-	fprintf(f, "outputs:\n");
-	wl_list_for_each(o, &server->outputs, link) {
-		struct wlr_output_mode *mode;
-		struct tmbr_desktop *d;
-
-		fprintf(f, "- name: %s\n", o->output->name);
-		fprintf(f, "  geom: {x: %u, y: %u, width: %u, height: %u}\n", o->full_area.x, o->full_area.y, o->full_area.width, o->full_area.height);
-		fprintf(f, "  selected: %s\n", o == server->focussed_output ? "true" : "false");
-		fprintf(f, "  modes:\n");
-		wl_list_for_each(mode, &o->output->modes, link)
-			fprintf(f, "  - %dx%d@%d\n", mode->width, mode->height, mode->refresh);
-		fprintf(f, "  desktops:\n");
-
-		wl_list_for_each(d, &o->desktops, link) {
-			fprintf(f, "  - selected: %s\n", d == o->focus ? "true" : "false");
-			fprintf(f, "    clients:\n");
-			tmbr_tree_for_each(d->clients, tree) {
-				struct tmbr_xdg_client *c = tree->client;
-
-				fprintf(f, "    - title: '%s'\n", c->surface->toplevel->title);
-				fprintf(f, "      geom: {x: %u, y: %u, width: %u, height: %u}\n",
-					c->scene_client->node.x, c->scene_client->node.y, c->w, c->h);
-				fprintf(f, "      selected: %s\n", c == d->focus ? "true" : "false");
-			}
-		}
-	}
-
-	fclose(f);
-}
-
 static void tmbr_cmd_state_quit(TMBR_UNUSED struct wl_client *client, struct wl_resource *resource)
 {
 	struct tmbr_server *server = wl_resource_get_user_data(resource);
@@ -2209,7 +2170,6 @@ static void tmbr_server_on_bind(struct wl_client *client, void *payload, uint32_
 		.desktop_swap = tmbr_cmd_desktop_swap,
 		.output_focus = tmbr_cmd_output_focus,
 		.tree_rotate = tmbr_cmd_tree_rotate,
-		.state_query = tmbr_cmd_state_query,
 		.state_quit = tmbr_cmd_state_quit,
 		.binding_add = tmbr_cmd_binding_add,
 		.config_get = tmbr_cmd_config_get,

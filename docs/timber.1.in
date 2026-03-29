@@ -20,7 +20,6 @@ timber \- tree-based window manager
 \fItimber\fR output focus (next|prev)
 \fItimber\fR tree rotate
 \fItimber\fR state subscribe
-\fItimber\fR state query
 \fItimber\fR state quit
 \fItimber\fR binding add <KEY> <COMMAND>
 \fItimber\fR config query
@@ -154,12 +153,6 @@ $ timber state subscribe
 .sp
 Subscribe to notifications.
 The client will not exit, but instead receive event notifications in YAML format.
-.SS State: query current state
-.sp
-$ timber state query
-.sp
-Query current state of the window manager.
-The output is in YAML format.
 .SS State: quit the window manager
 .sp
 $ timber state quit
