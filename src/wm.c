@@ -391,15 +391,9 @@ static void tmbr_register(struct wl_signal *signal, struct wl_listener *listener
 	wl_signal_add(signal, listener);
 }
 
-static void tmbr_unregister(struct wl_listener *listener, ...)
+static void tmbr_unregister(struct wl_listener *listener)
 {
-	va_list ap;
-	va_start(ap, listener);
-	while (listener) {
-		wl_list_remove(&listener->link);
-		listener = va_arg(ap, struct wl_listener *);
-	}
-	va_end(ap);
+	wl_list_remove(&listener->link);
 }
 
 static void tmbr_surface_notify_focus(struct wlr_surface *surface, struct wlr_surface *subsurface, struct tmbr_server *server, double x, double y, bool adjust_keyboard_focus)
@@ -436,7 +430,9 @@ static void tmbr_xdg_popup_on_commit(struct wl_listener *listener, TMBR_UNUSED v
 static void tmbr_xdg_popup_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_popup *popup = wl_container_of(listener, popup, base.destroy);
-	tmbr_unregister(&popup->base.destroy, &popup->base.commit, &popup->base.new_popup, NULL);
+	tmbr_unregister(&popup->base.destroy);
+	tmbr_unregister(&popup->base.commit);
+	tmbr_unregister(&popup->base.new_popup);
 	free(popup);
 }
 
@@ -534,7 +530,13 @@ static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_xdg_client *client = wl_container_of(listener, client, base.destroy);
-	tmbr_unregister(&client->base.destroy, &client->base.commit, &client->base.map, &client->base.unmap, &client->base.new_popup, &client->request_fullscreen, &client->request_maximize, NULL);
+	tmbr_unregister(&client->base.destroy);
+	tmbr_unregister(&client->base.commit);
+	tmbr_unregister(&client->base.map);
+	tmbr_unregister(&client->base.unmap);
+	tmbr_unregister(&client->base.new_popup);
+	tmbr_unregister(&client->request_fullscreen);
+	tmbr_unregister(&client->request_maximize);
 	wlr_scene_node_destroy(&client->scene_client->node);
 	wl_event_source_remove(client->configure_timer);
 	free(client);
@@ -978,7 +980,10 @@ static void tmbr_output_on_destroy(struct wl_listener *listener, TMBR_UNUSED voi
 	wlr_ext_workspace_group_handle_v1_destroy(output->workspace_group);
 	wlr_scene_node_destroy(&output->scene_output->node);
 	tmbr_server_update_output_layout(output->server);
-	tmbr_unregister(&output->destroy, &output->frame, &output->commit, &output->request_state, NULL);
+	tmbr_unregister(&output->destroy);
+	tmbr_unregister(&output->frame);
+	tmbr_unregister(&output->commit);
+	tmbr_unregister(&output->request_state);
 	wl_list_remove(&output->link);
 	free(output);
 }
@@ -1088,7 +1093,9 @@ static struct tmbr_output *tmbr_output_new(struct tmbr_server *server, struct wl
 static void tmbr_keyboard_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
 {
 	struct tmbr_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
-	tmbr_unregister(&keyboard->destroy, &keyboard->key, &keyboard->modifiers, NULL);
+	tmbr_unregister(&keyboard->destroy);
+	tmbr_unregister(&keyboard->key);
+	tmbr_unregister(&keyboard->modifiers);
 	free(keyboard);
 }
 
@@ -1206,7 +1213,11 @@ static void tmbr_layer_client_on_destroy(struct wl_listener *listener, TMBR_UNUS
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.destroy);
 	wl_list_remove(&client->link);
-	tmbr_unregister(&client->base.map, &client->base.unmap, &client->base.destroy, &client->base.commit, &client->base.new_popup, NULL);
+	tmbr_unregister(&client->base.map);
+	tmbr_unregister(&client->base.unmap);
+	tmbr_unregister(&client->base.destroy);
+	tmbr_unregister(&client->base.commit);
+	tmbr_unregister(&client->base.new_popup);
 	tmbr_output_recalculate(client->output);
 	free(client);
 }
@@ -1260,7 +1271,7 @@ static void tmbr_pointer_on_destroy(struct wl_listener *listener,
 {
 	struct tmbr_pointer *pointer = wl_container_of(listener, pointer, destroy);
 	wl_list_remove(&pointer->link);
-	tmbr_unregister(&pointer->destroy, NULL);
+	tmbr_unregister(&pointer->destroy);
 	free(pointer);
 }
 
@@ -1454,7 +1465,8 @@ static void tmbr_server_on_session_lock_unlock(struct wl_listener *listener, TMB
 	server->locked = false;
 	if ((focus = tmbr_server_find_focus(server)) != NULL)
 		tmbr_xdg_client_focus(focus, true);
-	tmbr_unregister(&server->new_session_lock_surface, &server->session_lock_unlock, NULL);
+	tmbr_unregister(&server->new_session_lock_surface);
+	tmbr_unregister(&server->session_lock_unlock);
 }
 
 static void tmbr_server_on_new_session_lock(struct wl_listener *listener, void *payload)
@@ -1688,7 +1700,7 @@ static void tmbr_server_on_destroy_drag_icon(TMBR_UNUSED struct wl_listener *lis
 	struct tmbr_server *server = wl_container_of(listener, server, destroy_drag_icon);
 	struct wlr_drag_icon *icon = payload;
 	wlr_scene_node_destroy(icon->data);
-	tmbr_unregister(&server->destroy_drag_icon, NULL);
+	tmbr_unregister(&server->destroy_drag_icon);
 }
 
 static void tmbr_server_on_start_drag(struct wl_listener *listener, void *payload)
@@ -1724,7 +1736,7 @@ static void tmbr_idle_inhibitor_on_destroy(struct wl_listener *listener, TMBR_UN
 	struct tmbr_idle_inhibitor *inhibitor = wl_container_of(listener, inhibitor, on_destroy);
 	wlr_idle_notifier_v1_set_inhibited(inhibitor->server->idle_notifier,
 					   wl_list_length(&inhibitor->server->idle_inhibit->inhibitors) > 1);
-	tmbr_unregister(&inhibitor->on_destroy, NULL);
+	tmbr_unregister(&inhibitor->on_destroy);
 }
 
 static void tmbr_server_on_new_idle_inhibitor(struct wl_listener *listener, void *payload)
