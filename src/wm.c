@@ -751,6 +751,7 @@ static struct tmbr_desktop *tmbr_desktop_new(struct tmbr_output *parent)
 	desktop->scene_fullscreen = wlr_scene_tree_create(parent->scene_layers[TMBR_SCENE_LAYER_FULLSCREEN]);
 	desktop->workspace = wlr_ext_workspace_handle_v1_create(parent->server->ext_workspace_manager, NULL,
 								EXT_WORKSPACE_HANDLE_V1_WORKSPACE_CAPABILITIES_ACTIVATE);
+	desktop->workspace->data = desktop;
 
 	wlr_scene_node_set_enabled(&desktop->scene_fullscreen->node, false);
 
@@ -1107,6 +1108,7 @@ static struct tmbr_output *tmbr_output_new(struct tmbr_server *server, struct wl
 
 	output->workspace_group = wlr_ext_workspace_group_handle_v1_create(server->ext_workspace_manager,
 									   EXT_WORKSPACE_GROUP_HANDLE_V1_GROUP_CAPABILITIES_CREATE_WORKSPACE);
+	output->workspace_group->data = output;
 	wlr_ext_workspace_group_handle_v1_output_enter(output->workspace_group, wlr_output);
 
 	tmbr_output_add_desktop(output, tmbr_desktop_new(output));
@@ -1847,47 +1849,26 @@ static void tmbr_server_on_output_power_set_mode(TMBR_UNUSED struct wl_listener 
 	wlr_scene_node_set_enabled(&output->scene_output->node, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
 }
 
-static void tmbr_server_on_ext_workspace_manager_commit(struct wl_listener *listener, void *payload)
+static void tmbr_server_on_ext_workspace_manager_commit(TMBR_UNUSED struct wl_listener *listener, void *payload)
 {
-	struct tmbr_server *server = wl_container_of(listener, server, ext_workspace_manager_commit);
 	struct wlr_ext_workspace_v1_commit_event *event = payload;
 	struct wlr_ext_workspace_v1_request *request;
 
 	wl_list_for_each(request, event->requests, link) {
 		switch (request->type) {
 		case WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE: {
-			struct tmbr_output *o;
-
-			wl_list_for_each(o, &server->outputs, link) {
-				if (o->workspace_group != request->create_workspace.group)
-					continue;
-				tmbr_output_add_desktop(o, tmbr_desktop_new(o));
-				goto next_event;
-			}
-
+			struct tmbr_output *o = request->create_workspace.group->data;
+			tmbr_output_add_desktop(o, tmbr_desktop_new(o));
 			break;
 		}
 		case WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE: {
-			struct tmbr_desktop *d;
-			struct tmbr_output *o;
-
-			wl_list_for_each(o, &server->outputs, link) {
-				wl_list_for_each(d, &o->desktops, link) {
-					if (d->workspace != request->activate.workspace)
-						continue;
-					tmbr_output_focus_desktop(o, d);
-					goto next_event;
-				}
-			}
-
+			struct tmbr_desktop *d = request->activate.workspace->data;
+			tmbr_output_focus_desktop(d->output, d);
 			break;
 		}
 		default:
 			break;
 		}
-
-next_event:
-		continue;
 	}
 }
 
