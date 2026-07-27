@@ -126,6 +126,7 @@ struct tmbr_xdg_client {
 	struct wlr_xdg_surface *surface;
 	struct wlr_scene_tree *scene_client;
 	struct wlr_scene_tree *scene_xdg_surface;
+	struct wlr_scene_tree *scene_popups;
 	struct wlr_scene_rect *scene_borders;
 	struct wlr_ext_foreign_toplevel_handle_v1 *ext_foreign_toplevel_handle;
 
@@ -505,6 +506,7 @@ static void tmbr_xdg_client_set_box(struct tmbr_xdg_client *client, int x, int y
 	}
 
 	wlr_scene_node_set_position(&client->scene_xdg_surface->node, x + border, y + border);
+	wlr_scene_node_set_position(&client->scene_popups->node, x + border, y + border);
 	wlr_scene_rect_set_size(client->scene_borders, w, h);
 	wlr_scene_node_set_position(&client->scene_borders->node, x, y);
 
@@ -600,9 +602,9 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 static void tmbr_xdg_client_on_new_popup(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_xdg_client *xdg_client = wl_container_of(listener, xdg_client, base.new_popup);
-	tmbr_xdg_popup_new(payload, xdg_client->scene_xdg_surface, (struct wlr_box){
-		.width = xdg_client->w,
-		.height = xdg_client->h,
+	tmbr_xdg_popup_new(payload, xdg_client->scene_popups, (struct wlr_box){
+		.width = xdg_client->w - 2 * xdg_client->border,
+		.height = xdg_client->h - 2 * xdg_client->border,
 	});
 }
 
@@ -1430,6 +1432,8 @@ static void tmbr_server_on_new_xdg_toplevel(struct wl_listener *listener, void *
 	client->scene_client = wlr_scene_tree_create(server->scene_unowned_clients);
 	client->scene_xdg_surface = wlr_scene_xdg_surface_create(client->scene_client, toplevel->base);
 	client->scene_xdg_surface->node.data = client;
+	client->scene_popups = wlr_scene_tree_create(client->scene_client);
+	client->scene_popups->node.data = client;
 	client->scene_borders = wlr_scene_rect_create(client->scene_client, 0, 0,
 						      tmbr_color_rgba_to_float(server->config.border_color_inactive, color));
 	client->ext_foreign_toplevel_handle = wlr_ext_foreign_toplevel_handle_v1_create(server->ext_foreign_toplevel_list, &state);
