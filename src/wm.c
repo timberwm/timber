@@ -603,8 +603,8 @@ static void tmbr_xdg_client_on_new_popup(struct wl_listener *listener, void *pay
 {
 	struct tmbr_xdg_client *xdg_client = wl_container_of(listener, xdg_client, base.new_popup);
 	tmbr_xdg_popup_new(payload, xdg_client->scene_popups, (struct wlr_box){
-		.width = xdg_client->w,
-		.height = xdg_client->h,
+		.width = xdg_client->w - 2 * xdg_client->border,
+		.height = xdg_client->h - 2 * xdg_client->border,
 	});
 }
 
