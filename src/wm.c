@@ -67,6 +67,7 @@
 #include <wlr/types/wlr_touch.h>
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
@@ -235,11 +236,13 @@ struct tmbr_server {
 	struct wlr_session_lock_manager_v1 *session_lock_manager;
 	struct wlr_server_decoration_manager *decoration;
 	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
+	struct wlr_virtual_pointer_manager_v1 *virtual_pointer_manager;
 	struct wlr_xcursor_manager *xcursor_manager;
 	struct wlr_xdg_shell *xdg_shell;
 
 	struct wl_listener new_input;
 	struct wl_listener new_virtual_keyboard;
+	struct wl_listener new_virtual_pointer;
 	struct wl_listener new_output;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_layer_shell_surface;
@@ -1350,6 +1353,13 @@ static void tmbr_server_on_new_virtual_keyboard(struct wl_listener *listener, vo
 	tmbr_keyboard_new(server, &keyboard->keyboard);
 }
 
+static void tmbr_server_on_new_virtual_pointer(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, new_virtual_pointer);
+	struct wlr_virtual_pointer_v1 *pointer = payload;
+	tmbr_pointer_new(server, &pointer->pointer.base);
+}
+
 static void tmbr_server_on_new_output(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, new_output);
@@ -2248,6 +2258,7 @@ int tmbr_wm(void)
 	    (server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.session_lock_manager = wlr_session_lock_manager_v1_create(server.display)) == NULL ||
 	    (server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display)) == NULL ||
+	    (server.virtual_pointer_manager = wlr_virtual_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.xcursor_manager = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), 24)) == NULL ||
 	    (server.xdg_shell = wlr_xdg_shell_create(server.display, 5)) == NULL ||
 	    wlr_xdg_output_manager_v1_create(server.display, server.output_layout) == NULL)
@@ -2288,6 +2299,7 @@ int tmbr_wm(void)
 
 	tmbr_register(&server.backend->events.new_input, &server.new_input, tmbr_server_on_new_input);
 	tmbr_register(&server.virtual_keyboard_manager->events.new_virtual_keyboard, &server.new_virtual_keyboard, tmbr_server_on_new_virtual_keyboard);
+	tmbr_register(&server.virtual_pointer_manager->events.new_virtual_pointer, &server.new_virtual_pointer, tmbr_server_on_new_virtual_pointer);
 	tmbr_register(&server.backend->events.new_output, &server.new_output, tmbr_server_on_new_output);
 	tmbr_register(&server.xdg_shell->events.new_toplevel, &server.new_xdg_toplevel, tmbr_server_on_new_xdg_toplevel);
 	tmbr_register(&server.layer_shell->events.new_surface, &server.new_layer_shell_surface, tmbr_server_on_new_layer_shell_surface);
@@ -2332,6 +2344,7 @@ int tmbr_wm(void)
 
 	tmbr_unregister(&server.new_input);
 	tmbr_unregister(&server.new_virtual_keyboard);
+	tmbr_unregister(&server.new_virtual_pointer);
 	tmbr_unregister(&server.new_output);
 	tmbr_unregister(&server.new_xdg_toplevel);
 	tmbr_unregister(&server.new_layer_shell_surface);
