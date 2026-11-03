@@ -1261,11 +1261,8 @@ static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSE
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.commit);
 	struct wlr_layer_surface_v1 *surface = client->scene_layer_surface->layer_surface;
-	struct wlr_layer_surface_v1_state *c = &surface->current, *p = &surface->pending;
 
-	if (surface->initial_commit ||
-	    c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
-	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
+	if (surface->initial_commit || surface->current.committed)
 		tmbr_output_recalculate(client->output);
 }
 
