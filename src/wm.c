@@ -1340,7 +1340,9 @@ static void tmbr_server_on_new_input(struct wl_listener *listener, void *payload
 		break;
 	}
 
-	wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER|WL_SEAT_CAPABILITY_KEYBOARD);
+	wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER |
+						WL_SEAT_CAPABILITY_KEYBOARD |
+						WL_SEAT_CAPABILITY_TOUCH);
 }
 
 static void tmbr_server_on_new_virtual_keyboard(struct wl_listener *listener, void *payload)
