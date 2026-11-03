@@ -476,7 +476,7 @@ static void tmbr_xdg_client_kill(struct tmbr_xdg_client *client)
 	wlr_xdg_toplevel_send_close(client->surface->toplevel);
 }
 
-static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
+static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client, bool adjust_keyboard_focus)
 {
 	double x = client->server->cursor->x, y = client->server->cursor->y;
 	struct wlr_surface *subsurface;
@@ -487,9 +487,9 @@ static void tmbr_xdg_client_notify_focus(struct tmbr_xdg_client *client)
 
 	if ((found = tmbr_server_find_client_at(client->server, x, y, &subsurface, &x, &y)) != NULL &&
 	    found->type == TMBR_CLIENT_XDG_SURFACE && wl_container_of(found, (struct tmbr_xdg_client *) NULL, base) == client)
-		tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y, true);
+		tmbr_surface_notify_focus(client->surface->surface, subsurface, client->server, x, y, adjust_keyboard_focus);
 	else
-		tmbr_surface_notify_focus(client->surface->surface, NULL, client->server, 0, 0, true);
+		tmbr_surface_notify_focus(client->surface->surface, NULL, client->server, 0, 0, adjust_keyboard_focus);
 }
 
 static int tmbr_xdg_client_handle_configure_timer(void *payload)
@@ -534,7 +534,7 @@ static void tmbr_xdg_client_focus(struct tmbr_xdg_client *client, bool focus)
 	wlr_xdg_toplevel_set_activated(client->surface->toplevel, focus);
 	tmbr_xdg_client_update_border_color(client, focus);
 	if (focus)
-		tmbr_xdg_client_notify_focus(client);
+		tmbr_xdg_client_notify_focus(client, true);
 }
 
 static void tmbr_xdg_client_on_destroy(struct wl_listener *listener, TMBR_UNUSED void *payload)
@@ -595,7 +595,7 @@ static void tmbr_xdg_client_on_commit(struct wl_listener *listener, TMBR_UNUSED 
 	  */
 	if (client->pending_serial && client->pending_serial == surface->current.configure_serial) {
 		if (client == tmbr_server_find_focus(client->server))
-			tmbr_xdg_client_notify_focus(client);
+			tmbr_xdg_client_notify_focus(client, false);
 		client->pending_serial = 0;
 		client->inhibit_frames = 0;
 		wl_event_source_timer_update(client->configure_timer, 0);
@@ -810,7 +810,7 @@ static void tmbr_desktop_recalculate(struct tmbr_desktop *desktop)
 	 * about the updated cursor position.
 	 */
 	if ((focus = tmbr_server_find_focus(desktop->output->server)) != NULL)
-		tmbr_xdg_client_notify_focus(focus);
+		tmbr_xdg_client_notify_focus(focus, false);
 }
 
 static void tmbr_desktop_set_fullscreen(struct tmbr_desktop *desktop, bool fullscreen)
@@ -1261,11 +1261,8 @@ static void tmbr_layer_client_on_commit(struct wl_listener *listener, TMBR_UNUSE
 {
 	struct tmbr_layer_client *client = wl_container_of(listener, client, base.commit);
 	struct wlr_layer_surface_v1 *surface = client->scene_layer_surface->layer_surface;
-	struct wlr_layer_surface_v1_state *c = &surface->current, *p = &surface->pending;
 
-	if (surface->initial_commit ||
-	    c->anchor != p->anchor || c->exclusive_zone != p->exclusive_zone || c->desired_width != p->desired_width ||
-	    c->desired_height != p->desired_height || c->layer != p->layer || memcmp(&c->margin, &p->margin, sizeof(c->margin)))
+	if (surface->initial_commit || surface->current.committed)
 		tmbr_output_recalculate(client->output);
 }
 
