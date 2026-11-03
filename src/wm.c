@@ -36,6 +36,7 @@
 #include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_cursor_shape_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_ext_data_control_v1.h>
@@ -215,6 +216,7 @@ struct tmbr_server {
 	struct wlr_allocator *allocator;
 	struct wlr_backend *backend;
 	struct wlr_cursor *cursor;
+	struct wlr_cursor_shape_manager_v1 *cursor_shape_manager;
 	struct wlr_ext_workspace_manager_v1 *ext_workspace_manager;
 	struct wlr_ext_foreign_toplevel_list_v1 *ext_foreign_toplevel_list;
 	struct wlr_gamma_control_manager_v1 *gamma_control_manager;
@@ -256,6 +258,7 @@ struct tmbr_server {
 	struct wl_listener cursor_touch_motion;
 	struct wl_listener cursor_frame;
 	struct wl_listener request_set_cursor;
+	struct wl_listener request_set_cursor_shape;
 	struct wl_listener request_set_selection;
 	struct wl_listener request_set_primary_selection;
 	struct wl_listener request_start_drag;
@@ -1731,6 +1734,18 @@ static void tmbr_server_on_request_set_cursor(struct wl_listener *listener, void
 		wlr_cursor_set_surface(server->cursor, event->surface, event->hotspot_x, event->hotspot_y);
 }
 
+static void tmbr_server_on_request_set_cursor_shape(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, request_set_cursor_shape);
+	struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = payload;
+	struct wlr_seat_client *focused_client = server->seat->pointer_state.focused_client;
+
+	if (event->device_type == WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_POINTER &&
+	    focused_client == event->seat_client)
+		wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
+				       wlr_cursor_shape_v1_name(event->shape));
+}
+
 static void tmbr_server_on_request_set_selection(struct wl_listener *listener, void *payload)
 {
 	struct tmbr_server *server = wl_container_of(listener, server, request_set_selection);
@@ -2239,6 +2254,7 @@ int tmbr_wm(void)
 	    wlr_xdg_decoration_manager_v1_create(server.display) == NULL ||
 	    (server.decoration = wlr_server_decoration_manager_create(server.display)) == NULL ||
 	    (server.cursor = wlr_cursor_create()) == NULL ||
+	    (server.cursor_shape_manager = wlr_cursor_shape_manager_v1_create(server.display, 2)) == NULL ||
 	    (server.output_layout = wlr_output_layout_create(server.display)) == NULL ||
 	    (server.scene = wlr_scene_create()) == NULL ||
 	    (server.scene_drag = wlr_scene_tree_create(&server.scene->tree)) == NULL ||
@@ -2316,6 +2332,7 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.touch_up, &server.cursor_touch_up, tmbr_cursor_on_touch_up);
 	tmbr_register(&server.cursor->events.touch_motion, &server.cursor_touch_motion, tmbr_cursor_on_touch_motion);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
+	tmbr_register(&server.cursor_shape_manager->events.request_set_shape, &server.request_set_cursor_shape, tmbr_server_on_request_set_cursor_shape);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.new_idle_inhibitor, tmbr_server_on_new_idle_inhibitor);
 	tmbr_register(&server.output_manager->events.apply, &server.apply_layout, tmbr_server_on_apply_layout);
 	tmbr_register(&server.output_power_manager->events.set_mode, &server.output_power_set_mode, tmbr_server_on_output_power_set_mode);
@@ -2350,6 +2367,7 @@ int tmbr_wm(void)
 	tmbr_unregister(&server.new_session_lock);
 	tmbr_unregister(&server.new_idle_inhibitor);
 	tmbr_unregister(&server.request_set_cursor);
+	tmbr_unregister(&server.request_set_cursor_shape);
 	tmbr_unregister(&server.request_set_selection);
 	tmbr_unregister(&server.request_set_primary_selection);
 	tmbr_unregister(&server.request_start_drag);
