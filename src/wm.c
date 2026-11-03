@@ -56,6 +56,7 @@
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
+#include <wlr/types/wlr_pointer_gestures_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
@@ -228,6 +229,7 @@ struct tmbr_server {
 	struct wlr_output_manager_v1 *output_manager;
 	struct wlr_output_power_manager_v1 *output_power_manager;
 	struct wlr_pointer_constraints_v1 *pointer_constraints;
+	struct wlr_pointer_gestures_v1 *pointer_gestures;
 	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 	struct wlr_scene *scene;
 	struct wlr_scene_output_layout *scene_layout;
@@ -257,6 +259,14 @@ struct tmbr_server {
 	struct wl_listener cursor_touch_up;
 	struct wl_listener cursor_touch_motion;
 	struct wl_listener cursor_frame;
+	struct wl_listener cursor_swipe_begin;
+	struct wl_listener cursor_swipe_update;
+	struct wl_listener cursor_swipe_end;
+	struct wl_listener cursor_pinch_begin;
+	struct wl_listener cursor_pinch_update;
+	struct wl_listener cursor_pinch_end;
+	struct wl_listener cursor_hold_begin;
+	struct wl_listener cursor_hold_end;
 	struct wl_listener request_set_cursor;
 	struct wl_listener request_set_cursor_shape;
 	struct wl_listener request_set_selection;
@@ -1566,6 +1576,79 @@ static void tmbr_cursor_on_frame(struct wl_listener *listener, TMBR_UNUSED void 
 	wlr_seat_pointer_notify_frame(server->seat);
 }
 
+static void tmbr_cursor_on_swipe_begin(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_swipe_begin);
+	struct wlr_pointer_swipe_begin_event *event = payload;
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
+	if (!server->locked)
+		wlr_pointer_gestures_v1_send_swipe_begin(server->pointer_gestures, server->seat,
+							 event->time_msec, event->fingers);
+}
+
+static void tmbr_cursor_on_swipe_update(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_swipe_update);
+	struct wlr_pointer_swipe_update_event *event = payload;
+	if (!server->locked)
+		wlr_pointer_gestures_v1_send_swipe_update(server->pointer_gestures, server->seat,
+							  event->time_msec, event->dx, event->dy);
+}
+
+static void tmbr_cursor_on_swipe_end(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_swipe_end);
+	struct wlr_pointer_swipe_end_event *event = payload;
+	wlr_pointer_gestures_v1_send_swipe_end(server->pointer_gestures, server->seat,
+					       event->time_msec, event->cancelled);
+}
+
+static void tmbr_cursor_on_pinch_begin(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_pinch_begin);
+	struct wlr_pointer_pinch_begin_event *event = payload;
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
+	if (!server->locked)
+		wlr_pointer_gestures_v1_send_pinch_begin(server->pointer_gestures, server->seat,
+							 event->time_msec, event->fingers);
+}
+
+static void tmbr_cursor_on_pinch_update(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_pinch_update);
+	struct wlr_pointer_pinch_update_event *event = payload;
+	if (!server->locked)
+		wlr_pointer_gestures_v1_send_pinch_update(server->pointer_gestures, server->seat,
+							  event->time_msec, event->dx, event->dy,
+							  event->scale, event->rotation);
+}
+
+static void tmbr_cursor_on_pinch_end(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_pinch_end);
+	struct wlr_pointer_pinch_end_event *event = payload;
+	wlr_pointer_gestures_v1_send_pinch_end(server->pointer_gestures, server->seat,
+					       event->time_msec, event->cancelled);
+}
+
+static void tmbr_cursor_on_hold_begin(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_hold_begin);
+	struct wlr_pointer_hold_begin_event *event = payload;
+	wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
+	if (!server->locked)
+		wlr_pointer_gestures_v1_send_hold_begin(server->pointer_gestures, server->seat,
+							event->time_msec, event->fingers);
+}
+
+static void tmbr_cursor_on_hold_end(struct wl_listener *listener, void *payload)
+{
+	struct tmbr_server *server = wl_container_of(listener, server, cursor_hold_end);
+	struct wlr_pointer_hold_end_event *event = payload;
+	wlr_pointer_gestures_v1_send_hold_end(server->pointer_gestures, server->seat,
+					      event->time_msec, event->cancelled);
+}
+
 static void tmbr_cursor_handle_motion(struct tmbr_server *server, struct wlr_input_device *device, uint32_t time_msec,
 				      double dx, double dy, double dx_unaccel, double dy_unaccel)
 {
@@ -2270,6 +2353,7 @@ int tmbr_wm(void)
 	    (server.output_manager = wlr_output_manager_v1_create(server.display)) == NULL ||
 	    (server.output_power_manager = wlr_output_power_manager_v1_create(server.display)) == NULL ||
 	    (server.pointer_constraints = wlr_pointer_constraints_v1_create(server.display)) == NULL ||
+	    (server.pointer_gestures = wlr_pointer_gestures_v1_create(server.display)) == NULL ||
 	    (server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.display)) == NULL ||
 	    (server.session_lock_manager = wlr_session_lock_manager_v1_create(server.display)) == NULL ||
 	    (server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.display)) == NULL ||
@@ -2332,6 +2416,14 @@ int tmbr_wm(void)
 	tmbr_register(&server.cursor->events.touch_up, &server.cursor_touch_up, tmbr_cursor_on_touch_up);
 	tmbr_register(&server.cursor->events.touch_motion, &server.cursor_touch_motion, tmbr_cursor_on_touch_motion);
 	tmbr_register(&server.cursor->events.frame, &server.cursor_frame, tmbr_cursor_on_frame);
+	tmbr_register(&server.cursor->events.swipe_begin, &server.cursor_swipe_begin, tmbr_cursor_on_swipe_begin);
+	tmbr_register(&server.cursor->events.swipe_update, &server.cursor_swipe_update, tmbr_cursor_on_swipe_update);
+	tmbr_register(&server.cursor->events.swipe_end, &server.cursor_swipe_end, tmbr_cursor_on_swipe_end);
+	tmbr_register(&server.cursor->events.pinch_begin, &server.cursor_pinch_begin, tmbr_cursor_on_pinch_begin);
+	tmbr_register(&server.cursor->events.pinch_update, &server.cursor_pinch_update, tmbr_cursor_on_pinch_update);
+	tmbr_register(&server.cursor->events.pinch_end, &server.cursor_pinch_end, tmbr_cursor_on_pinch_end);
+	tmbr_register(&server.cursor->events.hold_begin, &server.cursor_hold_begin, tmbr_cursor_on_hold_begin);
+	tmbr_register(&server.cursor->events.hold_end, &server.cursor_hold_end, tmbr_cursor_on_hold_end);
 	tmbr_register(&server.cursor_shape_manager->events.request_set_shape, &server.request_set_cursor_shape, tmbr_server_on_request_set_cursor_shape);
 	tmbr_register(&server.idle_inhibit->events.new_inhibitor, &server.new_idle_inhibitor, tmbr_server_on_new_idle_inhibitor);
 	tmbr_register(&server.output_manager->events.apply, &server.apply_layout, tmbr_server_on_apply_layout);
@@ -2380,6 +2472,14 @@ int tmbr_wm(void)
 	tmbr_unregister(&server.cursor_touch_up);
 	tmbr_unregister(&server.cursor_touch_motion);
 	tmbr_unregister(&server.cursor_frame);
+	tmbr_unregister(&server.cursor_swipe_begin);
+	tmbr_unregister(&server.cursor_swipe_update);
+	tmbr_unregister(&server.cursor_swipe_end);
+	tmbr_unregister(&server.cursor_pinch_begin);
+	tmbr_unregister(&server.cursor_pinch_update);
+	tmbr_unregister(&server.cursor_pinch_end);
+	tmbr_unregister(&server.cursor_hold_begin);
+	tmbr_unregister(&server.cursor_hold_end);
 	tmbr_unregister(&server.apply_layout);
 	tmbr_unregister(&server.output_power_set_mode);
 	tmbr_unregister(&server.ext_workspace_manager_commit);
